@@ -84,13 +84,12 @@ class hmi_data_agg:
 		# and last days for which data are available (just to ensure accuracy)
 		if first_ts.day >= self.start_dt.day or last_ts.day <= self.end_dt.day:
 			start_dt_warn = first_ts + np.timedelta64(1,'D')
-			end_dt_warn = last_ts + np.timedelta64(1,'D')
+			end_dt_warn = last_ts - np.timedelta64(1,'D')
 			start_dt_warn = dt.strftime(start_dt_warn, '%m-%d-%y')
 			end_dt_warn = dt.strftime(end_dt_warn, '%m-%d-%y')
 			warn_msg = \
 				'Given the range of data available for {0}, accurate aggregate values can only be obtained for: {1} to {2}'
 			print(warn_msg.format(elid, start_dt_warn, end_dt_warn))
-			sys.exit()
 
 		# Calculating time elapsed in minutes (since highest resolution is ~30s)
 		self.hmi_data['tel'] = self.hmi_data[xvar] - first_ts
@@ -111,7 +110,7 @@ class hmi_data_agg:
 		tots_res = []
 		for period in range(nperiods):
 			start_tel = (self.start_dt - first_ts) / np.timedelta64(1,'m') + period*60*self.tperiod
-			end_tel = start_tel + 60*24
+			end_tel = start_tel + 60*self.tperiod
 			start_ts = self.start_dt + datetime.timedelta(hours = period*self.tperiod)
 			ip_tot = self.hmi_data.loc[
 				(self.hmi_data['tel'] >= start_tel) & 
@@ -119,7 +118,7 @@ class hmi_data_agg:
 			].sum()
 			if agg_type == 'average':
 				ip_tot = ip_tot/(60*self.tperiod)
-			tots_row = [start_ts, ip_tot.tolist()]
+			tots_row = [start_ts, ip_tot]
 			tots_res.append(tots_row)
 		
 		return tots_res
@@ -147,17 +146,17 @@ class hmi_data_agg:
 
 if __name__ == '__main__':
 	hmi_dat = hmi_data_agg(
-		'C:/Users/jbolorinos/Google Drive/Codiga Center/HMI Data',
-		'C:/Users/jbolorinos/Google Drive/Codiga Center/HMI Data',
-		'Reactor Feeding - Raw_20170721102913.csv',
-		'test_report.csv',
-		'raw',
-		'7-11-17',
-		'7-20-17',
-		24,
-		['FT202','FT305','AT305','AT311'],
-		['total','total','average','average'],
-		[0, 0, 0, 0],
-		[30, 30, 14, 14]
+		'C:/Users/jbolorinos/Google Drive/Codiga Center/HMI Data', # Directory with HMI data
+		'C:/Users/jbolorinos/Google Drive/Codiga Center/HMI Data', # Directory to output summary data to
+		'Reactor Feeding - Raw_20170721102913.csv', # Name of HMI data file (include .csv!!)
+		'test_report.csv', # Desired name of the output file
+		'raw', # Type of eDNA query (can be raw, 1 min, 1 hour or any type)
+		'7-11-17', # Start of date range you want summary data for
+		'7-20-17', # End if date range you want summary data for
+		1, # Number of hours you want to sum/average over
+		['FT202','FT305','AT305','AT311'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+		['total','total','average','average'], # Type of aggregate function you want (can be total or average)
+		[0.5, 0.5, 0, 0], # Lower limit of sensor values (will set anything below this to 0), in same order as sensor ids
+		[30, 30, 14, 14] # Upper limit of sensor values (will set anything above this to NaN and remove), in same order as sensor ids
 	)
 	hmi_dat.run_report()
