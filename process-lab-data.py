@@ -20,6 +20,7 @@ from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
+from tkinter.filedialog import askdirectory
 
 try:
     import argparse
@@ -92,25 +93,20 @@ class cr2c_monitor_run:
 		return gsheet_values
 
 	# Manages output directories
-	def manage_outdirs(self, data_outdir, tables_outdir, charts_outdir):
+	def get_outdirs(self):
 		
 		# Get the current working directory
 		cwd = os.getcwd()
+		os.chdir('..')
+		os.chdir('..')
+		os.chdir('Data')
+		print(os.getcwd())
+		self.data_outdir = os.getcwd()
 
-		# Get the output directories
-		self.data_outdir = data_outdir
-		self.tables_outdir = tables_outdir
-		self.charts_outdir = charts_outdir
-		
-		# If the data/table/chart output directories are not given by the use, use the current directory
-		if data_outdir == None:
-			self.data_outdir = cwd
-
-		if tables_outdir == None:
-			self.tables_outdir == cwd
-		
-		if charts_outdir == None:
-			self.charts_outdir = cwd
+		# Request tables and charts output directory from user
+		self.charts_outdir = askdirectory(title = 'Directory to output charts to')
+		# Request tables and charts output directory from user
+		self.tables_outdir = askdirectory(title = 'Directory to output tables to')
 
 
 	# Sets the start and end dates for the charts, depending on user input
@@ -331,6 +327,12 @@ class cr2c_monitor_run:
 		col_order_list
 	):
 
+		try:
+			os.chdir(self.charts_outdir)
+		except OSError:
+			print('Please choose a valid directory to output the charts to')
+			sys.exit()
+
 		hue = 'Type'
 		if mtype in ['PH','ALKALINITY']:
 			hue = None
@@ -367,8 +369,6 @@ class cr2c_monitor_run:
 		mplot.add_legend(frameon = True)
 
 		# Output plot to given directory
-		os.chdir(self.charts_outdir)
-		# Set format variable for plot filename string
 		plot_filename = "{0}_{1}_to_{2}.png"
 		plt.savefig(
 			plot_filename.format(mtype, self.chart_start_dt_str, self.chart_end_dt_str), 
@@ -419,9 +419,11 @@ class cr2c_monitor_run:
 	# Gets wide dataset, cleans and formats and outputs to csv
 	def summarize_tables(self, ndays_tables):
 
-		# Change to given tables output directory
-		os.chdir(self.tables_outdir)
-		
+		try:
+			os.chdir(self.tables_outdir)
+		except OSError:
+			print('Please choose a valid directory to output the tables to')
+			sys.exit()
 		# Specify key dates; length of time for table currently set for past two weeks
 		self.table_end_dt   = self.file_dt
 		self.table_start_dt = self.table_end_dt - timedelta(days = ndays_tables)
@@ -472,17 +474,14 @@ class cr2c_monitor_run:
 		chart_start_dt,
 		chart_end_dt,
 		get_tables,
-		ndays_tables,
-		data_outdir,
-		tables_outdir,
-		charts_outdir
+		ndays_tables
 	):
 		
 		# Convert all plot types given to upper case
 		mplot_list = [mtype.upper() for mtype in mplot_list]
  
 		# Set output directories according to user input
-		self.manage_outdirs(data_outdir, tables_outdir, charts_outdir)
+		self.get_outdirs()
 
 		# Format variable for data filename string
 		data_filename = "{0}_{1}.csv"
@@ -630,7 +629,7 @@ class cr2c_monitor_run:
 
 			# Output csv of long data if desired
 			if update_data == 1:
-				os.chdir(data_outdir)
+				os.chdir(self.data_outdir)
 				filename = data_filename.format(mtype, self.file_dt_str)
 				mdata_long.to_csv(filename, index = False, encoding = 'utf-8')
 			
@@ -679,8 +678,5 @@ if __name__ == "__main__":
 		'5-8-17', # Start of chart date range (default is June 1st 2016)
 		None, # End of date range (default is today's date)
 		1, # Switch to produce wide tables
-		30, # Number of days to output to wide tables
-		'C:/Users/jbolorinos/Google Drive/Codiga Center/Charts and Data', # Directory to output processed data to
-		'C:/Users/jbolorinos/Google Drive/Codiga Center/Charts and Data', # Directory to output wide tables to
-		'C:/Users/jbolorinos/Google Drive/Codiga Center/Charts and Data' # Directory to output charts to
+		30 # Number of days to output to wide tables
 	)

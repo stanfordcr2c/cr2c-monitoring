@@ -12,16 +12,13 @@ from datetime import timedelta as tdelt
 from pandas import read_excel
 import os
 import sys
-
+from tkinter.filedialog import askopenfilename
+from tkinter.filedialog import asksaveasfilename
 
 class hmi_data_agg:
 
 	def __init__(
 		self, 
-		data_indir,
-		report_oudir, 
-		in_filename, 
-		op_filename,
 		qtype, 
 		start_dt, 
 		end_dt, 
@@ -32,24 +29,23 @@ class hmi_data_agg:
 		hi_limits
 	):
 
-		self.data_indir = data_indir
-		self.report_oudir = report_oudir
-		self.in_filename = in_filename
-		self.op_filename = op_filename
 		self.qtype = qtype.upper()
 		self.start_dt = dt.strptime(start_dt,'%m-%d-%y')
 		self.end_dt = dt.strptime(end_dt,'%m-%d-%y')
 		self.tperiod = tperiod
 		self.elids = elids
-		self.agg_types = agg_types
+		self.agg_types = agg_types.upper()
 		self.lo_limits = lo_limits
 		self.hi_limits = hi_limits
 
 	def prep_data(self, elid, lo_limit, hi_limit):
 
 		# Load data
-		os.chdir(self.data_indir)
-		self.hmi_data = pd.read_csv(self.in_filename)
+		try:
+			self.hmi_data = pd.read_csv(self.in_path)
+		except FileNotFoundError:
+			print('Please choose an existing input file with the HMI data')
+			sys.exit()
 
 		# Load variables and set output variable names
 		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
@@ -116,7 +112,7 @@ class hmi_data_agg:
 				(self.hmi_data['tel'] >= start_tel) & 
 				(self.hmi_data['tel'] <= end_tel),'tot'
 			].sum()
-			if agg_type == 'average':
+			if agg_type == 'AVERAGE':
 				ip_tot = ip_tot/(60*self.tperiod)
 			tots_row = [start_ts, ip_tot]
 			tots_res.append(tots_row)
@@ -125,6 +121,9 @@ class hmi_data_agg:
 
 
 	def run_report(self):
+
+		# Select input data file
+		self.in_path = askopenfilename(title = 'Select data input file')
 
 		for elid in self.elids:
 			elid_no = self.elids.index(elid)
@@ -141,15 +140,11 @@ class hmi_data_agg:
 			res_df[elid + '_' + agg_type] = [row[1] for row in report_dat]
 
 		# Output to directory given
-		os.chdir(self.report_oudir)
-		res_df.to_csv(self.op_filename, index = False, encoding = 'utf-8')
+		op_path = asksaveasfilename(title = 'Save Output File as:')
+		res_df.to_csv(op_path, index = False, encoding = 'utf-8')
 
 if __name__ == '__main__':
 	hmi_dat = hmi_data_agg(
-		'C:/Users/jbolorinos/Google Drive/Codiga Center/HMI Data', # Directory with HMI data
-		'C:/Users/jbolorinos/Google Drive/Codiga Center/HMI Data', # Directory to output summary data to
-		'Reactor Feeding - Raw_20170721102913.csv', # Name of HMI data file (include .csv!!)
-		'test_report.csv', # Desired name of the output file
 		'raw', # Type of eDNA query (can be raw, 1 min, 1 hour or any type)
 		'7-11-17', # Start of date range you want summary data for
 		'7-20-17', # End if date range you want summary data for
