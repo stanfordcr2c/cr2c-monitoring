@@ -34,7 +34,7 @@ class hmi_data_agg:
 		self.end_dt = dt.strptime(end_dt,'%m-%d-%y')
 		self.tperiod = tperiod
 		self.elids = elids
-		self.agg_types = agg_types.upper()
+		self.agg_types = [agg_type.upper() for agg_type in agg_types]
 		self.lo_limits = lo_limits
 		self.hi_limits = hi_limits
 
@@ -101,7 +101,7 @@ class hmi_data_agg:
 			(self.hmi_data['yvar_next'] + self.hmi_data[yvar])/2
 
 		# Compute the area under the curve for each time period
-		nperiods = (self.end_dt.day - self.start_dt.day)*24/self.tperiod
+		nperiods = (self.end_dt - self.start_dt).days*24/self.tperiod
 		nperiods = int(nperiods)
 		tots_res = []
 		for period in range(nperiods):
@@ -116,7 +116,6 @@ class hmi_data_agg:
 				ip_tot = ip_tot/(60*self.tperiod)
 			tots_row = [start_ts, ip_tot]
 			tots_res.append(tots_row)
-		
 		return tots_res
 
 
@@ -146,12 +145,12 @@ class hmi_data_agg:
 if __name__ == '__main__':
 	hmi_dat = hmi_data_agg(
 		'raw', # Type of eDNA query (can be raw, 1 min, 1 hour or any type)
-		'7-11-17', # Start of date range you want summary data for
-		'7-20-17', # End if date range you want summary data for
+		'5-5-17', # Start of date range you want summary data for
+		'7-31-17', # End if date range you want summary data for
 		1, # Number of hours you want to sum/average over
-		['FT202','FT305','AT305','AT311'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		['total','total','average','average'], # Type of aggregate function you want (can be total or average)
-		[0.5, 0.5, 0, 0], # Lower limit of sensor values (will set anything below this to 0), in same order as sensor ids
-		[30, 30, 14, 14] # Upper limit of sensor values (will set anything above this to NaN and remove), in same order as sensor ids
+		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+		['total','total'], # Type of aggregate function you want (can be total or average)
+		[0.5, 0.5], # Lower limit of sensor values (will set anything below this to 0), in same order as sensor ids
+		[30, 30] # Upper limit of sensor values (will set anything above this to NaN and remove), in same order as sensor ids
 	)
 	hmi_dat.run_report()
