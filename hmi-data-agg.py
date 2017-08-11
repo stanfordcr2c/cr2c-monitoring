@@ -78,7 +78,7 @@ class hmi_data_agg:
 
 		# Check to make sure that the totals/averages do not include the first
 		# and last days for which data are available (just to ensure accuracy)
-		if first_ts.day >= self.start_dt.day or last_ts.day <= self.end_dt.day:
+		if first_ts >= self.start_dt or last_ts <= self.end_dt:
 			start_dt_warn = first_ts + np.timedelta64(1,'D')
 			end_dt_warn = last_ts - np.timedelta64(1,'D')
 			start_dt_warn = dt.strftime(start_dt_warn, '%m-%d-%y')
@@ -144,9 +144,9 @@ class hmi_data_agg:
 
 if __name__ == '__main__':
 	hmi_dat = hmi_data_agg(
-		'raw', # Type of eDNA query (can be raw, 1 min, 1 hour or any type)
-		'5-5-17', # Start of date range you want summary data for
-		'7-31-17', # End if date range you want summary data for
+		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
+		'5-2-17', # Start of date range you want summary data for
+		'8-7-17', # End if date range you want summary data for
 		1, # Number of hours you want to sum/average over
 		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
