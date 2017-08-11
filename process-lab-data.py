@@ -3,12 +3,15 @@
 # outputs plots, and wide tables for monitoring reports
 
 from __future__ import print_function
+import matplotlib
+matplotlib.use("TkAgg",force=True) 
 import numpy as np
 import pandas as pd
 from datetime import datetime as dt
 from datetime import timedelta
 from pandas import read_excel
 import seaborn as sns
+from tkinter.filedialog import askdirectory
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
 import matplotlib.dates as dates
@@ -21,7 +24,7 @@ from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
-from tkinter.filedialog import askdirectory
+
 
 try:
     import argparse
@@ -32,7 +35,7 @@ except ImportError:
 class cr2c_monitor_run:
 	
 	def __init__(self):
-		self.mtype_list = ['COD','TSS_VSS','PH','ALKALINITY']
+		self.mtype_list = ['COD','TSS_VSS','PH','ALKALINITY','VFA']
 		self.min_feas_dt_str = '6-1-16'
 		self.min_feas_dt = dt.strptime(self.min_feas_dt_str, '%m-%d-%y')
 		self.file_dt = dt.now()
@@ -280,7 +283,7 @@ class cr2c_monitor_run:
 			self.set_var_format(mtype,'Acid Volume (ml, to pH 4.3)', float, 'numeric')
 			self.set_var_format(mtype,'Acid Normality (N)', float, 'numeric')
 
-		if mtype in ['COD','ALKALINITY']:
+		if mtype in ['COD','ALKALINITY','VFA']:
 			self.set_var_format(mtype,'Dilution Factor', float, 'numeric')
 		
 		if mtype == 'TSS_VSS':
@@ -288,6 +291,10 @@ class cr2c_monitor_run:
 			self.set_var_format(mtype,'Original (g)', float, 'numeric')
 			self.set_var_format(mtype,'Temp105 (g)', float, 'numeric')
 			self.set_var_format(mtype,'Temp550 (g)', float, 'numeric')
+
+		if mtype == 'VFA':
+			self.set_var_format(mtype,'Acetate (mgCOD/L)', float, 'numeric')
+			self.set_var_format(mtype,'Propionate (mgCOD/L)', float, 'numeric')
 
 		# Get the obs_id variable (This step also removes duplicates and issues warnings)
 		self.manage_dups(mtype, id_vars)
@@ -351,7 +358,7 @@ class cr2c_monitor_run:
 		# Set date format
 		dfmt = dates.DateFormatter('%m/%d/%y')
 		# Set tickmarks for days of the month
-		dlocator = dates.DayLocator(bymonthday = [1,7,14,21,28])		
+		dlocator = dates.DayLocator(bymonthday = [1,15])		
 		# Format the axes in the plot panel
 		for ax in mplot.axes.flatten():
 		    ax.xaxis.set_major_locator(dlocator)
@@ -456,6 +463,7 @@ class cr2c_monitor_run:
 
 		# Get wide data
 		CODwide = self.long_to_wide(self.mdata_all['COD'], id_vars)
+		VFAwide = self.long_to_wide(self.mdata_all['VFA'], id_vars)
 		TSS_VSSwide = self.long_to_wide(self.mdata_all['TSS_VSS'], id_vars)
 		# For Alkalinity and pH, need to add Type variable back in
 		ALK = self.mdata_all['ALKALINITY']
@@ -469,11 +477,13 @@ class cr2c_monitor_run:
 		
 		# Truncate and set column order
 		CODtrunc = self.clean_wide_table(CODwide, ['Total','Soluble'])
+		VFAtrunc = self.clean_wide_table(VFAwide, ['Acetate','Propionate'])
 		TSS_VSStrunc = self.clean_wide_table(TSS_VSSwide,['TSS','VSS'])
 		ALK_PHtrunc = self.clean_wide_table(ALK_PHwide,['pH','Alkalinity'])
 		
 		# Save
 		CODtrunc.to_csv('COD_table' + self.file_dt_str + '.csv')
+		VFAtrunc.to_csv('VFA_table' + self.file_dt_str + '.csv')
 		TSS_VSStrunc.to_csv('TSS_VSS_table' + self.file_dt_str + '.csv')
 		ALK_PHtrunc.to_csv('ALK_PH_table' + self.file_dt_str + '.csv')
 
@@ -560,7 +570,7 @@ class cr2c_monitor_run:
 					'AFBR',
 					'Duty AFMBR MLSS',
 					'Duty AFMBR Effluent'
-				]
+				]		
 
 			# ======================================= TSS/VSS ======================================= #
 			if mtype == 'TSS_VSS':
@@ -636,6 +646,24 @@ class cr2c_monitor_run:
 					'Duty AFMBR Effluent'
 				]
 
+			if mtype == 'VFA':
+				self.mdata['Acetate'] = self.mdata['Acetate (mgCOD/L)']*self.mdata['Dilution Factor']
+				self.mdata['Propionate'] = self.mdata['Propionate (mgCOD/L)']*self.mdata['Dilution Factor']
+
+				# Set id and value vars for recasting
+				id_vars = ['Date','Stage','obs_id']
+				value_vars = ['Acetate','Propionate']
+
+				# Set plotting variables
+				id_vars_chrt = ['Date','Stage','Type']
+				ylabel = 'VFAs as mgCOD/L'
+				hue_order_list = ['Acetate','Propionate']
+				col_order_list = [
+					'AFBR',
+					'Duty AFMBR MLSS',
+					'Duty AFMBR Effluent'
+				]
+
 			# Convert to long format
 			mdata_long = self.wide_to_long(mtype, id_vars, value_vars)
 
@@ -694,7 +722,7 @@ if __name__ == "__main__":
 	# Run data processing 
 	cr2c_mr.process_data(
 		1, # Switch for outputting csv files of processed monitoring data
-		['COD','TSS_VSS','pH','Alkalinity'], # List of monitoring data types to produce charts for
+		['COD','TSS_VSS','pH','Alkalinity','VFA'], # List of monitoring data types to produce charts for
 		None, # Start of chart date range (default is June 1st 2016)
 		None, # End of date range (default is today's date)
 		1, # Switch to produce wide tables
