@@ -49,6 +49,7 @@ class cr2c_monitor_run:
 
 		home_dir = os.path.expanduser('~')
 		credential_dir = os.path.join(home_dir, '.credentials')
+
 		if not os.path.exists(credential_dir):
 			os.makedirs(credential_dir)
 		credential_path = os.path.join(
@@ -58,19 +59,20 @@ class cr2c_monitor_run:
 		store = Storage(credential_path)
 		credentials = store.get()
 
+		os.chdir(os.path.join(self.pydir,'GoogleProjectsAdmin'))
+		spreadsheetId = open('spreadsheetId.txt').read()
+
 		if not credentials or credentials.invalid:	
-			cwd = os.getcwd()
-			os.chdir('GoogleProjectsAdmin')
 			flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
 			flow.user_agent = APPLICATION_NAME
 			credentials = tools.run_flow(flow, store, flags)
 
-		return credentials
+		return credentials, spreadsheetId
 
 	# Retrieves all data from a gsheets file given list of sheet names
 	def get_gsheet_data(self, sheet_names):
 
-		credentials = self.get_credentials()
+		credentials, spreadsheetId = self.get_credentials()
 		http = credentials.authorize(httplib2.Http())
 		discoveryUrl = (
 			'https://sheets.googleapis.com/$discovery/rest?'
@@ -82,7 +84,7 @@ class cr2c_monitor_run:
 			http = http,
 			discoveryServiceUrl = discoveryUrl
 		)
-		spreadsheetId = '1SMNnLxyT2mTap0ufMzL2y1KQHSYMmC0u0h2-P4I3JiA'
+		# spreadsheetId = '1SMNnLxyT2mTap0ufMzL2y1KQHSYMmC0u0h2-P4I3JiA'
 		range_names = [sheet_name + '!A:G' for sheet_name in sheet_names]
 		gsheet_result = service.spreadsheets().values().batchGet(
 			spreadsheetId = spreadsheetId, 
@@ -96,13 +98,11 @@ class cr2c_monitor_run:
 	# Manages output directories
 	def get_outdirs(self):
 		
-		# Get the current working directory
-		cwd = os.getcwd()
-		os.chdir('..')
-		os.chdir('..')
-		os.chdir('Data')
-		print(os.getcwd())
-		self.data_outdir = os.getcwd()
+		# Save parent directories
+		self.cwd = os.getcwd()
+		self.pydir = os.path.abspath(os.path.join(__file__,*([".."] * 2)))
+		self.mondir = os.path.abspath(os.path.join(__file__ ,*([".."] * 3)))
+		self.data_outdir = os.path.join(self.mondir,'Data')
 
 		# Request tables and charts output directory from user
 		self.charts_outdir = askdirectory(title = 'Directory to output charts to')
@@ -696,7 +696,7 @@ if __name__ == "__main__":
 	cr2c_mr.process_data(
 		1, # Switch for outputting csv files of processed monitoring data
 		['COD','TSS_VSS','pH','Alkalinity'], # List of monitoring data types to produce charts for
-		'6-1-17', # Start of chart date range (default is June 1st 2016)
+		None, # Start of chart date range (default is June 1st 2016)
 		None, # End of date range (default is today's date)
 		1, # Switch to produce wide tables
 		90 # Number of days to output to wide tables
