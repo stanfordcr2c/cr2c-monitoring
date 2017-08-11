@@ -84,7 +84,6 @@ class cr2c_monitor_run:
 			http = http,
 			discoveryServiceUrl = discoveryUrl
 		)
-		# spreadsheetId = '1SMNnLxyT2mTap0ufMzL2y1KQHSYMmC0u0h2-P4I3JiA'
 		range_names = [sheet_name + '!A:G' for sheet_name in sheet_names]
 		gsheet_result = service.spreadsheets().values().batchGet(
 			spreadsheetId = spreadsheetId, 
