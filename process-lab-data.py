@@ -16,6 +16,7 @@ import warnings
 import os
 import sys
 import httplib2
+import sqlite3
 from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
@@ -408,16 +409,27 @@ class cr2c_monitor_run:
 		# Reproduce stage order according to data availability
 		act_st_ord = [stage for stage in self.stage_order if stage in act_stages]
 
-		# Truncate data and set column order
+		# Truncate 
 		df_trunc = dfwide.Value.loc[self.table_start_dt:self.table_end_dt,(act_st_ord, value_vars)]
+
+		# Set column order
 		df_trunc = df_trunc.reindex_axis(act_st_ord, axis = 1, level = 'Stage')
 		df_trunc = df_trunc.reindex_axis(value_vars, axis = 1, level = 'Type')
+
+		# Create days since seed variable and insert as the first column
+		if self.add_time_el == 1:
+			days_since_seed = np.array((df_trunc.index - self.seed_dt).days)
+			df_trunc.insert(0, 'Days Since Seed', days_since_seed)
 
 		return df_trunc
 
 
 	# Gets wide dataset, cleans and formats and outputs to csv
-	def summarize_tables(self, ndays_tables):
+	def summarize_tables(self, ndays_tables, add_time_el):
+
+		self.add_time_el = 0
+		if add_time_el == 1:
+			self.add_time_el = 1
 
 		try:
 			os.chdir(self.tables_outdir)
@@ -427,6 +439,7 @@ class cr2c_monitor_run:
 		# Specify key dates; length of time for table currently set for past two weeks
 		self.table_end_dt   = self.file_dt
 		self.table_start_dt = self.table_end_dt - timedelta(days = ndays_tables)
+		self.seed_dt = dt.strptime('05-10-17','%m-%d-%y')
 
 		# Specify id variables (same for every type since combining Alkalinity and pH)
 		id_vars = ['Date','Stage','Type','obs_id']
@@ -629,6 +642,14 @@ class cr2c_monitor_run:
 
 			# Output csv of long data if desired
 			if update_data == 1:
+				# conn = sqlite3.connect('cr2c_lab_data.db')
+				# curs = conn.cursor()
+
+				# curs.executemany(
+				# 	""" 
+				# 		INSERT INTO COD
+				# 	"""
+				# )
 				os.chdir(self.data_outdir)
 				filename = data_filename.format(mtype, self.file_dt_str)
 				mdata_long.to_csv(filename, index = False, encoding = 'utf-8')
@@ -663,7 +684,7 @@ class cr2c_monitor_run:
 
 		# Get wide tables using all of the monitoring data
 		if get_tables == 1:
-			self.summarize_tables(ndays_tables)
+			self.summarize_tables(ndays_tables, 1)
 
 # Execute script
 if __name__ == "__main__":
@@ -675,8 +696,8 @@ if __name__ == "__main__":
 	cr2c_mr.process_data(
 		1, # Switch for outputting csv files of processed monitoring data
 		['COD','TSS_VSS','pH','Alkalinity'], # List of monitoring data types to produce charts for
-		'5-8-17', # Start of chart date range (default is June 1st 2016)
+		'6-1-17', # Start of chart date range (default is June 1st 2016)
 		None, # End of date range (default is today's date)
 		1, # Switch to produce wide tables
-		30 # Number of days to output to wide tables
+		90 # Number of days to output to wide tables
 	)
