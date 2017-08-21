@@ -363,9 +363,13 @@ class cr2c_monitor_run:
 		for ax in mplot.axes.flatten():
 		    ax.xaxis.set_major_locator(dlocator)
 		    ax.xaxis.set_major_formatter(dfmt)
-		    ax.yaxis.set_major_formatter(
-		    	tkr.FuncFormatter(lambda x, p: format(int(x), ','))
-		    )
+		    # Different format for PH vs other y-axes
+		    if mtype == 'PH':
+		    	tkr.FormatStrFormatter('%0.2f')
+		    else:
+			    ax.yaxis.set_major_formatter(
+			    	tkr.FuncFormatter(lambda x, p: format(int(x), ','))
+			    )
 		
 		# Plot values and set axis labels/formatting
 		mplot.map(plt.plot,'Date','Value', linestyle = '-', marker = "o", ms = 4)
@@ -723,7 +727,7 @@ if __name__ == "__main__":
 	cr2c_mr.process_data(
 		1, # Switch for outputting csv files of processed monitoring data
 		['COD','TSS_VSS','pH','Alkalinity','VFA'], # List of monitoring data types to produce charts for
-		None, # Start of chart date range (default is June 1st 2016)
+		'07-01-17', # Start of chart date range (default is June 1st 2016)
 		None, # End of date range (default is today's date)
 		1, # Switch to produce wide tables
 		90 # Number of days to output to wide tables
