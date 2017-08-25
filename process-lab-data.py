@@ -16,6 +16,7 @@ import matplotlib.ticker as tkr
 import matplotlib.dates as dates
 import warnings
 import os
+from os.path import expanduser
 import sys
 import httplib2
 import sqlite3
@@ -100,12 +101,24 @@ class cr2c_monitor_run:
 	# Manages output directories
 	def get_dirs(self):
 		
-		# Request tables and charts output directory from user
-		self.data_outdir = askdirectory(title = 'Directory with lab SQL data file')
-		# Go to parent directory and navigate to google admin folder to save its directory
-		os.chdir(self.data_outdir)
-		os.chdir('..')
-		self.pydir = os.path.join(os.getcwd(),'Python')
+		# Find the CR2C.Operations folder on Box Sync on the given machine
+		targetdir = os.path.join('Box Sync','CR2C.Operations')
+		self.mondir = None
+		print("Searching for Codiga Center's Operations folder on Box Sync")
+		for dirpath, dirname, filename in os.walk(expanduser('~')):
+			if dirpath.find(targetdir) > 0:
+				self.mondir = os.path.join(dirpath,'MonitoringProcedures')
+				print("Found Codiga Center's Operations folder on Box Sync")
+				break
+				
+		# Alert user if Box Sync folder not found on machine
+		if self.mondir == None:
+			print("Could not find Codiga Center's Operations folder in Box Sync.")
+			print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
+			sys.exit()
+		self.pydir = os.path.join(self.mondir, 'Python')
+		self.data_outdir = os.path.join(self.mondir,'Data')
+
 
 	# Sets the start and end dates for the charts, depending on user input
 	def manage_chart_dates(self, chart_start_dt, chart_end_dt):
