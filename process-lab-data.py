@@ -100,11 +100,8 @@ class cr2c_monitor_run:
 	# Manages output directories
 	def get_outdirs(self):
 		
-		# Save parent directories
-		self.cwd = os.getcwd()
-		self.pydir = os.path.abspath(os.path.join(__file__,*([".."] * 2)))
-		self.mondir = os.path.abspath(os.path.join(__file__ ,*([".."] * 3)))
-		self.data_outdir = os.path.join(self.mondir,'Data')
+		# Request tables and charts output directory from user
+		self.data_outdir = askdirectory(title = 'Directory to output charts to')
 
 
 	# Sets the start and end dates for the charts, depending on user input
