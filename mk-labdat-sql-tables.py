@@ -16,6 +16,11 @@ mk_ALK_table_sql     = 'CREATE TABLE ALK_data(id INTEGER PRIMARY KEY, Date TEXT,
 mk_PH_table_sql      = 'CREATE TABLE PH_data(id INTEGER PRIMARY KEY, Date TEXT, Stage TEXT, Value REAL)'
 mk_VFA_table_sql     = 'CREATE TABLE VFA_data(id INTEGER PRIMARY KEY, Date TEXT, Stage TEXT, Type TEXT, Value REAL)'
 
+curs.execute(mk_COD_table_sql)
+curs.execute(mk_TSS_VSS_table_sql)
+curs.execute(mk_ALK_table_sql)
+curs.execute(mk_PH_table_sql)
+curs.execute(mk_VFA_table_sql)
 
 conn.close()
 
