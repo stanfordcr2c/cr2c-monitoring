@@ -98,11 +98,14 @@ class cr2c_monitor_run:
 		return gsheet_values
 
 	# Manages output directories
-	def get_outdirs(self):
+	def get_dirs(self):
 		
 		# Request tables and charts output directory from user
-		self.data_outdir = askdirectory(title = 'Directory to output charts to')
-
+		self.data_outdir = askdirectory(title = 'Directory with lab SQL data file')
+		# Go to parent directory and navigate to google admin folder to save its directory
+		os.chdir(self.data_outdir)
+		os.chdir('..')
+		self.pydir = os.path.join(os.getcwd(),'Python')
 
 	# Sets the start and end dates for the charts, depending on user input
 	def manage_chart_dates(self, chart_start_dt, chart_end_dt):
@@ -320,7 +323,7 @@ class cr2c_monitor_run:
 	def process_data(self):
 		
 		# Set output directories according to user input
-		self.get_outdirs()
+		self.get_dirs()
 
 		# Load data from gsheets
 		all_sheets = self.get_gsheet_data(self.mtype_list)
