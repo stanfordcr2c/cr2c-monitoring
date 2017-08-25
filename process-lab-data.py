@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 from datetime import datetime as dt
 from datetime import timedelta
-from pandas import read_excel
 import seaborn as sns
 from tkinter.filedialog import askdirectory
 import matplotlib.pyplot as plt
@@ -35,6 +34,7 @@ except ImportError:
 class cr2c_monitor_run:
 	
 	def __init__(self):
+		
 		self.mtype_list = ['COD','TSS_VSS','PH','ALKALINITY','VFA']
 		self.min_feas_dt_str = '6-1-16'
 		self.min_feas_dt = dt.strptime(self.min_feas_dt_str, '%m-%d-%y')
@@ -105,11 +105,6 @@ class cr2c_monitor_run:
 		self.pydir = os.path.abspath(os.path.join(__file__,*([".."] * 2)))
 		self.mondir = os.path.abspath(os.path.join(__file__ ,*([".."] * 3)))
 		self.data_outdir = os.path.join(self.mondir,'Data')
-
-		# Request tables and charts output directory from user
-		self.charts_outdir = askdirectory(title = 'Directory to output charts to')
-		# Request tables and charts output directory from user
-		self.tables_outdir = askdirectory(title = 'Directory to output tables to')
 
 
 	# Sets the start and end dates for the charts, depending on user input
@@ -236,6 +231,7 @@ class cr2c_monitor_run:
 		self.mdata['Stage'] = self.mdata['Stage'].astype(str)
 		self.mdata['Stage'] = self.mdata['Stage'].str.upper()
 		self.mdata['Stage'] = self.mdata['Stage'].str.strip()
+
 		# Check that the stage variable has been entered correctly
 		correct_stages = ['RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF']
 		stage_warning = \
@@ -323,200 +319,11 @@ class cr2c_monitor_run:
 
 		return df_long
 
-
-	# Produces plots of water quality parameters
-	def plot_mdata(
-		self,
-		mtype,
-		df,
-		ylabel,
-		hue_order_list,
-		col_order_list
-	):
-
-		try:
-			os.chdir(self.charts_outdir)
-		except OSError:
-			print('Please choose a valid directory to output the charts to')
-			sys.exit()
-
-		hue = 'Type'
-		if mtype in ['PH','ALKALINITY']:
-			hue = None
-
-		# Set plot facetting and layout
-		mplot = sns.FacetGrid(
-			df,
-			col = 'Stage',
-			col_order = col_order_list,
-			col_wrap = 3,
-			hue = hue,
-			hue_order = hue_order_list,
-			legend_out = False
-		)
-
-		# Set date format
-		dfmt = dates.DateFormatter('%m/%d/%y')
-		# Set tickmarks for days of the month
-		dlocator = dates.DayLocator(bymonthday = [1,15])		
-		# Format the axes in the plot panel
-		for ax in mplot.axes.flatten():
-		    ax.xaxis.set_major_locator(dlocator)
-		    ax.xaxis.set_major_formatter(dfmt)
-		    # Different format for PH vs other y-axes
-		    if mtype == 'PH':
-		    	tkr.FormatStrFormatter('%0.2f')
-		    else:
-			    ax.yaxis.set_major_formatter(
-			    	tkr.FuncFormatter(lambda x, p: format(int(x), ','))
-			    )
-		
-		# Plot values and set axis labels/formatting
-		mplot.map(plt.plot,'Date','Value', linestyle = '-', marker = "o", ms = 4)
-		mplot.set_titles('{col_name}')
-		mplot.set_ylabels(ylabel)
-		mplot.set_xlabels('Date')
-		mplot.set_xticklabels(rotation = 45)
-		mplot.add_legend(frameon = True)
-
-		# Output plot to given directory
-		plot_filename = "{0}_{1}_to_{2}.png"
-		plt.savefig(
-			plot_filename.format(mtype, self.chart_start_dt_str, self.chart_end_dt_str), 
-			width = 15, 
-			height = 18
-		)
-
-
-	# Converts a long dataset to wide format
-	def long_to_wide(self, df, id_vars):
-
-	    # Create a multi-index
-	    df.drop_duplicates(subset = id_vars, inplace = True)
-	    df.set_index(id_vars, inplace = True)
-	    
-	    # Convert to wide format
-	    if len(id_vars) > 2:
-	        dfwide = df.unstack(id_vars[1])
-	        
-	        if len(id_vars) > 3:
-	            dfwide = dfwide.unstack(id_vars[2])
-	    
-	    # Convert index to pandas native datetimeindex to allow easy date slicing
-	    dfwide.reset_index(inplace = True)
-	    dfwide.set_index('Date', inplace = True)
-	    index = pd.to_datetime(dfwide.index)
-	    dfwide.sort_index(inplace = True)
-	    
-	    return dfwide
-
-	
-	# Cleans wide dataset for output to tables
-	def clean_wide_table(self, dfwide, value_vars):
-
-		# First retrieve the stages for which there are data
-		act_stages = dfwide.columns.levels[1].values
-		# Reproduce stage order according to data availability
-		act_st_ord = [stage for stage in self.stage_order if stage in act_stages]
-
-		# Truncate 
-		df_trunc = dfwide.Value.loc[self.table_start_dt:self.table_end_dt,(act_st_ord, value_vars)]
-
-		# Set column order
-		df_trunc = df_trunc.reindex_axis(act_st_ord, axis = 1, level = 'Stage')
-		df_trunc = df_trunc.reindex_axis(value_vars, axis = 1, level = 'Type')
-
-		# Create days since seed variable and insert as the first column
-		if self.add_time_el == 1:
-			days_since_seed = np.array((df_trunc.index - self.seed_dt).days)
-			df_trunc.insert(0, 'Days Since Seed', days_since_seed)
-
-		return df_trunc
-
-
-	# Gets wide dataset, cleans and formats and outputs to csv
-	def summarize_tables(self, ndays_tables, add_time_el):
-
-		self.add_time_el = 0
-		if add_time_el == 1:
-			self.add_time_el = 1
-
-		try:
-			os.chdir(self.tables_outdir)
-		except OSError:
-			print('Please choose a valid directory to output the tables to')
-			sys.exit()
-		# Specify key dates; length of time for table currently set for past two weeks
-		self.table_end_dt   = self.file_dt
-		self.table_start_dt = self.table_end_dt - timedelta(days = ndays_tables)
-		self.seed_dt = dt.strptime('05-10-17','%m-%d-%y')
-
-		# Specify id variables (same for every type since combining Alkalinity and pH)
-		id_vars = ['Date','Stage','Type','obs_id']
-		self.stage_order = \
-		[
-			'Raw Influent',
-			'Grit Tank',
-			'Microscreen',
-			'AFBR',
-			'Duty AFMBR MLSS',
-			'Duty AFMBR Effluent',
-			'Research AFMBR MLSS',
-			'Research AFMBR Effluent'
-		]
-
-		# Get wide data
-		CODwide = self.long_to_wide(self.mdata_all['COD'], id_vars)
-		VFAwide = self.long_to_wide(self.mdata_all['VFA'], id_vars)
-		TSS_VSSwide = self.long_to_wide(self.mdata_all['TSS_VSS'], id_vars)
-		# For Alkalinity and pH, need to add Type variable back in
-		ALK = self.mdata_all['ALKALINITY']
-		ALK['Type'] = 'Alkalinity'
-		PH = self.mdata_all['PH']
-		PH['Type'] = 'pH'
-		# Concatenate the two and reset index
-		ALK_PH = pd.concat([PH,ALK], axis = 0, join = 'outer').reset_index(drop = True)
-		# Get wide Alkalinity/pH dataset
-		ALK_PHwide = self.long_to_wide(ALK_PH, id_vars)
-		
-		# Truncate and set column order
-		CODtrunc = self.clean_wide_table(CODwide, ['Total','Soluble'])
-		VFAtrunc = self.clean_wide_table(VFAwide, ['Acetate','Propionate'])
-		TSS_VSStrunc = self.clean_wide_table(TSS_VSSwide,['TSS','VSS'])
-		ALK_PHtrunc = self.clean_wide_table(ALK_PHwide,['pH','Alkalinity'])
-		
-		# Save
-		CODtrunc.to_csv('COD_table' + self.file_dt_str + '.csv')
-		VFAtrunc.to_csv('VFA_table' + self.file_dt_str + '.csv')
-		TSS_VSStrunc.to_csv('TSS_VSS_table' + self.file_dt_str + '.csv')
-		ALK_PHtrunc.to_csv('ALK_PH_table' + self.file_dt_str + '.csv')
-
-
 	# Inputs lab testing results data and computes water quality parameters
-	def process_data(
-		self,
-		update_data,
-		mplot_list,
-		chart_start_dt,
-		chart_end_dt,
-		get_tables,
-		ndays_tables
-	):
+	def process_data(self):
 		
-		# Convert all plot types given to upper case
-		mplot_list = [mtype.upper() for mtype in mplot_list]
- 
 		# Set output directories according to user input
 		self.get_outdirs()
-
-		# Format variable for data filename string
-		data_filename = "{0}_{1}.csv"
-
-		# Set chart date ranges according to user input
-		self.manage_chart_dates(chart_start_dt, chart_end_dt)
-
-		# Initialize dictionary of monitoring data results
-		self.mdata_all = {}
 
 		# Load data from gsheets
 		all_sheets = self.get_gsheet_data(self.mtype_list)
@@ -563,19 +370,6 @@ class cr2c_monitor_run:
 				# Rename the columns
 				self.mdata.columns = ['Date','Stage','obs_id'] + value_vars
 
-				# Set plotting variables
-				id_vars_chrt = ['Date','Stage','Type']
-				ylabel = 'COD Reading (mg/L)'
-				hue_order_list = ['Total','Soluble','Particulate']
-				col_order_list = [
-					'Raw Influent',
-					'Grit Tank',
-					'Microscreen',
-					'AFBR',
-					'Duty AFMBR MLSS',
-					'Duty AFMBR Effluent'
-				]		
-
 			# ======================================= TSS/VSS ======================================= #
 			if mtype == 'TSS_VSS':
 
@@ -592,38 +386,12 @@ class cr2c_monitor_run:
 				id_vars = ['Date','Stage','obs_id']
 				value_vars = ['TSS','VSS']
 
-				# Set plotting variables
-				id_vars_chrt = ['Date','Stage','Type']
-				ylabel = 'Suspended Solids (mg/L)'
-				hue_order_list = ['TSS','VSS']
-				col_order_list = [
-					'Raw Influent',
-					'Grit Tank',
-					'Microscreen',
-					'AFBR',
-					'Duty AFMBR MLSS',
-					'Duty AFMBR Effluent'
-				]
-
 			# ======================================= pH ======================================= #
 			if mtype == 'PH':
 
 				# Set id and value vars for cleaning
 				id_vars = ['Date','Stage','obs_id']
-				value_vars = 'Reading'
-
-				# Set plotting variables
-				id_vars_chrt = ['Date','Stage']
-				ylabel = 'pH'
-				hue_order_list = 'Value'	
-				col_order_list = [
-					'Raw Influent',
-					'Grit Tank',
-					'Microscreen',
-					'AFBR',
-					'Duty AFMBR MLSS',
-					'Duty AFMBR Effluent'
-				]			
+				value_vars = 'Reading'		
 			
 			# ======================================= ALKALINITY ======================================= #
 			if mtype == 'ALKALINITY':
@@ -637,20 +405,9 @@ class cr2c_monitor_run:
 				id_vars = ['Date','Stage','obs_id']			
 				value_vars = 'ALKALINITY'
 
-				# Set plotting variables
-				id_vars_chrt = ['Date','Stage']
-				ylabel = 'Alkalinity (mg/L as ' + r'$CaCO_3$)'
-				hue_order_list = 'Value'
-				col_order_list = [
-					'Raw Influent',
-					'Grit Tank',
-					'Microscreen',
-					'AFBR',
-					'Duty AFMBR MLSS',
-					'Duty AFMBR Effluent'
-				]
-
 			if mtype == 'VFA':
+
+				# Compute VFA concentrations
 				self.mdata['Acetate'] = self.mdata['Acetate (mgCOD/L)']*self.mdata['Dilution Factor']
 				self.mdata['Propionate'] = self.mdata['Propionate (mgCOD/L)']*self.mdata['Dilution Factor']
 
@@ -658,64 +415,13 @@ class cr2c_monitor_run:
 				id_vars = ['Date','Stage','obs_id']
 				value_vars = ['Acetate','Propionate']
 
-				# Set plotting variables
-				id_vars_chrt = ['Date','Stage','Type']
-				ylabel = 'VFAs as mgCOD/L'
-				hue_order_list = ['Acetate','Propionate']
-				col_order_list = [
-					'AFBR',
-					'Duty AFMBR MLSS',
-					'Duty AFMBR Effluent'
-				]
-
 			# Convert to long format
 			mdata_long = self.wide_to_long(mtype, id_vars, value_vars)
 
-			# Output csv of long data if desired
-			if update_data == 1:
-				# conn = sqlite3.connect('cr2c_lab_data.db')
-				# curs = conn.cursor()
-
-				# curs.executemany(
-				# 	""" 
-				# 		INSERT INTO COD
-				# 	"""
-				# )
-				os.chdir(self.data_outdir)
-				filename = data_filename.format(mtype, self.file_dt_str)
-				mdata_long.to_csv(filename, index = False, encoding = 'utf-8')
-			
-			# Plot
-			if mtype in mplot_list or \
-				any(mt_plot.find('TSS') >= 0 or mt_plot.find('VSS') >= 0 for mt_plot in mplot_list)\
-			:
-
-				# Filter to the dates desired for the plots
-				mdata_chart = mdata_long.loc[
-					(mdata_long.Date >= self.chart_start_dt) &
-					(mdata_long.Date <= self.chart_end_dt)
-				]
-
-				# Average all observations (by type and stage) taken on a day
-				mdata_chart = mdata_chart.groupby(id_vars_chrt).mean()
-
-				# Remove index!
-				mdata_chart.reset_index(inplace = True)
-
-				self.plot_mdata(
-					mtype,
-					mdata_chart, 
-					ylabel,
-					hue_order_list,
-					col_order_list
-				)
-
-			# Add entry to results dictionary
-			self.mdata_all[mtype] = mdata_long
-
-		# Get wide tables using all of the monitoring data
-		if get_tables == 1:
-			self.summarize_tables(ndays_tables, 1)
+			# Load data to SQL
+			os.chdir(self.data_outdir)
+			conn = sqlite3.connect('cr2c_lab_data.db')
+			mdata_long.to_sql(mtype + '_data', conn, if_exists = 'replace', index = False)
 
 # Execute script
 if __name__ == "__main__":
@@ -724,11 +430,4 @@ if __name__ == "__main__":
 	cr2c_mr = cr2c_monitor_run()
 
 	# Run data processing 
-	cr2c_mr.process_data(
-		1, # Switch for outputting csv files of processed monitoring data
-		['COD','TSS_VSS','pH','Alkalinity','VFA'], # List of monitoring data types to produce charts for
-		'07-01-17', # Start of chart date range (default is June 1st 2016)
-		None, # End of date range (default is today's date)
-		1, # Switch to produce wide tables
-		90 # Number of days to output to wide tables
-	)
+	cr2c_mr.process_data()
