@@ -14,6 +14,14 @@ def adj_Hcp(Hcp_gas, deriv_gas, temp):
 	return Hcp_gas*math.exp(deriv_gas*(1/(273 + temp) - (1/298)))
 
 def get_biogas_prod(infBOD_ult, infSO4, temp, percCH4, percCO2, flowrate, precision):
+	
+	# =======> UNITS OF INPUT VARIABLES <=======
+	# infBOD_ult/infSO4 in mg/L, 
+	# temp in C 
+	# percents as decimals, 
+	# fowrate as m^3/day
+	# precision as a decimal
+
 
 	# Assumed Henry's constants (from Sander 2015)
 	# Units of mM/atm @ 25 degrees C
@@ -84,11 +92,13 @@ def get_biogas_prod(infBOD_ult, infSO4, temp, percCH4, percCO2, flowrate, precis
 			gas_eq_mol     = CH4_gas_eq_mol + CO2_gas_eq_mol + H2S_gas_eq_mol + N2_gas_eq_mol
 			# Compare partitioned gas calculation to original amount assumed to have partitioned into the gas phase
 			balance_perc = (gas_eq_mol - gas_part_mol)/gas_part_mol
+			# Update CH4/Biogas calculations
+			percCH4_biogas = CH4_gas_eq_mol/gas_eq_mol 
+			CH4_gas_vol    = CH4_gas_eq_mol*Vol_adj*flowrate*cubicft_p_L
+			biogas_gas_vol = CH4_gas_vol/percCH4_biogas
 		except ZeroDivisionError:
 			CH4_gas_vol, biogas_gas_vol = 0,0
 			break
-	CH4_gas_vol    = CH4_gas_eq_mol*Vol_adj*flowrate*cubicft_p_L
-	biogas_gas_vol = CH4_gas_vol/percCH4
 
 	return [CH4_gas_vol, biogas_gas_vol]
 
@@ -156,8 +166,7 @@ WWdata = \
 		'Temperature 2015-2017'
 	)
 
-flowrate_mgd = 21 # In MGD, from EPA 2012 Clean Water Needs Survey
-flowrate_m3d = flowrate_mgd*3785.4 # Convert to m^3
+flowrate_m3d = 87.204
 BGproddata = []
 # Calculate biogas production for each day in the dataset
 for WWrow in WWdata.values:
@@ -209,16 +218,21 @@ WWsumst.to_csv(input_dir, index = False, encoding = 'utf-8')
 
 
 # Produce some plots
-fig, ax = plt.subplots(1, 1, figsize=(2, 2))
+os.chdir('C:/Users/jbolorinos/Google Drive/Codiga Center/Charts and Data')
+fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 plt.hist(WWdata[r'$CH_4$'], bins = 100, fill = 'orange')
 plt.xlabel('Gas production (' + r'$ft^3$' + ' per day)')
 plt.ylabel('Frequency')
 ax.xaxis.set_major_formatter(
 	tkr.FuncFormatter(lambda x, p: format(int(x), ','))
 )
-# plt.show()
+plt.savefig(
+	'Methane Production Histogram.png',
+	width = 20, 
+	height = 10
+)
 
-fig, ax = plt.subplots(1, 1, figsize=(2, 2))
+fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 plt.plot(
 	WWdata['Date'].values, WWdata[r'$CH_4$'], c = 'orange',
 )
@@ -231,4 +245,8 @@ ax.yaxis.set_major_formatter(
 )
 plt.xticks(rotation = 45)
 plt.legend()
-# plt.show()
+plt.savefig(
+	'Methane and Biogas Production Timeseries.png',
+	width = 20, 
+	height = 10
+)
