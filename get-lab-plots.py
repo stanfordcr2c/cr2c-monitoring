@@ -1,3 +1,5 @@
+# Creates plots customizable by date range and type from cr2c's lab testing data
+
 from __future__ import print_function
 import matplotlib
 matplotlib.use("TkAgg",force=True) 
@@ -27,12 +29,12 @@ class lab_plots:
 
 
 	# Manages output directories
-	def get_outdirs(self):
+	def get_dirs(self):
 		
 		# Find the CR2C.Operations folder on Box Sync on the given machine
 		targetdir = os.path.join('Box Sync','CR2C.Operations')
 		self.mondir = None
-		print("Searching for Codiga Center's Operations folder on Box Sync")
+		print("Searching for Codiga Center's Operations folder on Box Sync...")
 		for dirpath, dirname, filename in os.walk(expanduser('~')):
 			if dirpath.find(targetdir) > 0:
 				self.mondir = os.path.join(dirpath,'MonitoringProcedures')
@@ -70,7 +72,7 @@ class lab_plots:
 	def get_lab_plots(self):
 
 		# Get data input and chart output directories
-		self.get_outdirs()
+		self.get_dirs()
 		try:
 			os.chdir(self.charts_outdir)
 		except OSError:
@@ -105,7 +107,7 @@ class lab_plots:
 			)
 
 			# Set format of date variable
-			mdata_long['Date'] = pd.to_datetime(mdata_long['Date'])
+			mdata_long['Date_Time'] = pd.to_datetime(mdata_long['Date_Time'])
 
 			# Set 'hue' variable for seaborn
 			hue = 'Type'
@@ -115,7 +117,7 @@ class lab_plots:
 			if mtype == 'COD':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date','Stage','Type']
+				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'COD Reading (mg/L)'
 				hue_order_list = ['Total','Soluble','Particulate']
 				col_order_list = [
@@ -130,7 +132,7 @@ class lab_plots:
 			if mtype == 'TSS_VSS':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date','Stage','Type']
+				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'Suspended Solids (mg/L)'
 				hue_order_list = ['TSS','VSS']
 				col_order_list = [
@@ -145,7 +147,7 @@ class lab_plots:
 			if mtype == 'PH':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date','Stage']
+				id_vars_chrt = ['Date_Time','Stage']
 				ylabel = 'pH'
 				hue_order_list = 'Value'	
 				col_order_list = [
@@ -160,7 +162,7 @@ class lab_plots:
 			if mtype == 'ALKALINITY':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date','Stage']
+				id_vars_chrt = ['Date_Time','Stage']
 				ylabel = 'Alkalinity (mg/L as ' + r'$CaCO_3$)'
 				hue_order_list = 'Value'
 				col_order_list = [
@@ -175,7 +177,7 @@ class lab_plots:
 			if mtype == 'VFA':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date','Stage','Type']
+				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'VFAs as mgCOD/L'
 				hue_order_list = ['Acetate','Propionate']
 				col_order_list = [
@@ -186,8 +188,8 @@ class lab_plots:
 
 			# Filter to the dates desired for the plots
 			mdata_chart = mdata_long.loc[
-				(mdata_long.Date >= self.start_dt) &
-				(mdata_long.Date <= self.end_dt)
+				(mdata_long.Date_Time >= self.start_dt) &
+				(mdata_long.Date_Time <= self.end_dt)
 			]
 
 			# Average all observations (by type and stage) taken on a day
@@ -224,10 +226,10 @@ class lab_plots:
 				    )
 
 			# Plot values and set axis labels/formatting
-			mplot.map(plt.plot,'Date','Value', linestyle = '-', marker = "o", ms = 4)
+			mplot.map(plt.plot,'Date_Time','Value', linestyle = '-', marker = "o", ms = 4)
 			mplot.set_titles('{col_name}')
 			mplot.set_ylabels(ylabel)
-			mplot.set_xlabels('Date')
+			mplot.set_xlabels('Date_Time')
 			mplot.set_xticklabels(rotation = 45)
 			mplot.add_legend(frameon = True)
 

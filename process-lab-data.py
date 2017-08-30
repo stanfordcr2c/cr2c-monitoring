@@ -1,19 +1,11 @@
 # Script loads data from lab tests, computes water quality parameters,
-# and if desired, saves csv files with most up-to-date testing data,
-# outputs plots, and wide tables for monitoring reports
+# and loads the data to an SQL database
 
 from __future__ import print_function
-import matplotlib
-matplotlib.use("TkAgg",force=True) 
 import numpy as np
 import pandas as pd
 from datetime import datetime as dt
 from datetime import timedelta
-import seaborn as sns
-from tkinter.filedialog import askdirectory
-import matplotlib.pyplot as plt
-import matplotlib.ticker as tkr
-import matplotlib.dates as dates
 import warnings
 import os
 from os.path import expanduser
@@ -25,7 +17,6 @@ from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
 
-
 try:
     import argparse
     flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
@@ -36,7 +27,7 @@ class cr2c_monitor_run:
 	
 	def __init__(self):
 		
-		self.mtype_list = ['COD','TSS_VSS','PH','ALKALINITY','VFA']
+		self.mtype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA']
 		self.min_feas_dt_str = '6-1-16'
 		self.min_feas_dt = dt.strptime(self.min_feas_dt_str, '%m-%d-%y')
 		self.file_dt = dt.now()
@@ -104,7 +95,7 @@ class cr2c_monitor_run:
 		# Find the CR2C.Operations folder on Box Sync on the given machine
 		targetdir = os.path.join('Box Sync','CR2C.Operations')
 		self.mondir = None
-		print("Searching for Codiga Center's Operations folder on Box Sync")
+		print("Searching for Codiga Center's Operations folder on Box Sync...")
 		for dirpath, dirname, filename in os.walk(expanduser('~')):
 			if dirpath.find(targetdir) > 0:
 				self.mondir = os.path.join(dirpath,'MonitoringProcedures')
@@ -320,14 +311,14 @@ class cr2c_monitor_run:
 		df_long = pd.melt(self.mdata, id_vars = id_vars, value_vars = value_vars)
 
 		# Reorder columns
-		df_long = df_long[['Date','Stage','variable','obs_id','value']]
+		df_long = df_long[['Date_Time','Stage','variable','obs_id','value']]
 		
 		# Rename columns 
-		varnames = ['Date','Stage','Type','obs_id','Value']
+		varnames = ['Date_Time','Stage','Type','obs_id','Value']
 		if mtype in ['PH','ALKALINITY']:
 			# Get rid of additional column in PH and Alkalinity data
-			df_long = df_long[['Date','Stage','obs_id','value']]
-			varnames = ['Date','Stage','obs_id','Value']
+			df_long = df_long[['Date_Time','Stage','obs_id','value']]
+			varnames = ['Date_Time','Stage','obs_id','Value']
 		df_long.columns = varnames
 
 		return df_long
@@ -356,6 +347,20 @@ class cr2c_monitor_run:
 			else:
 				self.clean_dataset(mtype,['Date','Stage'])
 
+
+			# ======================================= pH ======================================= #
+			if mtype == 'PH':
+
+				# Set id and value vars for cleaning
+				id_vars = ['Date_Time','Stage','obs_id']
+				value_vars = 'Reading'	
+
+				# Get time of sample collection from PH dataset and add to date variable to get single Date + Time variable
+				self.mdata['Date_str'] = self.mdata['Date'].dt.strftime('%m-%d-%y')
+				self.mdata['Date-Time_str'] = self.mdata.Date_str.str.cat(self.mdata['Time'], sep = ' ')
+				self.mdata['Date_Time'] = pd.to_datetime(self.mdata['Date-Time_str'])
+				mdata_dt = self.mdata[['Date','Date_Time']]
+
 			# ======================================= COD ======================================= #
 			if mtype == 'COD':
 
@@ -374,7 +379,7 @@ class cr2c_monitor_run:
 				mdata_wide['Particulate'] = mdata_wide['Total'] - mdata_wide['Soluble']
 				
 				# Set id and value vars for recasting
-				id_vars = ['Date','Stage','obs_id']
+				id_vars = ['Date_Time','Stage','obs_id']
 				value_vars = ['Soluble','Total','Particulate']
 
 				# Subset to value variables and convert index to data
@@ -396,16 +401,9 @@ class cr2c_monitor_run:
 					self.mdata['Volume (ml)']*1E6
 
 				# Set id and value vars for cleaning
-				id_vars = ['Date','Stage','obs_id']
+				id_vars = ['Date_Time','Stage','obs_id']
 				value_vars = ['TSS','VSS']
 
-			# ======================================= pH ======================================= #
-			if mtype == 'PH':
-
-				# Set id and value vars for cleaning
-				id_vars = ['Date','Stage','obs_id']
-				value_vars = 'Reading'		
-			
 			# ======================================= ALKALINITY ======================================= #
 			if mtype == 'ALKALINITY':
 				
@@ -415,7 +413,7 @@ class cr2c_monitor_run:
 				self.mdata['Sample Volume (ml)']*self.mdata['Dilution Factor']*50*1000
 
 				# Set id and value vars for cleaning	
-				id_vars = ['Date','Stage','obs_id']			
+				id_vars = ['Date_Time','Stage','obs_id']			
 				value_vars = 'ALKALINITY'
 
 			if mtype == 'VFA':
@@ -425,8 +423,12 @@ class cr2c_monitor_run:
 				self.mdata['Propionate'] = self.mdata['Propionate (mgCOD/L)']*self.mdata['Dilution Factor']
 
 				# Set id and value vars for recasting
-				id_vars = ['Date','Stage','obs_id']
+				id_vars = ['Date_Time','Stage','obs_id']
 				value_vars = ['Acetate','Propionate']
+
+			# Add Sample Date-Time variable from PH
+			if mtype != 'PH':
+				self.mdata = self.mdata.merge(mdata_dt, on = 'Date')
 
 			# Convert to long format
 			mdata_long = self.wide_to_long(mtype, id_vars, value_vars)

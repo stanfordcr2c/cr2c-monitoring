@@ -12,32 +12,32 @@ curs = conn.cursor()
 
 mk_COD_table_sql     = """
 	CREATE TABLE COD_data(
-		Date TEXT, Stage TEXT, Type TEXT, obs_id TEXT, Value REAL,
-		unique(Date, Stage, Type, obs_id, Value)
+		Date_Time TEXT, Stage TEXT, Type TEXT, obs_id TEXT, Value REAL,
+		unique(Date_Time, Stage, Type, obs_id, Value)
 	)
 """
 mk_TSS_VSS_table_sql = """
 	CREATE TABLE TSS_VSS_data(
-		id INTEGER PRIMARY KEY, Date TEXT, Stage TEXT, Type TEXT, obs_id TEXT, Value REAL,
-		unique(Date, Stage, Type, obs_id, Value)
+		id INTEGER PRIMARY KEY, Date_Time TEXT, Stage TEXT, Type TEXT, obs_id TEXT, Value REAL,
+		unique(Date_Time, Stage, Type, obs_id, Value)
 	)
 """
 mk_ALK_table_sql     = """
 	CREATE TABLE ALK_data(
-		id INTEGER PRIMARY KEY, Date TEXT, Stage TEXT, obs_id TEXT, Value REAL,
-		unique(Date, Stage, obs_id, Value)
+		id INTEGER PRIMARY KEY, Date_Time TEXT, Stage TEXT, obs_id TEXT, Value REAL,
+		unique(Date_Time, Stage, obs_id, Value)
 	)
 """
 mk_PH_table_sql      = """
 	CREATE TABLE PH_data(
-		id INTEGER PRIMARY KEY, Date TEXT, Stage TEXT, obs_id TEXT, Value REAL,
-		unique(Date, Stage, obs_id, Value)
+		id INTEGER PRIMARY KEY, Date_Time TEXT, Stage TEXT, obs_id TEXT, Value REAL,
+		unique(Date_Time, Stage, obs_id, Value)
 	)
 """
 mk_VFA_table_sql     = """
 	CREATE TABLE VFA_data(
-		id INTEGER PRIMARY KEY, Date TEXT, Stage TEXT, Type TEXT, obs_id TEXT, Value REAL,
-		unique(Date, Stage, Type, obs_id, Value)
+		id INTEGER PRIMARY KEY, Date_Time TEXT, Stage TEXT, Type TEXT, obs_id TEXT, Value REAL,
+		unique(Date_Time, Stage, Type, obs_id, Value)
 	)
 """
 

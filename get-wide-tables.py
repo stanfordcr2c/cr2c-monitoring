@@ -21,7 +21,7 @@ class wide_tables:
 		# Find the CR2C.Operations folder on Box Sync on the given machine
 		targetdir = os.path.join('Box Sync','CR2C.Operations')
 		self.mondir = None
-		print("Searching for Codiga Center's Operations folder on Box Sync")
+		print("Searching for Codiga Center's Operations folder on Box Sync...")
 		for dirpath, dirname, filename in os.walk(expanduser('~')):
 			if dirpath.find(targetdir) > 0:
 				self.mondir = os.path.join(dirpath,'MonitoringProcedures')
@@ -55,7 +55,7 @@ class wide_tables:
 	    
 	    # Convert index to pandas native datetimeindex to allow easy date slicing
 	    dfwide.reset_index(inplace = True)
-	    dfwide.set_index('Date', inplace = True)
+	    dfwide.set_index('Sample Date & Time', inplace = True)
 	    index = pd.to_datetime(dfwide.index)
 	    dfwide.sort_index(inplace = True)
 	    
@@ -121,12 +121,12 @@ class wide_tables:
 				coerce_float = True
 			)
 			# Set format of date variable
-			mdata_long['Date'] = pd.to_datetime(mdata_long['Date'])
+			mdata_long['Sample Date & Time'] = pd.to_datetime(mdata_long['Date_Time'])
 			# Load resulting dataframe to dictionary
 			mdata_all[mtype] = mdata_long
 
 		# Specify id variables (same for every type since combining Alkalinity and pH)
-		id_vars = ['Date','Stage','Type','obs_id']
+		id_vars = ['Sample Date & Time','Stage','Type','obs_id']
 		self.stage_order = \
 		[
 			'Raw Influent',
