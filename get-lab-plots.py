@@ -14,6 +14,7 @@ import matplotlib.ticker as tkr
 import matplotlib.dates as dates
 import warnings
 import os
+import math
 from os.path import expanduser
 import sys
 import sqlite3
@@ -87,6 +88,18 @@ class lab_plots:
 		# Capitalize all input chart data types
 		self.mplot_list = [element.upper() for element in self.mplot_list]
 
+		# Order of treatment stages in plots
+		stage_order = [
+			'Raw Influent',
+			'Grit Tank',
+			'Microscreen',
+			'AFBR',
+			'Duty AFMBR MLSS',
+			'Duty AFMBR Effluent',
+			'Research AFMBR MLSS',
+			'Research AFMBR Effluent'
+		]	
+
 		# Manage dates given by user
 		self.manage_chart_dates()
 
@@ -120,14 +133,6 @@ class lab_plots:
 				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'COD Reading (mg/L)'
 				hue_order_list = ['Total','Soluble','Particulate']
-				col_order_list = [
-					'Raw Influent',
-					'Grit Tank',
-					'Microscreen',
-					'AFBR',
-					'Duty AFMBR MLSS',
-					'Duty AFMBR Effluent'
-				]	
 
 			if mtype == 'TSS_VSS':
 
@@ -135,14 +140,6 @@ class lab_plots:
 				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'Suspended Solids (mg/L)'
 				hue_order_list = ['TSS','VSS']
-				col_order_list = [
-					'Raw Influent',
-					'Grit Tank',
-					'Microscreen',
-					'AFBR',
-					'Duty AFMBR MLSS',
-					'Duty AFMBR Effluent'
-				]
 
 			if mtype == 'PH':
 
@@ -150,14 +147,6 @@ class lab_plots:
 				id_vars_chrt = ['Date_Time','Stage']
 				ylabel = 'pH'
 				hue_order_list = 'Value'	
-				col_order_list = [
-					'Raw Influent',
-					'Grit Tank',
-					'Microscreen',
-					'AFBR',
-					'Duty AFMBR MLSS',
-					'Duty AFMBR Effluent'
-				]		
 
 			if mtype == 'ALKALINITY':
 
@@ -165,14 +154,6 @@ class lab_plots:
 				id_vars_chrt = ['Date_Time','Stage']
 				ylabel = 'Alkalinity (mg/L as ' + r'$CaCO_3$)'
 				hue_order_list = 'Value'
-				col_order_list = [
-					'Raw Influent',
-					'Grit Tank',
-					'Microscreen',
-					'AFBR',
-					'Duty AFMBR MLSS',
-					'Duty AFMBR Effluent'
-				]
 
 			if mtype == 'VFA':
 
@@ -180,17 +161,19 @@ class lab_plots:
 				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'VFAs as mgCOD/L'
 				hue_order_list = ['Acetate','Propionate']
-				col_order_list = [
-					'AFBR',
-					'Duty AFMBR MLSS',
-					'Duty AFMBR Effluent'
-				]
 
 			# Filter to the dates desired for the plots
 			mdata_chart = mdata_long.loc[
 				(mdata_long.Date_Time >= self.start_dt) &
 				(mdata_long.Date_Time <= self.end_dt)
 			]
+
+			# Get the stages for which there are data
+			act_stages = mdata_chart.Stage.values
+			# Reproduce stage order according to data availability
+			col_order_list = [stage for stage in stage_order if stage in act_stages]
+			plot_wdt = 5*min(3,len(col_order_list))
+			plot_hgt = 6*math.ceil(len(col_order_list)/3)
 
 			# Average all observations (by type and stage) taken on a day
 			mdata_chart = mdata_chart.groupby(id_vars_chrt).mean()
@@ -229,7 +212,7 @@ class lab_plots:
 			mplot.map(plt.plot,'Date_Time','Value', linestyle = '-', marker = "o", ms = 4)
 			mplot.set_titles('{col_name}')
 			mplot.set_ylabels(ylabel)
-			mplot.set_xlabels('Date_Time')
+			mplot.set_xlabels('')
 			mplot.set_xticklabels(rotation = 45)
 			mplot.add_legend(frameon = True)
 
