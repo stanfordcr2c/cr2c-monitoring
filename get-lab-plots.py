@@ -172,8 +172,9 @@ class lab_plots:
 			act_stages = mdata_chart.Stage.values
 			# Reproduce stage order according to data availability
 			col_order_list = [stage for stage in stage_order if stage in act_stages]
-			plot_wdt = 5*min(3,len(col_order_list))
-			plot_hgt = 6*math.ceil(len(col_order_list)/3)
+			plot_wid = 5*min(3,len(col_order_list))
+			wrap_wid = min(3,len(col_order_list))
+			plot_len = 6*math.ceil(len(col_order_list)/3)
 
 			# Average all observations (by type and stage) taken on a day
 			mdata_chart = mdata_chart.groupby(id_vars_chrt).mean()
@@ -186,7 +187,7 @@ class lab_plots:
 				mdata_chart,
 				col = 'Stage',
 				col_order = col_order_list,
-				col_wrap = 3,
+				col_wrap = wrap_wid,
 				hue = hue,
 				hue_order = hue_order_list,
 				legend_out = False
@@ -221,8 +222,8 @@ class lab_plots:
 			os.chdir(self.charts_outdir)
 			plt.savefig(
 				plot_filename.format(mtype, self.start_dt_str, self.end_dt_str), 
-				width = 15, 
-				height = 18
+				width = plot_wid, 
+				height = plot_len
 			)
 
 if __name__ == '__main__':
@@ -230,7 +231,7 @@ if __name__ == '__main__':
 	# Instantiate class
 	lplots = lab_plots(
 		# List of monitoring data types to produce charts for (correspond to tabs on gsheets workbook)
-		['COD','TSS','PH','ALKALINITY','VFA'], 
+		['Ph','VFA'], 
 		# Start of chart date range (default is June 1st 2016)
 		'07-01-17', 
 		# End of date range (default is today's date)
