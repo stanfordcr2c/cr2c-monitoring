@@ -1,5 +1,7 @@
 ''' This script calculates totals and averages for any given HMI data point(s), 
-	time period, and date range. If selected, it outputs a csv file with average/total 
+	time period, and date range for which a raw eDNA query has been run (and a csv file
+	for that query obtained)
+	If selected, it outputs a csv file with average/total 
 	data for the data points and time periods chosen
 '''
 import numpy as np
@@ -20,25 +22,34 @@ class hmi_data_agg:
 	def __init__(
 		self, 
 		qtype, 
+		stype,
 		start_dt, 
 		end_dt, 
 		tperiod, 
 		elids,
-		agg_types,
-		lo_limits,
-		hi_limits
+		agg_types
 	):
 
 		self.qtype = qtype.upper()
+		self.stype = stype.upper()
 		self.start_dt = dt.strptime(start_dt,'%m-%d-%y')
 		self.end_dt = dt.strptime(end_dt,'%m-%d-%y')
 		self.tperiod = tperiod
 		self.elids = elids
 		self.agg_types = [agg_type.upper() for agg_type in agg_types]
-		self.lo_limits = lo_limits
-		self.hi_limits = hi_limits
 
-	def prep_data(self, elid, lo_limit, hi_limit):
+	def prep_data(self, elid):
+
+		# Set high and low limits for sensors based on type (water, gas, ph, conductivity, temp)
+		if self.stype == 'WATER':
+			hi_limit = 30
+			lo_limit = 0.5
+		elif self.stype == 'GAS':
+			hi_limit = 10
+			lo_limit = -10
+		elif self.stype == 'PH':
+			hi_limit = 10
+			lo_limit = 4
 
 		# Load data
 		try:
@@ -54,8 +65,8 @@ class hmi_data_agg:
 		self.hmi_data[elid + '_value'] = \
 			self.hmi_data[varname.format(elid,'Value', self.qtype)]
 		# Set low/negative values to 0 and remove unreasonably high values
-		self.hmi_data.loc[:, elid + '_value'][self.hmi_data[elid + '_value'] < lo_limit] = 0
-		self.hmi_data.loc[:, elid + '_value'][self.hmi_data[elid + '_value'] > hi_limit] = np.NaN			
+		self.hmi_data.loc[self.hmi_data[elid + '_value'] < lo_limit, elid + '_value'] = 0
+		self.hmi_data.loc[self.hmi_data[elid + '_value'] > hi_limit, elid + '_value'] = np.NaN			
 		# Rename and format corresponding timestamp variable 
 		self.hmi_data[elid + '_ts'] = \
 			self.hmi_data[varname.format(elid, 'Time', self.qtype)]
@@ -65,7 +76,6 @@ class hmi_data_agg:
 		# Filter dataset to clean values and variable selected
 		self.hmi_data = self.hmi_data.loc[:, [elid + '_value', elid + '_ts']]
 		self.hmi_data.dropna(axis = 0, how = 'any', inplace = True)
-
 
 	def get_tot_var(self, elid, agg_type):
 
@@ -126,15 +136,14 @@ class hmi_data_agg:
 
 		for elid in self.elids:
 			elid_no = self.elids.index(elid)
-			lo_limit = self.lo_limits[elid_no]
-			hi_limit = self.hi_limits[elid_no]
 			agg_type = self.agg_types[elid_no]
 			# Get prepped data
-			self.prep_data(elid, lo_limit, hi_limit)
+			self.prep_data(elid)
 			# Get totalized values'
 			report_dat = self.get_tot_var(elid, agg_type)
 			if elid_no == 0:
 				res_df = pd.DataFrame([row[0] for row in report_dat], columns = ['Time'])
+			agg_type = self.agg_types[elid_no]
 			# Skip time variable for all other elements we are getting data for
 			res_df[elid + '_' + agg_type] = [row[1] for row in report_dat]
 
@@ -145,12 +154,11 @@ class hmi_data_agg:
 if __name__ == '__main__':
 	hmi_dat = hmi_data_agg(
 		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-		'5-2-17', # Start of date range you want summary data for
-		'8-7-17', # End if date range you want summary data for
+		'water', # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature)
+		'5-11-17', # Start of date range you want summary data for
+		'9-8-17', # End if date range you want summary data for
 		1, # Number of hours you want to sum/average over
 		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
-		[0.5, 0.5], # Lower limit of sensor values (will set anything below this to 0), in same order as sensor ids
-		[30, 30] # Upper limit of sensor values (will set anything above this to NaN and remove), in same order as sensor ids
 	)
 	hmi_dat.run_report()
