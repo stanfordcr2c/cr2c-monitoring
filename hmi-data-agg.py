@@ -166,6 +166,7 @@ class hmi_data_agg:
 		end_dt = None,
 		sum_period = 'DAY', 
 		plt_type = None, 
+		plt_colors = None,
 		ylabel = None,
 		get_nhours = None
 	):
@@ -185,7 +186,7 @@ class hmi_data_agg:
 
 		# Clean case of input arguments
 		sum_period = sum_period.upper()
-		plt_type = plt_type.upper()
+		plt_type = plt_type.lower()
 		if type(output_types) == list:
 			output_types = [output_type.upper() for output_type in output_types]
 		else:
@@ -229,7 +230,7 @@ class hmi_data_agg:
 			self.res_df[xlabel] = np.floor((self.res_df['Time'] - self.start_dt)/np.timedelta64(7,'D'))
 		
 		if sum_period == 'MONTH':
-			xlabel = 'Month (since {0}, as 30 days)'.format(start_dt_str)
+			xlabel = 'Months (since {0}, as 30 days)'.format(start_dt_str)
 			self.res_df[xlabel] = np.floor((self.res_df['Time'] - self.start_dt)/np.timedelta64(30,'D'))
 
 		if get_nhours == 1:
@@ -241,23 +242,34 @@ class hmi_data_agg:
 
 		# Plot!
 		if 'PLOT' in output_types:
+
+			# Set the maximum number of tick labels
+			nobs  = len(agg_sumst.index.values)
+			nlims = nobs
+			if sum_period == 'DAY':
+				nlims = 12
+			# Get the indices of the x-axis values according to these tick labels
+			lim_len  = int(np.floor(nobs/nlims))
+			tic_idxs = [lim*lim_len for lim in range(nlims)]
+			tic_vals = [agg_sumst.index.values[tic_idx] for tic_idx in tic_idxs]
+			
+			if sum_period != 'DAY':
+				tic_vals = ['{0} - {1}'.format(int(tic_val), int(tic_val + 1)) for tic_val in tic_vals]
+
+
 			if plt_type == 'BAR':
-				agg_sumst[elids].plot.bar(stacked = False, width = 0.8)
+				ax = agg_sumst[elids].plot.bar(stacked = False, width = 0.8, color = plt_colors)
+				plt.xticks(tic_idxs,tic_vals)
 			else:
-				agg_sumst[elids].plot.bar(stacked = False, width = 0.8)
+				ax = agg_sumst[elids].plot(color = plt_colors)
 
 			plt.ylabel(ylabel)
 			plt.legend()
 
-			# Set the maximum number of tick labels
-			nobs  = len(agg_sumst.index.values)
-			nlims = min(nobs - 1,10)
-
-			# Get the indices of the x-axis values according to these 15 tick labels
-			lim_len  = int(np.floor(nobs/nlims))
-			tic_idxs = [lim*lim_len for lim in range(nlims + 1)]
-			tic_vals = [agg_sumst.index.values[tic_idx] for tic_idx in tic_idxs]
-			plt.xticks(tic_idxs,tic_vals)
+			ax.yaxis.set_major_formatter(
+				tkr.FuncFormatter(lambda y, p: format(int(y), ','))
+			)
+			
 			plt.xticks(rotation = 45)
 			plt.tight_layout()
 
@@ -285,7 +297,7 @@ if __name__ == '__main__':
 		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
 		'gas', # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature)
 		'5-11-17', # Start of date range you want summary data for
-		'5-30-17', # End if date range you want summary data for
+		'9-8-17', # End if date range you want summary data for
 		1, # Number of hours you want to sum/average over
 		['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
@@ -293,7 +305,8 @@ if __name__ == '__main__':
 	# hmi_dat.run_report()
 	hmi_dat.get_agg_sumst(
 		output_types = ['PLOT','TABLE'],
-		sum_period = 'Week',
-		plt_type = 'bar',
+		sum_period = 'day',
+		plt_type = 'scatter',
+		plt_colors = ['#90775a','#eeae10'],
 		ylabel = 'Feeding Volume (Gal)'
 	)
