@@ -4,6 +4,13 @@
 	If selected, it outputs a csv file with average/total 
 	data for the data points and time periods chosen
 '''
+from __future__ import print_function
+import matplotlib
+matplotlib.use("TkAgg",force=True) 
+import matplotlib.pyplot as plt
+import matplotlib.ticker as tkr
+import matplotlib.dates as dates
+import pylab as pl
 import numpy as np
 import scipy as sp
 from scipy import interpolate as ip
@@ -15,7 +22,7 @@ from pandas import read_excel
 import os
 import sys
 from tkinter.filedialog import askopenfilename
-from tkinter.filedialog import asksaveasfilename
+from tkinter.filedialog import askdirectory
 
 class hmi_data_agg:
 
@@ -43,10 +50,10 @@ class hmi_data_agg:
 		# Set high and low limits for sensors based on type (water, gas, ph, conductivity, temp)
 		if self.stype == 'WATER':
 			hi_limit = 30
-			lo_limit = 0.5
+			lo_limit = 0.2
 		elif self.stype == 'GAS':
 			hi_limit = 10
-			lo_limit = -10
+			lo_limit = 0.005
 		elif self.stype == 'PH':
 			hi_limit = 10
 			lo_limit = 4
@@ -142,23 +149,151 @@ class hmi_data_agg:
 			# Get totalized values'
 			report_dat = self.get_tot_var(elid, agg_type)
 			if elid_no == 0:
-				res_df = pd.DataFrame([row[0] for row in report_dat], columns = ['Time'])
+				self.res_df = pd.DataFrame([row[0] for row in report_dat], columns = ['Time'])
 			agg_type = self.agg_types[elid_no]
 			# Skip time variable for all other elements we are getting data for
-			res_df[elid + '_' + agg_type] = [row[1] for row in report_dat]
+			self.res_df[elid + '_' + agg_type] = [row[1] for row in report_dat]
 
-		# Output to directory given
+ 		# Output to directory given
 		op_path = asksaveasfilename(title = 'Save Output File as:')
 		res_df.to_csv(op_path, index = False, encoding = 'utf-8')
+
+
+	def get_agg_sumst(
+		self, 
+		output_types,
+		start_dt = None,
+		end_dt = None,
+		sum_period = 'DAY', 
+		plt_type = None, 
+		ylabel = None,
+		get_nhours = None
+	):
+		
+
+		if start_dt == None:
+			start_dt = self.start_dt
+		else:
+			start_dt = dt.strptime(start_dt,'%m-%d-%y')
+		if end_dt == None:
+			end_dt = self.end_dt
+		else:
+			end_dt = dt.strptime(end_dt,'%m-%d-%y')
+
+		start_dt_str = dt.strftime(start_dt,'%m-%d-%y')
+		end_dt_str = dt.strftime(end_dt,'%m-%d-%y')
+
+		# Clean case of input arguments
+		sum_period = sum_period.upper()
+		plt_type = plt_type.upper()
+		if type(output_types) == list:
+			output_types = [output_type.upper() for output_type in output_types]
+		else:
+			output_types = output_types.upper()
+
+		# Input aggregated data from file if a report isn't being run at the same time
+		try:
+			self.res_df
+		except AttributeError:
+			in_path = askopenfilename(title = 'Select file with HMI aggregated data')	 
+			self.res_df = pd.read_csv(in_path)
+
+		# Get output directory and string with all element ids from report
+		agg_outdir = askdirectory(title = 'Directory to output to')
+		all_elids = '_'.join(self.elids) 
+
+		# Retrieve element ids from aggregated data
+		elids = self.res_df.columns[1:].values
+
+		# Convert Time variable to pd.datetime variable
+		self.res_df['Time'] = pd.to_datetime(self.res_df['Time'])
+		self.res_df['Date'] = self.res_df['Time'].dt.date
+
+		# Filter to the dates desired for the plots
+		self.res_df = self.res_df.loc[
+			(self.res_df.Time >= start_dt) &
+			(self.res_df.Time <= end_dt)
+		]
+
+		# Get dataset aggregated by Day, Week or Month
+		if sum_period == 'HOUR':
+			xlabel = 'Time'
+		else:
+			self.res_df['Date'] = self.res_df['Time'].dt.date
+
+		if sum_period == 'DAY':
+			xlabel = 'Date'
+
+		if sum_period == 'WEEK':
+			xlabel = 'Weeks (since {0})'.format(start_dt_str)
+			self.res_df[xlabel] = np.floor((self.res_df['Time'] - self.start_dt)/np.timedelta64(7,'D'))
+		
+		if sum_period == 'MONTH':
+			xlabel = 'Month (since {0}, as 30 days)'.format(start_dt_str)
+			self.res_df[xlabel] = np.floor((self.res_df['Time'] - self.start_dt)/np.timedelta64(30,'D'))
+
+		if get_nhours == 1:
+			for elid in elids:
+				self.res_df['Number Hours {0}'.format(elid)] = \
+					np.where(self.res_df[elid].values > 0, 1, 0)
+
+		agg_sumst = self.res_df.groupby(xlabel).sum()
+
+		# Plot!
+		if 'PLOT' in output_types:
+			if plt_type == 'BAR':
+				agg_sumst[elids].plot.bar(stacked = False, width = 0.8)
+			else:
+				agg_sumst[elids].plot.bar(stacked = False, width = 0.8)
+
+			plt.ylabel(ylabel)
+			plt.legend()
+
+			# Set the maximum number of tick labels
+			nobs  = len(agg_sumst.index.values)
+			nlims = min(nobs - 1,10)
+
+			# Get the indices of the x-axis values according to these 15 tick labels
+			lim_len  = int(np.floor(nobs/nlims))
+			tic_idxs = [lim*lim_len for lim in range(nlims + 1)]
+			tic_vals = [agg_sumst.index.values[tic_idx] for tic_idx in tic_idxs]
+			plt.xticks(tic_idxs,tic_vals)
+			plt.xticks(rotation = 45)
+			plt.tight_layout()
+
+			# Output plots and/or sumstats csv files to directory of choice
+			plot_filename  = "HMI_{0}_{1}_{2}.png".format(all_elids, start_dt_str, end_dt_str)
+			plt.savefig(
+				os.path.join(agg_outdir, plot_filename), 
+				width = 20, 
+				height = 50
+			)
+
+		if 'TABLE' in output_types:
+
+			sumst_filename = "HMI_{0}_{1}_{2}.csv".format(all_elids, start_dt_str, end_dt_str)
+			agg_sumst.reset_index(inplace = True)
+			agg_sumst.to_csv(
+				os.path.join(agg_outdir, sumst_filename), 
+				index = False,
+				encoding = 'utf-8'
+			)
+
 
 if __name__ == '__main__':
 	hmi_dat = hmi_data_agg(
 		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-		'water', # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature)
+		'gas', # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature)
 		'5-11-17', # Start of date range you want summary data for
-		'9-8-17', # End if date range you want summary data for
+		'5-30-17', # End if date range you want summary data for
 		1, # Number of hours you want to sum/average over
-		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+		['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
 	)
-	hmi_dat.run_report()
+	# hmi_dat.run_report()
+	hmi_dat.get_agg_sumst(
+		output_types = ['PLOT','TABLE'],
+		sum_period = 'Week',
+		plt_type = 'bar',
+		ylabel = 'Feeding Volume (Gal)'
+	)
