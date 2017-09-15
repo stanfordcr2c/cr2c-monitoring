@@ -1,9 +1,10 @@
-''' This script calculates totals and averages for any given HMI data point(s), 
+''' 
+	This script calculates totals and averages for any given HMI data point(s), 
 	time period, and date range for which a raw eDNA query has been run (and a csv file
 	for that query obtained)
-	If selected, it outputs a csv file with average/total 
-	data for the data points and time periods chosen
+	If desired, also outputs plots and summary tables
 '''
+
 from __future__ import print_function
 import matplotlib
 matplotlib.use("TkAgg",force=True) 

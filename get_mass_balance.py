@@ -1,3 +1,9 @@
+'''
+	Computes a mass balance for water for any two Flowmeters 
+	or for COD-CH4 in the reactor area for any range of dates
+	takes dates as inputs and outputs a summary file with mass balance info
+'''
+
 from __future__ import print_function
 import matplotlib
 matplotlib.use("TkAgg",force=True) 
@@ -20,9 +26,9 @@ from tkinter.filedialog import asksaveasfilename
 from tkinter.filedialog import askdirectory
 import get_lab_data as gld
 
-# class get_mass_balance:
+class get_mass_balance:
 
-# 	def __init__(self, start_dt, end_dt):
+	def __init__(self, start_dt, end_dt):
 
-print(gld.get_ldata('COD'))
+
 

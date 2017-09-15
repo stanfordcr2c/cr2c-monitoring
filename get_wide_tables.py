@@ -1,3 +1,8 @@
+'''
+	Creates wide tables for different water quality parameter types and outputs them
+	to a directory of choice
+'''
+
 from __future__ import print_function
 from tkinter.filedialog import askdirectory
 import numpy as np
@@ -25,7 +30,7 @@ class wide_tables:
 		# Create a multi-index
 		df.drop_duplicates(subset = id_vars, inplace = True)
 		df.set_index(id_vars, inplace = True)
-		
+		 		
 		# Convert to wide format
 		if len(id_vars) > 2:
 			dfwide = df.unstack(id_vars[1])

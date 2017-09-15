@@ -1,5 +1,7 @@
-# Script loads data from lab tests, computes water quality parameters,
-# and loads the data to an SQL database
+'''
+	Script loads data from lab tests, computes water quality parameters,
+	and loads the data to an SQL database (no inputs required, fully automated!)
+'''
 
 from __future__ import print_function
 import numpy as np
