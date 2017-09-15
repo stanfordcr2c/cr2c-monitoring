@@ -1,15 +1,23 @@
-# Creates SQL tables in the Data directory 
-# NOTE: DO NOT RUN OR WILL OVERWRITE EXISTING TABLE!!!!!!!!
+'''
+	Creates SQL tables in the Data directory 
+	(NOTE: will fail if a table already exists in the directory)
+'''
 
 import pandas as pd
 import os
 import sqlite3
+import get_lab_data as gld
 
-os.chdir('C:/Users/jbolorinos/Box Sync/CR2C.Operations/MonitoringProcedures/Data')
 
+# Get directory with lab data
+data_indir = gld.get_indir()
+
+# Open SQL connection in data directory
+os.chdir(data_indir)
 conn = sqlite3.connect('cr2c_lab_data.db')
 curs = conn.cursor()
 
+# SQL commands for creating tables
 mk_COD_table_sql     = """
 	CREATE TABLE COD_data(
 		Date_Time TEXT, Stage TEXT, Type TEXT, obs_id TEXT, Value REAL,
@@ -40,12 +48,21 @@ mk_VFA_table_sql     = """
 		unique(Date_Time, Stage, Type, obs_id, Value)
 	)
 """
+mk_GasComp_table_sql     = """
+	CREATE TABLE GasComp_data(
+		id INTEGER PRIMARY KEY, Date_Time TEXT, Hel_Pressure REAL, Type TEXT, obs_id TEXT, Value REAL,
+		unique(Date_Time, Hel_Pressure, Type, obs_id, Value)
+	)
+"""
 
-curs.execute(mk_COD_table_sql)
-curs.execute(mk_TSS_VSS_table_sql)
-curs.execute(mk_ALK_table_sql)
-curs.execute(mk_PH_table_sql)
-curs.execute(mk_VFA_table_sql)
+# Execute SQL commands
+# curs.execute(mk_COD_table_sql)
+# curs.execute(mk_TSS_VSS_table_sql)
+# curs.execute(mk_ALK_table_sql)
+# curs.execute(mk_PH_table_sql)
+# curs.execute(mk_VFA_table_sql)
+curs.execute(mk_GasComp_table_sql)
 
+# Close connection
 conn.close()
 
