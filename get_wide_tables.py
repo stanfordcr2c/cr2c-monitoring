@@ -9,6 +9,7 @@ import os
 from os.path import expanduser
 import sys
 import sqlite3
+import get_lab_data as gld
 
 class wide_tables:
 	
@@ -16,51 +17,29 @@ class wide_tables:
 		self.table_end_dt = dt.strptime(table_end_dt,'%m-%d-%y')
 		self.ndays_tables = ndays_tables
 
-	# Manages output directories
-	def get_dirs(self):
-		
-		# Find the CR2C.Operations folder on Box Sync on the given machine
-		targetdir = os.path.join('Box Sync','CR2C.Operations')
-		self.mondir = None
-		print("Searching for Codiga Center's Operations folder on Box Sync...")
-		for dirpath, dirname, filename in os.walk(expanduser('~')):
-			if dirpath.find(targetdir) > 0:
-				self.mondir = os.path.join(dirpath,'MonitoringProcedures')
-				print("Found Codiga Center's Operations folder on Box Sync")
-				break
-				
-		# Alert user if Box Sync folder not found on machine
-		if self.mondir == None:
-			print("Could not find Codiga Center's Operations folder in Box Sync.")
-			print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
-			sys.exit()
-		self.data_indir = os.path.join(self.mondir,'Data')
-
-		# Request tables and charts output directory from user
-		self.tables_outdir = askdirectory(title = 'Directory to output charts to')
-		# Converts a long dataset to wide format
-
-
 	def long_to_wide(self, df, id_vars):
 
-	    # Create a multi-index
-	    df.drop_duplicates(subset = id_vars, inplace = True)
-	    df.set_index(id_vars, inplace = True)
-	    
-	    # Convert to wide format
-	    if len(id_vars) > 2:
-	        dfwide = df.unstack(id_vars[1])
-	        
-	        if len(id_vars) > 3:
-	            dfwide = dfwide.unstack(id_vars[2])
-	    
-	    # Convert index to pandas native datetimeindex to allow easy date slicing
-	    dfwide.reset_index(inplace = True)
-	    dfwide.set_index('Sample Date & Time', inplace = True)
-	    index = pd.to_datetime(dfwide.index)
-	    dfwide.sort_index(inplace = True)
-	    
-	    return dfwide
+		# Create clean Date/Time Variable
+		df['Sample Date & Time'] = pd.to_datetime(df['Date_Time'])
+
+		# Create a multi-index
+		df.drop_duplicates(subset = id_vars, inplace = True)
+		df.set_index(id_vars, inplace = True)
+		
+		# Convert to wide format
+		if len(id_vars) > 2:
+			dfwide = df.unstack(id_vars[1])
+			
+			if len(id_vars) > 3:
+				dfwide = dfwide.unstack(id_vars[2])
+		
+		# Convert index to pandas native datetimeindex to allow easy date slicing
+		dfwide.reset_index(inplace = True)
+		dfwide.set_index('Sample Date & Time', inplace = True)
+		index = pd.to_datetime(dfwide.index)
+		dfwide.sort_index(inplace = True)
+		
+		return dfwide
 
 		
 	# Cleans wide dataset for output to tables
@@ -93,7 +72,7 @@ class wide_tables:
 		if add_time_el == 1:
 			self.add_time_el = 1
 
-		self.get_dirs()
+		self.tables_outdir = askdirectory(title = 'Directory to output tables to:')
 		try:
 			os.chdir(self.tables_outdir)
 		except OSError:
@@ -109,24 +88,7 @@ class wide_tables:
 		self.seed_dt = dt.strptime('05-10-17','%m-%d-%y')
 
 		# Load data from SQL
-		os.chdir(self.data_indir)
-		conn = sqlite3.connect('cr2c_lab_data.db')
-
-		mdata_all = {}
-		mtypes = ['COD','TSS_VSS','ALKALINITY','PH','VFA']
-
-		# Loop through data typess to load into dictionary
-		for mtype in mtypes: 
-
-			mdata_long = pd.read_sql(
-				'SELECT * FROM {}_data'.format(mtype), 
-				conn, 
-				coerce_float = True
-			)
-			# Set format of date variable
-			mdata_long['Sample Date & Time'] = pd.to_datetime(mdata_long['Date_Time'])
-			# Load resulting dataframe to dictionary
-			mdata_all[mtype] = mdata_long
+		mdata_all = gld.get_ldata(['COD','TSS_VSS','ALKALINITY','PH','VFA'])
 
 		# Specify id variables (same for every type since combining Alkalinity and pH)
 		id_vars = ['Sample Date & Time','Stage','Type','obs_id']

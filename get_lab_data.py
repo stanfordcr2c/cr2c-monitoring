@@ -2,7 +2,8 @@ import os
 from os.path import expanduser
 import sys
 import sqlite3
-from tkinter.filedialog import askdirectory
+import pandas as pd
+
 
 # Manages output directories
 def get_dirs():
@@ -23,24 +24,27 @@ def get_dirs():
 		print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
 		sys.exit()
 	
-	return os.path.join(self.mondir,'Data')
+	return os.path.join(mondir,'Data')
 
 
-def get_ldata(mtype):
+def get_ldata(mtypes):
 
-	data_indir = get_dirs
+	data_indir = get_dirs()
 
 	# Load data from SQL
-	os.chdir(self.data_indir)
+	os.chdir(data_indir)
 	conn = sqlite3.connect('cr2c_lab_data.db')
-	# Clean user input wrt TSS_VSS
-	if mtype.find('TSS') >= 0 or mtype.find('VSS') >= 0:
-		mtype = 'TSS_VSS'
+	mdata_all = {}
+	for mtype in mtypes:
+		# Clean user input wrt TSS_VSS
+		if mtype.find('TSS') >= 0 or mtype.find('VSS') >= 0:
+			mtype = 'TSS_VSS'
 
-	mdata_long = pd.read_sql(
-		'SELECT * FROM {}_data'.format(mtype), 
-		conn, 
-		coerce_float = True
-	)
+		mdata_long = pd.read_sql(
+			'SELECT * FROM {}_data'.format(mtype), 
+			conn, 
+			coerce_float = True
+		)
+		mdata_all[mtype] = mdata_long
 
-	return mdata_long
+	return mdata_all

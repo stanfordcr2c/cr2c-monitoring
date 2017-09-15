@@ -15,9 +15,8 @@ import matplotlib.dates as dates
 import warnings
 import os
 import math
-from os.path import expanduser
 import sys
-import sqlite3
+import get_lab_data as gld
 	
 
 class lab_plots:
@@ -26,30 +25,6 @@ class lab_plots:
 
 		self.start_dt = start_dt
 		self.end_dt = end_dt
-
-	# Manages output directories
-	def get_dirs(self):
-		
-		# Find the CR2C.Operations folder on Box Sync on the given machine
-		targetdir = os.path.join('Box Sync','CR2C.Operations')
-		self.mondir = None
-		print("Searching for Codiga Center's Operations folder on Box Sync...")
-		for dirpath, dirname, filename in os.walk(expanduser('~')):
-			if dirpath.find(targetdir) > 0:
-				self.mondir = os.path.join(dirpath,'MonitoringProcedures')
-				print("Found Codiga Center's Operations folder on Box Sync")
-				break
-				
-		# Alert user if Box Sync folder not found on machine
-		if self.mondir == None:
-			print("Could not find Codiga Center's Operations folder in Box Sync.")
-			print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
-			sys.exit()
-		self.data_indir = os.path.join(self.mondir,'Data')
-
-		# Request tables and charts output directory from user
-		self.charts_outdir = askdirectory(title = 'Directory to output charts to')
-
 
 	# Sets the start and end dates for the charts, depending on user input
 	def manage_chart_dates(self):
@@ -76,17 +51,12 @@ class lab_plots:
 		type_sub = None
 	):
 
-		# Get data input and chart output directories
-		self.get_dirs()
+		# Request tables and charts output directory from user
+		self.charts_outdir = askdirectory(title = 'Directory to output charts to')
 		try:
 			os.chdir(self.charts_outdir)
 		except OSError:
 			print('Please choose a valid directory to output the charts to')
-			sys.exit()
-		try:
-			os.chdir(self.data_indir)
-		except OSError:
-			print('Please choose the directory with the lab data sql file')
 			sys.exit()
 
 		# Clean case of mplot_list and wrap var inputs
@@ -108,21 +78,16 @@ class lab_plots:
 		# Manage dates given by user
 		self.manage_chart_dates()
 
+		# Get all of the lab data requested
+		mdata_all = gld.get_ldata(mplot_list)
+
 		# Loop through the lab data types
 		for mtype in mplot_list:
 
-			# Load data from SQL
-			os.chdir(self.data_indir)
-			conn = sqlite3.connect('cr2c_lab_data.db')
-			# Clean user input wrt TSS_VSS
 			if mtype.find('TSS') >= 0 or mtype.find('VSS') >= 0:
 				mtype = 'TSS_VSS'
 
-			mdata_long = pd.read_sql(
-				'SELECT * FROM {}_data'.format(mtype), 
-				conn, 
-				coerce_float = True
-			)
+			mdata_long = mdata_all[mtype]
 
 			# Set format of date variable
 			mdata_long['Date_Time'] = pd.to_datetime(mdata_long['Date_Time'])
@@ -168,7 +133,6 @@ class lab_plots:
 				ylabel = 'VFAs as mgCOD/L'
 				type_list = ['Acetate','Propionate']
 				share_yax = False
-
 
 			# Filter to the dates desired for the plots
 			mdata_chart = mdata_long.loc[
