@@ -12,7 +12,8 @@ import sqlite3
 
 class wide_tables:
 	
-	def __init__(self, ndays_tables):
+	def __init__(self, table_end_dt, ndays_tables):
+		self.table_end_dt = dt.strptime(table_end_dt,'%m-%d-%y')
 		self.ndays_tables = ndays_tables
 
 	# Manages output directories
@@ -71,7 +72,7 @@ class wide_tables:
 		act_st_ord = [stage for stage in self.stage_order if stage in act_stages]
 
 		# Truncate 
-		df_trunc = dfwide.Value.loc[self.table_start_dt:self.file_dt,(act_st_ord, value_vars)]
+		df_trunc = dfwide.Value.loc[self.table_start_dt:self.table_end_dt,(act_st_ord, value_vars)]
 
 		# Set column order
 		df_trunc = df_trunc.reindex_axis(act_st_ord, axis = 1, level = 'Stage')
@@ -100,9 +101,11 @@ class wide_tables:
 			sys.exit()
 
 		# Specify key dates as per the length of time for table
-		self.file_dt = dt.now()
-		file_dt_str  = dt.strftime(self.file_dt,'%m-%d-%y')
-		self.table_start_dt = self.file_dt - timedelta(days = self.ndays_tables)
+		if not self.table_end_dt:
+			self.table_end_dt = dt.now()
+
+		table_end_dt_str  = dt.strftime(self.table_end_dt,'%m-%d-%y')
+		self.table_start_dt = self.table_end_dt - timedelta(days = self.ndays_tables)
 		self.seed_dt = dt.strptime('05-10-17','%m-%d-%y')
 
 		# Load data from SQL
@@ -161,15 +164,15 @@ class wide_tables:
 		
 		# Save
 		os.chdir(self.tables_outdir)
-		CODtrunc.to_csv('COD_table' + file_dt_str + '.csv')
-		VFAtrunc.to_csv('VFA_table' + file_dt_str + '.csv')
-		TSS_VSStrunc.to_csv('TSS_VSS_table' + file_dt_str + '.csv')
-		ALK_PHtrunc.to_csv('ALK_PH_table' + file_dt_str + '.csv')
+		CODtrunc.to_csv('COD_table' + table_end_dt_str + '.csv')
+		VFAtrunc.to_csv('VFA_table' + table_end_dt_str + '.csv')
+		TSS_VSStrunc.to_csv('TSS_VSS_table' + table_end_dt_str + '.csv')
+		ALK_PHtrunc.to_csv('ALK_PH_table' + table_end_dt_str + '.csv')
 
 if __name__ == '__main__':
 
 	# Instantiate class
-	wtabs = wide_tables(128)
+	wtabs = wide_tables('9-14-17',126)
 
 	# Create and output charts
 	wtabs.summarize_tables(1)
