@@ -219,9 +219,10 @@ WWsumst.to_csv(input_dir, index = False, encoding = 'utf-8')
 
 # Produce some plots
 os.chdir('C:/Users/jbolorinos/Google Drive/Codiga Center/Charts and Data')
+
 fig, ax = plt.subplots(1, 1, figsize=(12, 6))
-plt.hist(WWdata[r'$CH_4$'], bins = 100, fill = 'orange')
-plt.xlabel('Gas production (' + r'$ft^3$' + ' per day)')
+plt.hist(WWdata[r'$CH_4$'], bins = [0 + 5*bin_no for bin_no in range(21)], color = '#eeae10')
+plt.xlabel(r'$CH_4$' + ' production (' + r'$ft^3$' + ' per day)')
 plt.ylabel('Frequency')
 ax.xaxis.set_major_formatter(
 	tkr.FuncFormatter(lambda x, p: format(int(x), ','))
@@ -231,6 +232,20 @@ plt.savefig(
 	width = 20, 
 	height = 10
 )
+
+fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+plt.hist(WWdata['Biogas'], bins = [0 + 5*bin_no for bin_no in range(21)], color = '#90775a')
+plt.xlabel('Biogas production (' + r'$ft^3$' + ' per day)')
+plt.ylabel('Frequency')
+ax.xaxis.set_major_formatter(
+	tkr.FuncFormatter(lambda x, p: format(int(x), ','))
+)
+plt.savefig(
+	'Biogas Production Histogram.png',
+	width = 20, 
+	height = 10
+)
+
 
 fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 plt.plot(

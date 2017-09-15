@@ -169,7 +169,7 @@ class wide_tables:
 if __name__ == '__main__':
 
 	# Instantiate class
-	wtabs = wide_tables(90)
+	wtabs = wide_tables(128)
 
 	# Create and output charts
 	wtabs.summarize_tables(1)
