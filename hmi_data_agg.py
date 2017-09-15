@@ -22,6 +22,7 @@ from pandas import read_excel
 import os
 import sys
 from tkinter.filedialog import askopenfilename
+from tkinter.filedialog import asksaveasfilename
 from tkinter.filedialog import askdirectory
 
 class hmi_data_agg:
@@ -43,6 +44,7 @@ class hmi_data_agg:
 		self.end_dt = dt.strptime(end_dt,'%m-%d-%y')
 		self.tperiod = tperiod
 		self.elids = elids
+		self.all_elids = '_'.join(self.elids) 
 		self.agg_types = [agg_type.upper() for agg_type in agg_types]
 
 	def prep_data(self, elid):
@@ -140,6 +142,9 @@ class hmi_data_agg:
 
 		# Select input data file
 		self.in_path = askopenfilename(title = 'Select data input file')
+		# Get date strings for output filenames
+		start_dt_str = dt.strftime(self.start_dt, '%m-%d-%y')
+		end_dt_str = dt.strftime(self.end_dt, '%m-%d-%y')
 
 		for elid in self.elids:
 			elid_no = self.elids.index(elid)
@@ -155,8 +160,13 @@ class hmi_data_agg:
 			self.res_df[elid + '_' + agg_type] = [row[1] for row in report_dat]
 
  		# Output to directory given
-		op_path = asksaveasfilename(title = 'Save Output File as:')
-		res_df.to_csv(op_path, index = False, encoding = 'utf-8')
+		op_path = askdirectory(title = 'Directory to save output_file_to:')
+		agg_filename = "HMI{0}_{1}_{2}_{3}.csv".format(self.stype,self.all_elids, start_dt_str, end_dt_str)
+		self.res_df.to_csv(
+			os.path.join(op_path, agg_filename), 
+			index = False, 
+			encoding = 'utf-8'
+		)
 
 
 	def get_agg_sumst(
@@ -186,7 +196,7 @@ class hmi_data_agg:
 
 		# Clean case of input arguments
 		sum_period = sum_period.upper()
-		plt_type = plt_type.lower()
+		plt_type = plt_type.upper()
 		if type(output_types) == list:
 			output_types = [output_type.upper() for output_type in output_types]
 		else:
@@ -201,7 +211,6 @@ class hmi_data_agg:
 
 		# Get output directory and string with all element ids from report
 		agg_outdir = askdirectory(title = 'Directory to output to')
-		all_elids = '_'.join(self.elids) 
 
 		# Retrieve element ids from aggregated data
 		elids = self.res_df.columns[1:].values
@@ -274,7 +283,7 @@ class hmi_data_agg:
 			plt.tight_layout()
 
 			# Output plots and/or sumstats csv files to directory of choice
-			plot_filename  = "HMI_{0}_{1}_{2}.png".format(all_elids, start_dt_str, end_dt_str)
+			plot_filename  = "HMI{0}_{1}_{2}_{3}.png".format(self.stype, self.all_elids, start_dt_str, end_dt_str)
 			plt.savefig(
 				os.path.join(agg_outdir, plot_filename), 
 				width = 20, 
@@ -283,7 +292,7 @@ class hmi_data_agg:
 
 		if 'TABLE' in output_types:
 
-			sumst_filename = "HMI_{0}_{1}_{2}.csv".format(all_elids, start_dt_str, end_dt_str)
+			sumst_filename = "HMI{0}_{1}_{2}_{3}.csv".format(self.stype, self.all_elids, start_dt_str, end_dt_str)
 			agg_sumst.reset_index(inplace = True)
 			agg_sumst.to_csv(
 				os.path.join(agg_outdir, sumst_filename), 
@@ -295,18 +304,18 @@ class hmi_data_agg:
 if __name__ == '__main__':
 	hmi_dat = hmi_data_agg(
 		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-		'gas', # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature)
+		'water', # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature)
 		'5-11-17', # Start of date range you want summary data for
-		'9-8-17', # End if date range you want summary data for
+		'9-15-17', # End if date range you want summary data for
 		1, # Number of hours you want to sum/average over
-		['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
 	)
 	# hmi_dat.run_report()
 	hmi_dat.get_agg_sumst(
 		output_types = ['PLOT','TABLE'],
 		sum_period = 'day',
-		plt_type = 'scatter',
-		plt_colors = ['#90775a','#eeae10'],
-		ylabel = 'Feeding Volume (Gal)'
+		plt_type = 'bar',
+		# plt_colors = ['#90775a','#eeae10'],
+		ylabel = 'Reactor I/O Volumes (Gal/day)'
 	)
