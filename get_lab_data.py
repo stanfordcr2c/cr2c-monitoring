@@ -1,3 +1,10 @@
+'''
+	Queries Lab Dataset:
+	Takes list of parameter types (COD, TSS, VFA, etc) as inputs
+	Outputs dictionary of pandas dataframe objects 
+	(parameter types as entry names)
+'''
+
 import os
 from os.path import expanduser
 import sys
