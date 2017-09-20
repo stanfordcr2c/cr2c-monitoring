@@ -13,8 +13,6 @@ import matplotlib.ticker as tkr
 import matplotlib.dates as dates
 import pylab as pl
 import numpy as np
-import scipy as sp
-from scipy import interpolate as ip
 import pandas as pd
 import datetime as datetime
 from datetime import datetime as dt
@@ -23,36 +21,21 @@ from pandas import read_excel
 import os
 import sys
 from tkinter.filedialog import askopenfilename
-from tkinter.filedialog import asksaveasfilename
 from tkinter.filedialog import askdirectory
 
 class hmi_data_agg:
 
-	def __init__(
-		self, 
-		qtype, 
-		stype,
-		start_dt, 
-		end_dt, 
-		tperiod, 
-		elids,
-		agg_types
-	):
+	def __init__(self, qtype, stype):
 
 		self.qtype = qtype.upper()
 		self.stype = stype.upper()
-		self.start_dt = dt.strptime(start_dt,'%m-%d-%y')
-		self.end_dt = dt.strptime(end_dt,'%m-%d-%y')
-		self.tperiod = tperiod
-		self.elids = elids
-		self.all_elids = '_'.join(self.elids) 
-		self.agg_types = [agg_type.upper() for agg_type in agg_types]
+
 
 	def prep_data(self, elid):
 
 		# Set high and low limits for sensors based on type (water, gas, ph, conductivity, temp)
 		if self.stype == 'WATER':
-			hi_limit = 30
+			hi_limit = 200
 			lo_limit = 0.2
 		elif self.stype == 'GAS':
 			hi_limit = 10
@@ -70,99 +53,123 @@ class hmi_data_agg:
 
 		# Load variables and set output variable names
 		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
+		self.xvar = elid + '_ts'
+		self.yvar = elid + '_value'	
 
-		# Rename variable		
-		self.hmi_data[elid + '_value'] = \
+		# Rename variable
+		self.hmi_data[self.yvar] = \
 			self.hmi_data[varname.format(elid,'Value', self.qtype)]
 		# Set low/negative values to 0 and remove unreasonably high values
-		self.hmi_data.loc[self.hmi_data[elid + '_value'] < lo_limit, elid + '_value'] = 0
-		self.hmi_data.loc[self.hmi_data[elid + '_value'] > hi_limit, elid + '_value'] = np.NaN			
+		self.hmi_data.loc[self.hmi_data[self.yvar] < lo_limit, self.yvar] = 0
+		self.hmi_data.loc[self.hmi_data[self.yvar] > hi_limit, self.yvar] = np.NaN			
 		# Rename and format corresponding timestamp variable 
-		self.hmi_data[elid + '_ts'] = \
+		self.hmi_data[self.xvar ] = \
 			self.hmi_data[varname.format(elid, 'Time', self.qtype)]
-		self.hmi_data[elid + '_ts'] = \
-			pd.to_datetime(self.hmi_data[elid + '_ts'])
+		self.hmi_data[self.xvar ] = \
+			pd.to_datetime(self.hmi_data[self.xvar])
 
-		# Filter dataset to clean values and variable selected
-		self.hmi_data = self.hmi_data.loc[:, [elid + '_value', elid + '_ts']]
+		# Filter dataset to clean values, time period and variable selected
+		self.hmi_data = self.hmi_data.loc[
+			(self.hmi_data[self.xvar] >= self.start_dt - datetime.timedelta(days = 1)) &
+			(self.hmi_data[self.xvar] <= self.end_dt + datetime.timedelta(days = 1))
+			, 
+			[self.xvar, self.yvar]
+		]
+		# Eliminate missing values
 		self.hmi_data.dropna(axis = 0, how = 'any', inplace = True)
-
-	def get_tot_var(self, elid, agg_type):
-
-		xvar = elid + '_ts'
-		yvar = elid + '_value'
+		self.hmi_data.reset_index(inplace = True)
 
 		# Get numeric time elapsed
-		first_ts = self.hmi_data[xvar][0]
-		last_ts = self.hmi_data[xvar][len(self.hmi_data) - 1]
+		self.first_ts = self.hmi_data[self.xvar][0]
+		self.last_ts  = self.hmi_data[self.xvar][len(self.hmi_data) - 1]
 
 		# Check to make sure that the totals/averages do not include the first
 		# and last days for which data are available (just to ensure accuracy)
-		if first_ts >= self.start_dt or last_ts <= self.end_dt:
-			start_dt_warn = first_ts + np.timedelta64(1,'D')
-			end_dt_warn = last_ts - np.timedelta64(1,'D')
+		if self.first_ts >= self.start_dt or self.last_ts <= self.end_dt:
+			start_dt_warn = self.first_ts + np.timedelta64(1,'D')
+			end_dt_warn   =  self.last_ts - np.timedelta64(1,'D')
 			start_dt_warn = dt.strftime(start_dt_warn, '%m-%d-%y')
 			end_dt_warn = dt.strftime(end_dt_warn, '%m-%d-%y')
 			warn_msg = \
 				'Given the range of data available for {0}, accurate aggregate values can only be obtained for: {1} to {2}'
 			print(warn_msg.format(elid, start_dt_warn, end_dt_warn))
 
+
+	def get_tot_var(
+		self, 
+		tperiod,
+		elid, 
+		agg_type
+	):
+
 		# Calculating time elapsed in minutes (since highest resolution is ~30s)
-		self.hmi_data['tel'] = self.hmi_data[xvar] - first_ts
+		self.hmi_data['tel'] = self.hmi_data[self.xvar] - self.first_ts
 		self.hmi_data['tel'] = self.hmi_data['tel'] / np.timedelta64(60,'s')
 
 		# Creat variables for manually calculating area under curve
 		tel_next  = np.append(self.hmi_data.loc[1:,'tel'].values, [0]) 
-		yvar_next = np.append(self.hmi_data.loc[1:,yvar].values, [0])
+		yvar_next = np.append(self.hmi_data.loc[1:,self.yvar].values, [0])
 		self.hmi_data['tel_next'] = tel_next
 		self.hmi_data['yvar_next'] = yvar_next
 		self.hmi_data['tot'] = \
 			(self.hmi_data['tel_next'] - self.hmi_data['tel'])*\
-			(self.hmi_data['yvar_next'] + self.hmi_data[yvar])/2
+			(self.hmi_data['yvar_next'] + self.hmi_data[self.yvar])/2
 
 		# Compute the area under the curve for each time period
-		nperiods = (self.end_dt - self.start_dt).days*24/self.tperiod
+		nperiods = (self.end_dt - self.start_dt).days*24/tperiod
 		nperiods = int(nperiods)
 		tots_res = []
 		for period in range(nperiods):
-			start_tel = (self.start_dt - first_ts) / np.timedelta64(1,'m') + period*60*self.tperiod
-			end_tel = start_tel + 60*self.tperiod
-			start_ts = self.start_dt + datetime.timedelta(hours = period*self.tperiod)
+			start_tel = (self.start_dt - self.first_ts) / np.timedelta64(1,'m') + period*60*tperiod
+			end_tel = start_tel + 60*tperiod
+			start_ts = self.start_dt + datetime.timedelta(hours = period*tperiod)
 			ip_tot = self.hmi_data.loc[
 				(self.hmi_data['tel'] >= start_tel) & 
-				(self.hmi_data['tel'] <= end_tel),'tot'
+				(self.hmi_data['tel'] <= end_tel),
+				'tot'
 			].sum()
 			if agg_type == 'AVERAGE':
-				ip_tot = ip_tot/(60*self.tperiod)
+				ip_tot = ip_tot/(60*tperiod)
 			tots_row = [start_ts, ip_tot]
 			tots_res.append(tots_row)
 		return tots_res
 
 
-	def run_report(self):
+	def run_report(
+		self,
+		tperiod,
+		elids,
+		agg_types,
+		start_dt,
+		end_dt
+	):
 
 		# Select input data file
-		self.in_path = askopenfilename(title = 'Select data input file')
-		# Get date strings for output filenames
+		self.in_path = askopenfilename(title = 'Select HMI data input file')
+		
+		# Get dates and date strings for output filenames
+		self.start_dt = dt.strptime(start_dt,'%m-%d-%y')
+		self.end_dt = dt.strptime(end_dt,'%m-%d-%y')
 		start_dt_str = dt.strftime(self.start_dt, '%m-%d-%y')
 		end_dt_str = dt.strftime(self.end_dt, '%m-%d-%y')
 
-		for elid in self.elids:
-			elid_no = self.elids.index(elid)
-			agg_type = self.agg_types[elid_no]
+		# Get string of all element ids and clean agg_types input
+		self.all_elids = '_'.join(elids) 
+		agg_types = [agg_type.upper() for agg_type in agg_types]
+
+		for elid, agg_type in zip(elids, agg_types):
 			# Get prepped data
 			self.prep_data(elid)
 			# Get totalized values'
-			report_dat = self.get_tot_var(elid, agg_type)
-			if elid_no == 0:
+			report_dat = self.get_tot_var(tperiod, elid, agg_type)
+			if elid == elids[0]:
 				self.res_df = pd.DataFrame([row[0] for row in report_dat], columns = ['Time'])
-			agg_type = self.agg_types[elid_no]
 			# Skip time variable for all other elements we are getting data for
 			self.res_df[elid + '_' + agg_type] = [row[1] for row in report_dat]
 
  		# Output to directory given
 		op_path = askdirectory(title = 'Directory to save output_file_to:')
-		agg_filename = "HMI{0}_{1}_{2}_{3}.csv".format(self.stype,self.all_elids, start_dt_str, end_dt_str)
+		agg_filename = "HMI{0}_{1}_{2}_{3}.csv".format(self.stype, self.all_elids, start_dt_str, end_dt_str)
 		self.res_df.to_csv(
 			os.path.join(op_path, agg_filename), 
 			index = False, 
@@ -266,7 +273,6 @@ class hmi_data_agg:
 			if sum_period != 'DAY':
 				tic_vals = ['{0} - {1}'.format(int(tic_val), int(tic_val + 1)) for tic_val in tic_vals]
 
-
 			if plt_type == 'BAR':
 				ax = agg_sumst[elids].plot.bar(stacked = False, width = 0.8, color = plt_colors)
 				plt.xticks(tic_idxs,tic_vals)
@@ -305,18 +311,19 @@ class hmi_data_agg:
 if __name__ == '__main__':
 	hmi_dat = hmi_data_agg(
 		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-		'water', # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature)
-		'5-11-17', # Start of date range you want summary data for
-		'9-15-17', # End if date range you want summary data for
+		'water' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
+	)
+	hmi_dat.run_report(
 		1, # Number of hours you want to sum/average over
 		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
+		'7-12-17', # Start of date range you want summary data for
+		'7-19-17' # End of date range you want summary data for)
 	)
-	# hmi_dat.run_report()
-	hmi_dat.get_agg_sumst(
-		output_types = ['PLOT','TABLE'],
-		sum_period = 'day',
-		plt_type = 'bar',
-		# plt_colors = ['#90775a','#eeae10'],
-		ylabel = 'Reactor I/O Volumes (Gal/day)'
-	)
+	# hmi_dat.get_agg_sumst(
+	# 	output_types = ['PLOT','TABLE'],
+	# 	sum_period = 'day',
+	# 	plt_type = 'bar',
+	# 	# plt_colors = ['#90775a','#eeae10'],
+	# 	ylabel = 'Reactor I/O Volumes (Gal/day)'
+	# )
