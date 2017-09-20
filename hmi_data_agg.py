@@ -141,11 +141,13 @@ class hmi_data_agg:
 		elids,
 		agg_types,
 		start_dt,
-		end_dt
+		end_dt,
+		hmi_path = None
 	):
 
 		# Select input data file
-		self.in_path = askopenfilename(title = 'Select HMI data input file')
+		if not hmi_path:
+			self.in_path = askopenfilename(title = 'Select HMI data input file')
 		
 		# Get dates and date strings for output filenames
 		self.start_dt = dt.strptime(start_dt,'%m-%d-%y')
@@ -318,7 +320,8 @@ if __name__ == '__main__':
 		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
 		'7-12-17', # Start of date range you want summary data for
-		'7-19-17' # End of date range you want summary data for)
+		'7-19-17', # End of date range you want summary data for)
+		hmi_path  = 
 	)
 	# hmi_dat.get_agg_sumst(
 	# 	output_types = ['PLOT','TABLE'],
