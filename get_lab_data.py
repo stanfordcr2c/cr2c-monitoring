@@ -13,7 +13,7 @@ import pandas as pd
 
 
 # Manages output directories
-def get_dirs():
+def get_indir():
 	
 	# Find the CR2C.Operations folder on Box Sync on the given machine
 	targetdir = os.path.join('Box Sync','CR2C.Operations')
@@ -34,9 +34,9 @@ def get_dirs():
 	return os.path.join(mondir,'Data')
 
 
-def get_ldata(mtypes):
+def get_data(mtypes):
 
-	data_indir = get_dirs()
+	data_indir = get_indir()
 
 	# Load data from SQL
 	os.chdir(data_indir)

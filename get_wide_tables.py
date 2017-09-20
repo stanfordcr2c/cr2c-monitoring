@@ -93,7 +93,7 @@ class wide_tables:
 		self.seed_dt = dt.strptime('05-10-17','%m-%d-%y')
 
 		# Load data from SQL
-		mdata_all = gld.get_ldata(['COD','TSS_VSS','ALKALINITY','PH','VFA'])
+		mdata_all = gld.get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA'])
 
 		# Specify id variables (same for every type since combining Alkalinity and pH)
 		id_vars = ['Sample Date & Time','Stage','Type','obs_id']

@@ -79,7 +79,7 @@ class lab_plots:
 		self.manage_chart_dates()
 
 		# Get all of the lab data requested
-		mdata_all = gld.get_ldata(mplot_list)
+		mdata_all = gld.get_data(mplot_list)
 
 		# Loop through the lab data types
 		for mtype in mplot_list:
