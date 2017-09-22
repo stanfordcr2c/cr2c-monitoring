@@ -43,6 +43,7 @@ def get_data(mtypes):
 	conn = sqlite3.connect('cr2c_lab_data.db')
 	mdata_all = {}
 	for mtype in mtypes:
+
 		# Clean user input wrt TSS_VSS
 		if mtype.find('TSS') >= 0 or mtype.find('VSS') >= 0:
 			mtype = 'TSS_VSS'
@@ -53,5 +54,8 @@ def get_data(mtypes):
 			coerce_float = True
 		)
 		mdata_all[mtype] = mdata_long
+
+		# Dedupe data (some issue with duplicates)
+		mdata_all[mtype].drop_duplicates(inplace = True)
 
 	return mdata_all
