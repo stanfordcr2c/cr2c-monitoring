@@ -126,13 +126,13 @@ class hmi_data_agg:
 				self.hmi_data[self.yvar].shift(1) +\
 				(self.hmi_data[self.yvar] - self.hmi_data[self.yvar].shift(1))/\
 				(self.hmi_data['tel'] - self.hmi_data['tel'].shift(1))*\
-				(self.hmi_data['tel'] - self.hmi_data['tel_hstrt'])
+				(self.hmi_data['tel_hstrt'] - self.hmi_data['tel'].shift(1))
 			)
 		
 		# Adjust the totalized component at the end of each hour (subtract the time after 0:00)
 		self.hmi_data.loc[self.hmi_data['tel_hstrt'] != self.hmi_data['tel_hstrt'].shift(-1),'tot'] = \
 			self.hmi_data['tot'] -\
-			(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel_hstrt'] + 60)*\
+			(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel_hstrt'] - 60)*\
 			0.5*(
 				self.hmi_data[self.yvar] + \
 				self.hmi_data[self.yvar].shift(-1) + \
@@ -158,6 +158,7 @@ class hmi_data_agg:
 				ip_tot = ip_tot/(60*tperiod)
 			tots_row = [start_ts, ip_tot]
 			tots_res.append(tots_row)
+
 		return tots_res
 
 
@@ -351,8 +352,9 @@ if __name__ == '__main__':
 		1, # Number of hours you want to sum/average over
 		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
-		'7-12-17', # Start of date range you want summary data for
-		'7-19-17' # End of date range you want summary data for)
+		'9-10-17', # Start of date range you want summary data for
+		'9-22-17', # End of date range you want summary data for)
+		output_csv = 1
 	)
 	# hmi_dat.get_agg_sumst(
 	# 	output_types = ['PLOT','TABLE'],
