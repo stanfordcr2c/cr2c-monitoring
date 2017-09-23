@@ -208,20 +208,28 @@ class lab_plots:
 			mplot.set_xlabels('')
 			mplot.set_xticklabels(rotation = 45)
 
-			# Add and position legend
-			handles, labels = ax.get_legend_handles_labels()
-			lgd = ax.legend(handles, labels, loc='upper left', bbox_to_anchor = (1,0.75))
-
 			# Output plot to given directory
 			plot_filename = "{0}_{1}_to_{2}.png"
 			os.chdir(self.charts_outdir)
-			plt.savefig(
-				plot_filename.format(mtype, self.start_dt_str, self.end_dt_str), 
-				bbox_extra_artists = (lgd,),
-				bbox_inches = 'tight',
-				width = plot_wid, 
-				height = plot_len
-			)
+
+			# Add and position legend
+			if mtype not in ['PH','ALKALINITY']:
+				handles, labels = ax.get_legend_handles_labels()
+				lgd = ax.legend(handles, labels, loc='upper left', bbox_to_anchor = (1,0.75))
+				plt.savefig(
+					plot_filename.format(mtype, self.start_dt_str, self.end_dt_str), 
+					bbox_extra_artists = (lgd,),
+					bbox_inches = 'tight',
+					width = plot_wid, 
+					height = plot_len
+				)
+			else:
+				plt.savefig(
+					plot_filename.format(mtype, self.start_dt_str, self.end_dt_str), 
+					bbox_inches = 'tight',
+					width = plot_wid, 
+					height = plot_len
+				)
 
 if __name__ == '__main__':
 
@@ -236,9 +244,9 @@ if __name__ == '__main__':
 	# Create and output charts
 	lplots.get_lab_plots(
 		# List of monitoring data types to produce charts for (correspond to tabs on gsheets workbook)
-		['COD','TSS','VFA','PH'], 
+		['PH','ALKALINITY'], 
 		# Variable to break down into panels according to
-		'Type',
+		'Stage',
 		# Stages to Subset to
 		['Microscreen','AFBR','Duty AFMBR Effluent','Duty AFMBR MLSS']
 	)
