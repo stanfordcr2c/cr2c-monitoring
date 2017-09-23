@@ -46,7 +46,7 @@ class hmi_data_agg:
 
 		# Load data
 		try:
-			self.hmi_data = pd.read_csv(self.in_path)
+			self.hmi_data = pd.read_csv(self.hmi_path)
 		except FileNotFoundError:
 			print('Please choose an existing input file with the HMI data')
 			sys.exit()
@@ -75,7 +75,7 @@ class hmi_data_agg:
 			, 
 			[self.xvar, self.yvar]
 		]
-		# Eliminate missing values
+		# Eliminate missing values and reset index
 		self.hmi_data.dropna(axis = 0, how = 'any', inplace = True)
 		self.hmi_data.reset_index(inplace = True)
 
@@ -102,18 +102,44 @@ class hmi_data_agg:
 		agg_type
 	):
 
-		# Calculating time elapsed in minutes (since highest resolution is ~30s)
-		self.hmi_data['tel'] = self.hmi_data[self.xvar] - self.first_ts
-		self.hmi_data['tel'] = self.hmi_data['tel'] / np.timedelta64(60,'s')
+		# Calculate time elapsed in minutes (since highest resolution is ~30s)
+		self.hmi_data['tel'] = \
+			(self.hmi_data[self.xvar] - self.first_ts)/\
+			np.timedelta64(60,'s')
+		self.hmi_data['hour'] = self.hmi_data[self.xvar].values.astype('datetime64[h]')
+		# Calculate time elapsed in minutes at the beginning of the given hour
+		self.hmi_data['tel_hstrt'] = \
+			(self.hmi_data['hour'] - self.first_ts)/\
+			np.timedelta64(60,'s')
+		
+		# Create a variable giving the totalized component for the given section (tel to tel_next)
+		self.hmi_data['tot'] =\
+			(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel'])*\
+			(self.hmi_data[self.yvar].shift(-1) + self.hmi_data[self.yvar])/2
 
-		# Creat variables for manually calculating area under curve
-		tel_next  = np.append(self.hmi_data.loc[1:,'tel'].values, [0]) 
-		yvar_next = np.append(self.hmi_data.loc[1:,self.yvar].values, [0])
-		self.hmi_data['tel_next'] = tel_next
-		self.hmi_data['yvar_next'] = yvar_next
-		self.hmi_data['tot'] = \
-			(self.hmi_data['tel_next'] - self.hmi_data['tel'])*\
-			(self.hmi_data['yvar_next'] + self.hmi_data[self.yvar])/2
+		# Adjust the totalized component at the beginning of each hour (add the levtover time since 0:00)
+		self.hmi_data.loc[self.hmi_data['tel_hstrt'] != self.hmi_data['tel_hstrt'].shift(1),'tot'] = \
+			self.hmi_data['tot'] +\
+			(self.hmi_data['tel'] - self.hmi_data['tel_hstrt'])*\
+			0.5*(
+				self.hmi_data[self.yvar] +\
+				self.hmi_data[self.yvar].shift(1) +\
+				(self.hmi_data[self.yvar] - self.hmi_data[self.yvar].shift(1))/\
+				(self.hmi_data['tel'] - self.hmi_data['tel'].shift(1))*\
+				(self.hmi_data['tel'] - self.hmi_data['tel_hstrt'])
+			)
+		
+		# Adjust the totalized component at the end of each hour (subtract the time after 0:00)
+		self.hmi_data.loc[self.hmi_data['tel_hstrt'] != self.hmi_data['tel_hstrt'].shift(-1),'tot'] = \
+			self.hmi_data['tot'] -\
+			(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel_hstrt'] + 60)*\
+			0.5*(
+				self.hmi_data[self.yvar] + \
+				self.hmi_data[self.yvar].shift(-1) + \
+				(self.hmi_data[self.yvar].shift(-1) - self.hmi_data[self.yvar])/\
+				(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel'])*\
+				(self.hmi_data['tel_hstrt'] + 60 - self.hmi_data['tel'])
+			)
 
 		# Compute the area under the curve for each time period
 		nperiods = (self.end_dt - self.start_dt).days*24/tperiod
@@ -142,12 +168,15 @@ class hmi_data_agg:
 		agg_types,
 		start_dt,
 		end_dt,
-		hmi_path = None
+		hmi_path = None,
+		output_csv = None
 	):
 
 		# Select input data file
-		if not hmi_path:
-			self.in_path = askopenfilename(title = 'Select HMI data input file')
+		if hmi_path:
+			self.hmi_path = hmi_path
+		else:
+			self.hmi_path = askopenfilename(title = 'Select HMI data input file')
 		
 		# Get dates and date strings for output filenames
 		self.start_dt = dt.strptime(start_dt,'%m-%d-%y')
@@ -169,14 +198,17 @@ class hmi_data_agg:
 			# Skip time variable for all other elements we are getting data for
 			self.res_df[elid + '_' + agg_type] = [row[1] for row in report_dat]
 
- 		# Output to directory given
-		op_path = askdirectory(title = 'Directory to save output_file_to:')
-		agg_filename = "HMI{0}_{1}_{2}_{3}.csv".format(self.stype, self.all_elids, start_dt_str, end_dt_str)
-		self.res_df.to_csv(
-			os.path.join(op_path, agg_filename), 
-			index = False, 
-			encoding = 'utf-8'
-		)
+		# Output to directory given
+		if output_csv:
+			op_path = askdirectory(title = 'Directory to save HMI {0} output_file_to:'.format(self.stype))
+			agg_filename = "HMI{0}_{1}_{2}_{3}.csv".format(self.stype, self.all_elids, start_dt_str, end_dt_str)
+			self.res_df.to_csv(
+				os.path.join(op_path, agg_filename), 
+				index = False, 
+				encoding = 'utf-8'
+			)
+
+		return self.res_df
 
 
 	def get_agg_sumst(
@@ -216,8 +248,8 @@ class hmi_data_agg:
 		try:
 			self.res_df
 		except AttributeError:
-			in_path = askopenfilename(title = 'Select file with HMI aggregated data')	 
-			self.res_df = pd.read_csv(in_path)
+			hmi_path = askopenfilename(title = 'Select file with HMI aggregated data')	 
+			self.res_df = pd.read_csv(hmi_path)
 
 		# Get output directory and string with all element ids from report
 		agg_outdir = askdirectory(title = 'Directory to output to')
@@ -320,8 +352,7 @@ if __name__ == '__main__':
 		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
 		'7-12-17', # Start of date range you want summary data for
-		'7-19-17', # End of date range you want summary data for)
-		hmi_path  = 
+		'7-19-17' # End of date range you want summary data for)
 	)
 	# hmi_dat.get_agg_sumst(
 	# 	output_types = ['PLOT','TABLE'],
