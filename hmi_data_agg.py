@@ -257,6 +257,7 @@ class hmi_data_agg:
 
 		# Retrieve element ids from aggregated data
 		elids = self.res_df.columns[1:].values
+		all_elids = '_'.join(elids)
 
 		# Convert Time variable to pd.datetime variable
 		self.res_df['Time'] = pd.to_datetime(self.res_df['Time'])
@@ -325,7 +326,7 @@ class hmi_data_agg:
 			plt.tight_layout()
 
 			# Output plots and/or sumstats csv files to directory of choice
-			plot_filename  = "HMI{0}_{1}_{2}_{3}.png".format(self.stype, self.all_elids, start_dt_str, end_dt_str)
+			plot_filename  = "HMI{0}_{1}_{2}_{3}.png".format(self.stype, all_elids, start_dt_str, end_dt_str)
 			plt.savefig(
 				os.path.join(agg_outdir, plot_filename), 
 				width = 20, 
@@ -334,7 +335,7 @@ class hmi_data_agg:
 
 		if 'TABLE' in output_types:
 
-			sumst_filename = "HMI{0}_{1}_{2}_{3}.csv".format(self.stype, self.all_elids, start_dt_str, end_dt_str)
+			sumst_filename = "HMI{0}_{1}_{2}_{3}.csv".format(self.stype, all_elids, start_dt_str, end_dt_str)
 			agg_sumst.reset_index(inplace = True)
 			agg_sumst.to_csv(
 				os.path.join(agg_outdir, sumst_filename), 
@@ -346,20 +347,22 @@ class hmi_data_agg:
 if __name__ == '__main__':
 	hmi_dat = hmi_data_agg(
 		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-		'water' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
+		'gas' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
 	)
-	hmi_dat.run_report(
-		1, # Number of hours you want to sum/average over
-		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		['total','total'], # Type of aggregate function you want (can be total or average)
-		'9-10-17', # Start of date range you want summary data for
-		'9-22-17', # End of date range you want summary data for)
-		output_csv = 1
-	)
-	# hmi_dat.get_agg_sumst(
-	# 	output_types = ['PLOT','TABLE'],
-	# 	sum_period = 'day',
-	# 	plt_type = 'bar',
-	# 	# plt_colors = ['#90775a','#eeae10'],
-	# 	ylabel = 'Reactor I/O Volumes (Gal/day)'
+	# hmi_dat.run_report(
+	# 	1, # Number of hours you want to sum/average over
+	# 	['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+	# 	['total','total'], # Type of aggregate function you want (can be total or average)
+	# 	'9-10-17', # Start of date range you want summary data for
+	# 	'9-23-17', # End of date range you want summary data for)
+	# 	output_csv = 12
 	# )
+	hmi_dat.get_agg_sumst(
+		output_types = ['PLOT','TABLE'],
+		sum_period = 'day',
+		plt_type = 'bar',
+		start_dt = '5-11-17',
+		end_dt = '9-22-17',
+		plt_colors = ['#90775a','#eeae10'],
+		ylabel = 'Biogas Production (L/day)'
+	)
