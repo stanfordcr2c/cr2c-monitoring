@@ -21,26 +21,27 @@ import get_lab_data as gld
 
 class lab_plots:
 
-	def __init__(self, start_dt, end_dt):
+	def __init__(self, start_dt_str, end_dt_str):
 
-		self.start_dt = start_dt
-		self.end_dt = end_dt
+		self.start_dt_str = start_dt_str
+		self.end_dt_str = end_dt_str
+		self.min_feas_dt = '5-11-17'
 
 	# Sets the start and end dates for the charts, depending on user input
 	def manage_chart_dates(self):
 
-		if self.start_dt == None:
-			self.start_dt = self.min_feas_dt	
+		if self.start_dt_str == None:
+			self.start_dt_str = self.min_feas_dt
+			self.start_dt = dt.strptime(self.min_feas_dt, '%m-%d-%y')
 		else:
-			self.start_dt = dt.strptime(self.start_dt, '%m-%d-%y')
+			self.start_dt = dt.strptime(self.start_dt_str, '%m-%d-%y')
 		
-		if self.end_dt == None:
+		if self.end_dt_str == None:
 			self.end_dt = dt.now()
+			self.end_dt_str = dt.strftime(self.end_dt, '%m-%e-%y')
 		else:
-			self.end_dt = dt.strptime(self.end_dt, '%m-%d-%y')
+			self.end_dt = dt.strptime(self.end_dt_str, '%m-%d-%y')
 
-		self.start_dt_str = dt.strftime(self.start_dt, '%m-%d-%y')
-		self.end_dt_str = dt.strftime(self.end_dt, '%m-%d-%y')
 
 
 	def get_lab_plots(
@@ -213,19 +214,19 @@ class lab_plots:
 			os.chdir(self.charts_outdir)
 
 			# Add and position legend
-			if mtype not in ['PH','ALKALINITY']:
-				handles, labels = ax.get_legend_handles_labels()
-				lgd = ax.legend(handles, labels, loc='upper left', bbox_to_anchor = (1,0.75))
+			if mtype in ['PH','ALKALINITY'] and wrap_var == 'Stage':
 				plt.savefig(
 					plot_filename.format(mtype, self.start_dt_str, self.end_dt_str), 
-					bbox_extra_artists = (lgd,),
 					bbox_inches = 'tight',
 					width = plot_wid, 
 					height = plot_len
 				)
 			else:
+				handles, labels = ax.get_legend_handles_labels()
+				lgd = ax.legend(handles, labels, loc='upper left', bbox_to_anchor = (1,0.75))
 				plt.savefig(
 					plot_filename.format(mtype, self.start_dt_str, self.end_dt_str), 
+					bbox_extra_artists = (lgd,),
 					bbox_inches = 'tight',
 					width = plot_wid, 
 					height = plot_len
@@ -247,6 +248,15 @@ if __name__ == '__main__':
 		['PH','ALKALINITY'], 
 		# Variable to break down into panels according to
 		'Stage',
+		# Stages to Subset to
+		['Microscreen','AFBR','Duty AFMBR Effluent','Duty AFMBR MLSS']
+	)
+	# Create and output charts
+	lplots.get_lab_plots(
+		# List of monitoring data types to produce charts for (correspond to tabs on gsheets workbook)
+		['COD','TSS','VFA'], 
+		# Variable to break down into panels according to
+		'Type',
 		# Stages to Subset to
 		['Microscreen','AFBR','Duty AFMBR Effluent','Duty AFMBR MLSS']
 	)

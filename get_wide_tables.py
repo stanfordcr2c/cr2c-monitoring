@@ -18,8 +18,9 @@ import get_lab_data as gld
 
 class wide_tables:
 	
-	def __init__(self, table_end_dt, ndays_tables):
-		self.table_end_dt = dt.strptime(table_end_dt,'%m-%d-%y')
+	def __init__(self, table_end_dt_str, ndays_tables):
+		self.table_end_dt_str = table_end_dt_str
+		self.table_end_dt = dt.strptime(table_end_dt_str,'%m-%d-%y')
 		self.ndays_tables = ndays_tables
 
 	def long_to_wide(self, df, id_vars):
@@ -88,7 +89,6 @@ class wide_tables:
 		if not self.table_end_dt:
 			self.table_end_dt = dt.now()
 
-		table_end_dt_str  = dt.strftime(self.table_end_dt,'%m-%d-%y')
 		self.table_start_dt = self.table_end_dt - timedelta(days = self.ndays_tables)
 		self.seed_dt = dt.strptime('05-10-17','%m-%d-%y')
 
@@ -131,15 +131,15 @@ class wide_tables:
 		
 		# Save
 		os.chdir(self.tables_outdir)
-		CODtrunc.to_csv('COD_table' + table_end_dt_str + '.csv')
-		VFAtrunc.to_csv('VFA_table' + table_end_dt_str + '.csv')
-		TSS_VSStrunc.to_csv('TSS_VSS_table' + table_end_dt_str + '.csv')
-		ALK_PHtrunc.to_csv('ALK_PH_table' + table_end_dt_str + '.csv')
+		CODtrunc.to_csv('COD_table' + self.table_end_dt_str + '.csv')
+		VFAtrunc.to_csv('VFA_table' + self.table_end_dt_str + '.csv')
+		TSS_VSStrunc.to_csv('TSS_VSS_table' + self.table_end_dt_str + '.csv')
+		ALK_PHtrunc.to_csv('ALK_PH_table' + self.table_end_dt_str + '.csv')
 
 if __name__ == '__main__':
 
 	# Instantiate class
-	wtabs = wide_tables('9-14-17',126)
+	wtabs = wide_tables('9-29-17',133)
 
 	# Create and output charts
 	wtabs.summarize_tables(1)
