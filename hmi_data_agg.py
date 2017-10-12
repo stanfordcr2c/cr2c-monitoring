@@ -47,9 +47,9 @@ class hmi_data_agg:
 			hi_limit = 50
 			lo_limit = 0
 		# Need to add other cleaning types (pressure, namely)
-		else:
-			hi_limit = 1E6
-			lo_limit = -1E6
+		elif self.stype == 'PRESSURE':
+			hi_limit = 16
+			lo_limit = 13.4
 
 		# Load data
 		try:
@@ -66,8 +66,11 @@ class hmi_data_agg:
 		# Rename variable
 		self.hmi_data[self.yvar] = \
 			self.hmi_data[varname.format(elid,'Value', self.qtype)]
-		# Set low/negative values to 0 and remove unreasonably high values
-		self.hmi_data.loc[self.hmi_data[self.yvar] < lo_limit, self.yvar] = 0
+		# Set low/negative values to 0 (if a flow, otherwise remove) and remove unreasonably high values
+		if self.stype in ['GAS','WATER']:
+			self.hmi_data.loc[self.hmi_data[self.yvar] < lo_limit, self.yvar] = 0
+		else:
+			self.hmi_data.loc[self.hmi_data[self.yvar] < lo_limit, self.yvar] = np.NaN	
 		self.hmi_data.loc[self.hmi_data[self.yvar] > hi_limit, self.yvar] = np.NaN			
 		# Rename and format corresponding timestamp variable 
 		self.hmi_data[self.xvar ] = \
