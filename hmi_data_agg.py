@@ -71,7 +71,8 @@ class hmi_data_agg:
 			self.hmi_data.loc[self.hmi_data[self.yvar] < lo_limit, self.yvar] = 0
 		else:
 			self.hmi_data.loc[self.hmi_data[self.yvar] < lo_limit, self.yvar] = np.NaN	
-		self.hmi_data.loc[self.hmi_data[self.yvar] > hi_limit, self.yvar] = np.NaN			
+		self.hmi_data.loc[self.hmi_data[self.yvar] > hi_limit, self.yvar] = np.NaN	
+
 		# Rename and format corresponding timestamp variable 
 		self.hmi_data[self.xvar ] = \
 			self.hmi_data[varname.format(elid, 'Time', self.qtype)]
@@ -103,7 +104,7 @@ class hmi_data_agg:
 			warn_msg = \
 				'Given the range of data available for {0}, accurate aggregate values can only be obtained for: {1} to {2}'
 			print(warn_msg.format(elid, start_dt_warn, end_dt_warn))
-
+		self.hmi_data.to_csv('C:/Users/jbolorinos/Google Drive/Codiga Center/HMI Data/pressure.csv')
 
 	def get_tot_var(
 		self, 
@@ -112,43 +113,43 @@ class hmi_data_agg:
 		agg_type
 	):
 
-		# Calculate time elapsed in minutes (since highest resolution is ~30s)
+		# Calculate time elapsed in seconds
 		self.hmi_data['tel'] = \
 			(self.hmi_data[self.xvar] - self.first_ts)/\
-			np.timedelta64(60,'s')
-		self.hmi_data['hour'] = self.hmi_data[self.xvar].values.astype('datetime64[h]')
-		# Calculate time elapsed in minutes at the beginning of the given hour
-		self.hmi_data['tel_hstrt'] = \
-			(self.hmi_data['hour'] - self.first_ts)/\
-			np.timedelta64(60,'s')
+			np.timedelta64(1,'s')
+		self.hmi_data['minute'] = self.hmi_data[self.xvar].values.astype('datetime64[m]')
+		# Calculate time elapsed in seconds at the beginning of the given minute
+		self.hmi_data['tel_mstrt'] = \
+			(self.hmi_data['minute'] - self.first_ts)/\
+			np.timedelta64(1,'s')
 		
 		# Create a variable giving the totalized component for the given section (tel to tel_next)
 		self.hmi_data['tot'] =\
 			(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel'])*\
 			(self.hmi_data[self.yvar].shift(-1) + self.hmi_data[self.yvar])/2
 
-		# Adjust the totalized component at the beginning of each hour (add the levtover time since 0:00)
-		self.hmi_data.loc[self.hmi_data['tel_hstrt'] != self.hmi_data['tel_hstrt'].shift(1),'tot'] = \
+		# Adjust the totalized component at the beginning of each minute (add the levtover time since 00:00)
+		self.hmi_data.loc[self.hmi_data['tel_mstrt'] != self.hmi_data['tel_mstrt'].shift(1),'tot'] = \
 			self.hmi_data['tot'] +\
-			(self.hmi_data['tel'] - self.hmi_data['tel_hstrt'])*\
+			(self.hmi_data['tel'] - self.hmi_data['tel_mstrt'])*\
 			0.5*(
 				self.hmi_data[self.yvar] +\
 				self.hmi_data[self.yvar].shift(1) +\
 				(self.hmi_data[self.yvar] - self.hmi_data[self.yvar].shift(1))/\
 				(self.hmi_data['tel'] - self.hmi_data['tel'].shift(1))*\
-				(self.hmi_data['tel_hstrt'] - self.hmi_data['tel'].shift(1))
+				(self.hmi_data['tel_mstrt'] - self.hmi_data['tel'].shift(1))
 			)
 		
-		# Adjust the totalized component at the end of each hour (subtract the time after 0:00)
-		self.hmi_data.loc[self.hmi_data['tel_hstrt'] != self.hmi_data['tel_hstrt'].shift(-1),'tot'] = \
+		# Adjust the totalized component at the end of each minute (subtract the time after 00:00)
+		self.hmi_data.loc[self.hmi_data['tel_mstrt'] != self.hmi_data['tel_mstrt'].shift(-1),'tot'] = \
 			self.hmi_data['tot'] -\
-			(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel_hstrt'] - 60)*\
+			(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel_mstrt'] - 60)*\
 			0.5*(
 				self.hmi_data[self.yvar] + \
 				self.hmi_data[self.yvar].shift(-1) + \
 				(self.hmi_data[self.yvar].shift(-1) - self.hmi_data[self.yvar])/\
 				(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel'])*\
-				(self.hmi_data['tel_hstrt'] + 60 - self.hmi_data['tel'])
+				(self.hmi_data['tel_mstrt'] + 60 - self.hmi_data['tel'])
 			)
 
 		# Compute the area under the curve for each time period
@@ -156,20 +157,33 @@ class hmi_data_agg:
 		nperiods = int(nperiods)
 		tots_res = []
 		for period in range(nperiods):
-			start_tel = (self.start_dt - self.first_ts) / np.timedelta64(1,'m') + period*60*tperiod
-			end_tel = start_tel + 60*tperiod
+			start_tel = (self.start_dt - self.first_ts) / np.timedelta64(1,'s') + period*3600*tperiod
+			end_tel = start_tel + 3600*tperiod
 			start_ts = self.start_dt + datetime.timedelta(hours = period*tperiod)
-			ip_tot = self.hmi_data.loc[
+			ip_sec = self.hmi_data.loc[
 				(self.hmi_data['tel'] >= start_tel) & 
 				(self.hmi_data['tel'] <= end_tel),
 				'tot'
-			].sum()
+			]
+			ip_tot = ip_sec.sum()/60 # Dividing by 60 because flowrates are in Gal/min or L/min
 			if agg_type == 'AVERAGE':
 				ip_tot = ip_tot/(60*tperiod)
-			tots_row = [start_ts, ip_tot]
+			tots_row = [start_ts, ip_tot, len(ip_sec)]
 			tots_res.append(tots_row)
 
-		return tots_res
+		# Convert to pandas dataframe	
+		agg_var = elid + '_' + agg_type
+		tots_res = pd.DataFrame(tots_res, columns = ['Time', agg_var, 'observed'])
+		# # Convert rows with no data to missing
+		tots_res.loc[tots_res['observed'] == 0,agg_var] = np.NaN
+		# Fill in these rows by interpolating between values
+		# First declare as time series
+		tots_res.set_index('Time', inplace = True)
+		# Use built in interpolation functionality for time series
+		tots_res.loc[:,agg_var] = tots_res.interpolate()
+		# Convert back to df (with time as variable)
+		tots_res.reset_index(inplace = True)
+		return tots_res[['Time',agg_var]]
 
 
 	def run_report(
@@ -203,11 +217,12 @@ class hmi_data_agg:
 			# Get prepped data
 			self.prep_data(elid)
 			# Get totalized values'
-			report_dat = self.get_tot_var(tperiod, elid, agg_type)
+			tots_res = self.get_tot_var(tperiod, elid, agg_type)
 			if elid == elids[0]:
-				self.res_df = pd.DataFrame([row[0] for row in report_dat], columns = ['Time'])
-			# Skip time variable for all other elements we are getting data for
-			self.res_df[elid + '_' + agg_type] = [row[1] for row in report_dat]
+				self.res_df = tots_res
+			else:
+				# Skip time variable for all other elements we are getting data for
+				self.res_df[elid + '_' + agg_type] = tots_res[elid + '_' + agg_type]
 
 		# Output to directory given
 		if output_csv:
