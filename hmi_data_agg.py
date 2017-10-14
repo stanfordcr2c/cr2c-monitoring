@@ -46,10 +46,12 @@ class hmi_data_agg:
 		elif self.stype == 'TEMP':
 			hi_limit = 50
 			lo_limit = 0
-		# Need to add other cleaning types (pressure, namely)
 		elif self.stype == 'PRESSURE':
 			hi_limit = 16
 			lo_limit = 13.4
+		elif self.stype == 'TMP':
+			hi_limit = 20
+			lo_limit = -20
 
 		# Load data
 		try:
