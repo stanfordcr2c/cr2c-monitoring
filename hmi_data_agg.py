@@ -106,7 +106,7 @@ class hmi_data_agg:
 			warn_msg = \
 				'Given the range of data available for {0}, accurate aggregate values can only be obtained for: {1} to {2}'
 			print(warn_msg.format(elid, start_dt_warn, end_dt_warn))
-		self.hmi_data.to_csv('C:/Users/jbolorinos/Google Drive/Codiga Center/HMI Data/pressure.csv')
+		
 
 	def get_tot_var(
 		self, 
@@ -228,10 +228,9 @@ class hmi_data_agg:
 
 		# Output to directory given
 		if output_csv:
-			op_path = askdirectory(title = 'Directory to save HMI {0} output_file_to:'.format(self.stype))
 			agg_filename = "HMI{0}_{1}_{2}_{3}.csv".format(self.stype, self.all_elids, start_dt_str, end_dt_str)
 			self.res_df.to_csv(
-				os.path.join(op_path, agg_filename), 
+				os.path.join(self.hmi_path, agg_filename), 
 				index = False, 
 				encoding = 'utf-8'
 			)
