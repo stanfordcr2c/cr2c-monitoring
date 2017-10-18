@@ -230,7 +230,9 @@ class hmi_data_agg:
 
 		# Output to directory given
 		if output_csv:
-			agg_filename = "HMI{0}_{1}_{2}_{3}.csv".format(self.stype, self.all_elids, start_dt_str, end_dt_str)
+			agg_filename = "HMI{0}{1}_{2}_{3}_{4}.csv".format(
+				self.stype, str(round(tperiod,2)), self.all_elids, start_dt_str, end_dt_str
+			)
 			self.res_df.to_csv(
 				os.path.join(self.hmi_dir, agg_filename), 
 				index = False, 
