@@ -18,3 +18,4 @@ The contributors to this project are managers and operators of the Codiga Center
 Sebastien Tilmans (Director of Operations)
 Jose Bolorinos (Operator)
 Yinuo Yao (Operator)
+Joanna Lin (Operator)
