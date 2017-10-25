@@ -24,12 +24,11 @@ try:
     flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
 except ImportError:
     flags = None
-
 class cr2c_monitor_run:
 	
 	def __init__(self):
 		
-		self.mtype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA']
+		self.mtype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GasComp']
 		self.min_feas_dt_str = '6-1-16'
 		self.min_feas_dt = dt.strptime(self.min_feas_dt_str, '%m-%d-%y')
 		self.file_dt = dt.now()
@@ -105,10 +104,17 @@ class cr2c_monitor_run:
 				break
 				
 		# Alert user if Box Sync folder not found on machine
-		if self.mondir == None:
-			print("Could not find Codiga Center's Operations folder in Box Sync.")
-			print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
-			sys.exit()
+		if not self.mondir:
+			if os.path.isdir('D:/'):
+				for dirpath, dirname, filename in os.walk('D:/'):
+					if dirpath.find(targetdir) > 0:
+						self.mondir = os.path.join(dirpath,'MonitoringProcedures')
+						print("Found Codiga Center's Operations folder on Box Sync")
+						break
+			if not self.mondir:
+				print("Could not find Codiga Center's Operations folder in Box Sync")
+				print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
+				sys.exit()
 		self.pydir = os.path.join(self.mondir, 'Python')
 		self.data_outdir = os.path.join(self.mondir,'Data')
 
@@ -234,28 +240,33 @@ class cr2c_monitor_run:
 		]
 
 		# Format and clean stage variable
-		self.mdata['Stage'] = self.mdata['Stage'].astype(str)
-		self.mdata['Stage'] = self.mdata['Stage'].str.upper()
-		self.mdata['Stage'] = self.mdata['Stage'].str.strip()
+		if mtype != 'GasComp':
 
-		# Check that the stage variable has been entered correctly
-		correct_stages = ['RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF']
-		stage_warning = \
-			'Check "Stage" entry {0} for {1} on dates: {2}. \n ' +\
-			'"Stage" should be written as one of the following: \n {3}'
-		stage_errors = self.mdata[ ~ self.mdata['Stage'].isin(correct_stages)]
-		if len(stage_errors) > 0:
-			date_err_prt = \
-				[dt.strftime(stage_error,'%m-%d-%y') for stage_error in stage_errors.Date]
-			print(
-				stage_warning.format(
-					stage_errors.Stage.values, mtype, date_err_prt, correct_stages
+			self.mdata['Stage'] = self.mdata['Stage'].astype(str)
+			self.mdata['Stage'] = self.mdata['Stage'].str.upper()
+			self.mdata['Stage'] = self.mdata['Stage'].str.strip()
+
+			# Check that the stage variable has been entered correctly
+			correct_stages = ['RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF']
+			stage_warning = \
+				'Check "Stage" entry {0} for {1} on dates: {2}. \n ' +\
+				'"Stage" should be written as one of the following: \n {3}'
+			stage_errors = self.mdata[ ~ self.mdata['Stage'].isin(correct_stages)]
+			if len(stage_errors) > 0:
+				date_err_prt = \
+					[dt.strftime(stage_error,'%m-%d-%y') for stage_error in stage_errors.Date]
+				print(
+					stage_warning.format(
+						stage_errors.Stage.values, mtype, date_err_prt, correct_stages
+					)
 				)
-			)
-			sys.exit()
+				sys.exit()
+			# Get descriptive stage variable
+			self.get_stage_descs()
 
 		# Format and clean other variables
 		if mtype == 'COD':
+
 			self.mdata['Type'] = self.mdata['Type'].astype(str)
 			self.mdata['Type'] = self.mdata['Type'].str.upper()
 			self.mdata['Type'] = self.mdata['Type'].str.strip()
@@ -298,12 +309,16 @@ class cr2c_monitor_run:
 			self.set_var_format(mtype,'Acetate (mgCOD/L)', float, 'numeric')
 			self.set_var_format(mtype,'Propionate (mgCOD/L)', float, 'numeric')
 
+		if mtype == 'GasComp':
+			self.set_var_format(mtype,'Helium pressure (psi) +/- 50 psi', float, 'numeric')
+			self.set_var_format(mtype,'Nitrogen (%)', float, 'numeric')
+			self.set_var_format(mtype,'Oxygen (%)', float, 'numeric')
+			self.set_var_format(mtype,'Methane (%)', float, 'numeric')
+			self.set_var_format(mtype,'Carbon Dioxide (%)', float, 'numeric')
+			
 		# Get the obs_id variable (This step also removes duplicates and issues warnings)
 		self.manage_dups(mtype, id_vars)
 		self.mdata.reset_index(inplace = True)
-
-		# Get descriptive stage variable
-		self.get_stage_descs()
 
 
 	# Converts dataset to long 
@@ -313,14 +328,17 @@ class cr2c_monitor_run:
 		df_long = pd.melt(self.mdata, id_vars = id_vars, value_vars = value_vars)
 
 		# Reorder columns
-		df_long = df_long[['Date_Time','Stage','variable','obs_id','value']]
-		
-		# Rename columns 
-		varnames = ['Date_Time','Stage','Type','obs_id','Value']
-		if mtype in ['PH','ALKALINITY']:
-			# Get rid of additional column in PH and Alkalinity data
-			df_long = df_long[['Date_Time','Stage','obs_id','value']]
+		if mtype == 'GasComp':
+			col_order = ['Date_Time','Hel_Pressure','variable','obs_id','value']
+			varnames = ['Date_Time','Hel_Pressure','Type','obs_id','Value']
+		elif mtype in ['PH','ALKALINITY']:
+			col_order = ['Date_Time','Stage','obs_id','value']
 			varnames = ['Date_Time','Stage','obs_id','Value']
+		else:	
+			col_order = ['Date_Time','Stage','variable','obs_id','value']
+			varnames = ['Date_Time','Stage','Type','obs_id','Value']
+
+		df_long = df_long[col_order]
 		df_long.columns = varnames
 
 		return df_long
@@ -342,13 +360,16 @@ class cr2c_monitor_run:
 
 			# Get data and header, convert to pandas data frame and clean
 			mdata_list = sheet['values']
+
 			headers = mdata_list.pop(0) 
 			self.mdata = pd.DataFrame(mdata_list, columns = headers)
+
 			if mtype == 'COD':
 				self.clean_dataset(mtype,['Date','Stage','Type'])
+			elif mtype == 'GasComp':
+				self.clean_dataset(mtype,['Date','Helium pressure (psi) +/- 50 psi'])
 			else:
 				self.clean_dataset(mtype,['Date','Stage'])
-
 
 			# ======================================= pH ======================================= #
 			if mtype == 'PH':
@@ -418,6 +439,7 @@ class cr2c_monitor_run:
 				id_vars = ['Date_Time','Stage','obs_id']			
 				value_vars = 'ALKALINITY'
 
+			# ======================================= VFA =============================================== #
 			if mtype == 'VFA':
 
 				# Compute VFA concentrations
@@ -427,6 +449,15 @@ class cr2c_monitor_run:
 				# Set id and value vars for recasting
 				id_vars = ['Date_Time','Stage','obs_id']
 				value_vars = ['Acetate','Propionate']
+
+			# ======================================= GasComp ============================================ #
+			if mtype == 'GasComp':
+
+				self.mdata['Hel_Pressure'] = self.mdata['Helium pressure (psi) +/- 50 psi']
+				# Set id and value vars for recasting
+				id_vars = ['Date_Time','Hel_Pressure','obs_id']
+				value_vars = ['Nitrogen (%)','Oxygen (%)','Methane (%)','Carbon Dioxide (%)']
+
 
 			# Add Sample Date-Time variable from PH
 			if mtype != 'PH':

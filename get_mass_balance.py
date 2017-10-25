@@ -109,7 +109,7 @@ def get_cod_bal(
 	cod_dly = cod_dat.groupby(['Date_Time','Stage','Type']).mean()
 	# Convert to wide to get COD in and out of the reactors
 	cod_dly_wide = cod_dly.unstack(['Stage','Type'])
-	cod_dly_wide['COD In']  = cod_dly_wide['Value']['Microscreen']['Soluble']
+	cod_dly_wide['COD In']  = cod_dly_wide['Value']['Microscreen']['Total']
 	cod_dly_wide['COD Out'] = cod_dly_wide['Value']['Duty AFMBR Effluent']['Soluble']
 	cod_dly_wide.reset_index(inplace = True)
 	cod_dly_wide['Date'] = cod_dly_wide['Date_Time'].dt.date
@@ -137,7 +137,6 @@ def get_cod_bal(
 		columns = ['Date','CH4%','CO2%']
 	)
 
-
 	# Gas Production HMI Data
 	gasprod_dly['Time']       = pd.to_datetime(gasprod_dly['Time'])
 	gasprod_dly['Date']       = gasprod_dly['Time'].dt.date
@@ -155,7 +154,7 @@ def get_cod_bal(
 	temp_dly['Time']         = pd.to_datetime(temp_dly['Time'])
 	temp_dly['Date']         = temp_dly['Time'].dt.date
 	temp_dly['Reactor Temp'] = temp_dly[[elid + '_AVERAGE' for elid in temp_elids]].mean(axis = 1)
-	temp_dly_clean = temp_dly[['Date','Reactor Temp']]
+	temp_dly_clean           = temp_dly[['Date','Reactor Temp']]
 
 	# List of all dataframes
 	dfs_dly = [temp_dly_clean, feeding_dly_clean, gasprod_dly_clean, cod_dly_clean, gc_dly_clean]
@@ -174,24 +173,38 @@ def get_cod_bal(
 		gasprod_thry.append(
 			ebg.get_biogas_prod(
 				BODrem = row['COD Consumed'], 
-				infSO4 = 0, 
+				infSO4 = 4, 
 				temp = row['Reactor Temp'], 
 				percCH4 = row['CH4%']/100, 
 				percCO2 = row['CO2%']/100, 
 				# This script takes units of m3/day
-				flowrate = row['Flow In']*0.00378541, 
+				flowrate = row['Flow Out']*0.00378541, 
 				precision = 1E-6
 			)
 		)
 
 	cod_bal_dly['Thr CH4 Prod'] = [row[0] for row in gasprod_thry]
 	cod_bal_dly['Thr Biogas Prod'] = [row[1] for row in gasprod_thry]
-	cod_bal_dly['CH4 Prod Discrep (%)'] = \
-		(cod_bal_dly['Est CH4 Prod'] - cod_bal_dly['Thr CH4 Prod'])/cod_bal_dly['Thr CH4 Prod']	
+	cod_bal_dly['CH4 Prod Ratio'] = \
+		cod_bal_dly['Est CH4 Prod']/cod_bal_dly['Thr CH4 Prod']	
+
+	days_el = (cod_bal_dly['Date'] - cod_bal_dly['Date'][0])/np.timedelta64(24,'h')
+	z = np.polyfit(
+		days_el, 
+		cod_bal_dly['CH4 Prod Ratio'], 
+		1
+	)
+	p = np.poly1d(z)
 
 	cod_bal_dly.to_csv('C:/Users/jbolorinos/Google Drive/Codiga Center/Miscellany/balance.csv')
-
-	# cod_bal_dly[['CH4 Discrep %']] = 
+	fig, ax = plt.subplots()
+	plt.plot(cod_bal_dly['Date'],cod_bal_dly['CH4 Prod Ratio'])
+	plt.plot(cod_bal_dly['Date'],p(days_el),"r--")
+	plt.ylabel('Ratio of Actual to Theoretical ' + r'$CH_4$' + ' production')
+	labels = ax.get_xticklabels()
+	plt.setp(labels, rotation=30)
+	plt.tight_layout()
+	plt.show()
 
 
 get_cod_bal(

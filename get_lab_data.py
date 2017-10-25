@@ -26,10 +26,17 @@ def get_indir():
 			break
 			
 	# Alert user if Box Sync folder not found on machine
-	if mondir == None:
-		print("Could not find Codiga Center's Operations folder in Box Sync.")
-		print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
-		sys.exit()
+	if not mondir:
+		if os.path.isdir('D:/'):
+			for dirpath, dirname, filename in os.walk('D:/'):
+				if dirpath.find(targetdir) > 0:
+					mondir = os.path.join(dirpath,'MonitoringProcedures')
+					print("Found Codiga Center's Operations folder on Box Sync")
+					break
+		if not mondir:
+			print("Could not find Codiga Center's Operations folder in Box Sync")
+			print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
+			sys.exit()
 	
 	return os.path.join(mondir,'Data')
 
