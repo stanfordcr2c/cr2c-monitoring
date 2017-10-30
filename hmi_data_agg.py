@@ -18,6 +18,8 @@ import datetime as datetime
 from datetime import datetime as dt
 from datetime import timedelta as tdelt
 from pandas import read_excel
+import get_lab_data as gld
+import sqlite3
 import os
 import sys
 from tkinter.filedialog import askopenfilename
@@ -174,18 +176,17 @@ class hmi_data_agg:
 			tots_res.append(tots_row)
 
 		# Convert to pandas dataframe	
-		agg_var = elid + '_' + agg_type
-		tots_res = pd.DataFrame(tots_res, columns = ['Time', agg_var, 'observed'])
+		tots_res = pd.DataFrame(tots_res, columns = ['Time', 'Value', 'observed'])
 		# # Convert rows with no data to missing
-		tots_res.loc[tots_res['observed'] == 0,agg_var] = np.NaN
+		tots_res.loc[tots_res['observed'] == 0,'Value'] = np.NaN
 		# Fill in these rows by interpolating between values
 		# First declare as time series
 		tots_res.set_index('Time', inplace = True)
 		# Use built in interpolation functionality for time series
-		tots_res.loc[:,agg_var] = tots_res.interpolate()
+		tots_res.loc[:,'Value'] = tots_res.interpolate()
 		# Convert back to df (with time as variable)
 		tots_res.reset_index(inplace = True)
-		return tots_res[['Time',agg_var]]
+		return tots_res[['Time','Value']]
 
 
 	def run_report(
@@ -193,8 +194,8 @@ class hmi_data_agg:
 		tperiod,
 		elids,
 		agg_types,
-		start_dt,
-		end_dt,
+		start_dt_str,
+		end_dt_str,
 		hmi_path = None,
 		output_csv = None
 	):
@@ -205,44 +206,31 @@ class hmi_data_agg:
 			self.hmi_dir = os.path.dirname(hmi_path)
 		else:
 			self.hmi_path = askopenfilename(title = 'Select HMI data input file')
-			self.hmi_dir = os.path.dirname(hmi_path)
+			self.hmi_dir = os.path.dirname(self.hmi_path)
+
+		# Retrieve sql table directory
+		table_dir = gld.get_indir()
 		
 		# Get dates and date strings for output filenames
-		self.start_dt = dt.strptime(start_dt,'%m-%d-%y')
-		self.end_dt = dt.strptime(end_dt,'%m-%d-%y')
-		start_dt_str = dt.strftime(self.start_dt, '%m-%d-%y')
-		end_dt_str = dt.strftime(self.end_dt, '%m-%d-%y')
+		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
+		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
 
-		# Get string of all element ids and clean agg_types input
-		self.all_elids = '_'.join(elids) 
 		agg_types = [agg_type.upper() for agg_type in agg_types]
 
 		for elid, agg_type in zip(elids, agg_types):
+
 			# Get prepped data
 			self.prep_data(elid)
 			# Get totalized values'
 			tots_res = self.get_tot_var(tperiod, elid, agg_type)
-			if elid == elids[0]:
-				self.res_df = tots_res
-			else:
-				# Skip time variable for all other elements we are getting data for
-				self.res_df[elid + '_' + agg_type] = tots_res[elid + '_' + agg_type]
-
-		# Output to directory given
-		if output_csv:
-			agg_filename = "HMI{0}{1}_{2}_{3}_{4}.csv".format(
-				self.stype, str(round(tperiod,2)), self.all_elids, start_dt_str, end_dt_str
-			)
-			self.res_df.to_csv(
-				os.path.join(self.hmi_dir, agg_filename), 
-				index = False, 
-				encoding = 'utf-8'
-			)
-
-		return self.res_df
+			# Load data to SQL
+			os.chdir(table_dir)
+			conn = sqlite3.connect('cr2c_hmi_agg_data.db')
+			tots_res.to_sql('{0}_{1}s_{2}hour'.format(elid, agg_type, tperiod), conn, if_exists = 'replace', index = False)
 
 
 if __name__ == '__main__':
+
 	hmi_dat = hmi_data_agg(
 		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
 		'gas' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
@@ -251,9 +239,8 @@ if __name__ == '__main__':
 		1, # Number of hours you want to sum/average over
 		['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
-		'8-7-17', # Start of date range you want summary data for
-		'10-7-17', # End of date range you want summary data for)
-		output_csv = 1
+		'10-20-17', # Start of date range you want summary data for
+		'10-28-17' # End of date range you want summary data for)
 	)
 	hmi_dat = hmi_data_agg(
 		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
@@ -263,7 +250,6 @@ if __name__ == '__main__':
 		1, # Number of hours you want to sum/average over
 		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
-		'8-7-17', # Start of date range you want summary data for
-		'10-7-17', # End of date range you want summary data for)
-		output_csv = 1
+		'10-20-17', # Start of date range you want summary data for
+		'10-28-17' # End of date range you want summary data for)
 	)
