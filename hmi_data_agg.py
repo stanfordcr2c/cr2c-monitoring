@@ -226,30 +226,41 @@ class hmi_data_agg:
 			# Load data to SQL
 			os.chdir(table_dir)
 			conn = sqlite3.connect('cr2c_hmi_agg_data.db')
-			tots_res.to_sql('{0}_{1}s_{2}hour'.format(elid, agg_type, tperiod), conn, if_exists = 'replace', index = False)
+			tots_res.to_sql('{0}_{1}s_{2}hour'.format(elid, agg_type, tperiod), conn, if_exists = 'append', index = False)
 
 
 if __name__ == '__main__':
 
-	hmi_dat = hmi_data_agg(
-		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-		'gas' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
-	)
-	hmi_dat.run_report(
-		1, # Number of hours you want to sum/average over
-		['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		['total','total'], # Type of aggregate function you want (can be total or average)
-		'10-20-17', # Start of date range you want summary data for
-		'10-28-17' # End of date range you want summary data for)
-	)
-	hmi_dat = hmi_data_agg(
-		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-		'water' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
-	)
-	hmi_dat.run_report(
-		1, # Number of hours you want to sum/average over
-		['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		['total','total'], # Type of aggregate function you want (can be total or average)
-		'10-20-17', # Start of date range you want summary data for
-		'10-28-17' # End of date range you want summary data for)
-	)
+	# hmi_dat = hmi_data_agg(
+	# 	'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
+	# 	'gas' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
+	# )
+	# hmi_dat.run_report(
+	# 	1, # Number of hours you want to sum/average over
+	# 	['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+	# 	['total','total'], # Type of aggregate function you want (can be total or average)
+	# 	'10-21-17', # Start of date range you want summary data for
+	# 	'10-28-17' # End of date range you want summary data for)
+	# )
+	# hmi_dat = hmi_data_agg(
+	# 	'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
+	# 	'water' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
+	# )
+	# hmi_dat.run_report(
+	# 	1, # Number of hours you want to sum/average over
+	# 	['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+	# 	['total','total'], # Type of aggregate function you want (can be total or average)
+	# 	'10-21-17', # Start of date range you want summary data for
+	# 	'10-28-17' # End of date range you want summary data for)
+	# )
+	# hmi_dat = hmi_data_agg(
+	# 	'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
+	# 	'tmp' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
+	# )
+	# hmi_dat.run_report(
+	# 	1, # Number of hours you want to sum/average over
+	# 	['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+	# 	['average'], # Type of aggregate function you want (can be total or average)
+	# 	'10-12-17', # Start of date range you want summary data for
+	# 	'10-28-17' # End of date range you want summary data for)
+	# )
