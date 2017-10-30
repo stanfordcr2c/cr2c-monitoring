@@ -469,7 +469,8 @@ class cr2c_monitor_run:
 			# Load data to SQL
 			os.chdir(self.data_outdir)
 			conn = sqlite3.connect('cr2c_lab_data.db')
-			mdata_long.to_sql(mtype + '_data', conn, if_exists = 'replace', index = False)
+			mdata_long.to_sql(mtype + '_data', conn, if_exists = 'append', index = False)
+
 
 # Execute script
 if __name__ == "__main__":
