@@ -39,29 +39,45 @@ def get_indir():
 	
 	return os.path.join(mondir,'Data')
 
-def get_data(elids, agg_types, tperiods):
+def get_data(elids, agg_types, tperiods, ttypes, year, month_sub = None):
 
 	data_indir = get_indir()
 
+	# Clean user inputs
+	ttypes = [ttype.upper() for ttype in ttypes]
+	agg_types = [agg_type.upper() for agg_type in agg_types]
+
 	# Load data from SQL
 	os.chdir(data_indir)
-	conn = sqlite3.connect('cr2c_hmi_agg_data.db')
+	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
 	hmi_data_all = {}
 
-	for elid, agg_type, tperiod in zip(elids, agg_types, tperiods):
+	for elid, agg_type, tperiod, ttype in zip(elids, agg_types, tperiods, ttypes):
+
+		if month_sub:
+
+			sql_str = """
+				SELECT * FROM {0}_{1}{2}_{3}S
+				WHERE Month = {4}
+			""".format(elid, tperiod, ttype, agg_type, month_sub)
+
+		else:
+
+			sql_str = "SELECT * FROM {0}_{1}{2}_{3}S".format(elid, tperiod, ttype, agg_type)
 
 		hmi_data = pd.read_sql(
-			'SELECT * FROM {0}_{1}s_{2}hour'.format(elid, agg_type, tperiod), 
+			sql_str, 
 			conn, 
 			coerce_float = True
 		)
 
-
 		# Dedupe data (some issue with duplicates)
 		hmi_data.drop_duplicates(inplace = True)
+		hmi_data.sort_values('Time', inplace = True)
+		# Format the time variable
+		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
 
-		hmi_data_all['{0}_{1}_{2}hour'.format(elid, agg_type, tperiod)] = hmi_data
+		hmi_data_all['{0}_{1}{2}_{3}S'.format(elid, tperiod, ttype, agg_type, month_sub)] = hmi_data
 
 	return hmi_data_all
-
 
