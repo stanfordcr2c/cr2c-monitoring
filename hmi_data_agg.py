@@ -113,9 +113,16 @@ class hmi_data_agg:
 	def get_tot_var(
 		self, 
 		tperiod,
+		ttype,
 		elid, 
 		agg_type
 	):
+
+		# Compute the area under the curve for each time period
+		if ttype == 'MINUTE':
+			tperiod_hrs = tperiod/60
+		else:
+			tperiod_hrs = tperiod
 
 		# Calculate time elapsed in seconds
 		self.hmi_data['tel'] = \
@@ -156,14 +163,13 @@ class hmi_data_agg:
 				(self.hmi_data['tel_mstrt'] + 60 - self.hmi_data['tel'])
 			)
 
-		# Compute the area under the curve for each time period
-		nperiods = (self.end_dt - self.start_dt).days*24/tperiod
+		nperiods = (self.end_dt - self.start_dt).days*24/tperiod_hrs
 		nperiods = int(nperiods)
 		tots_res = []
 		for period in range(nperiods):
-			start_tel = (self.start_dt - self.first_ts) / np.timedelta64(1,'s') + period*3600*tperiod
-			end_tel = start_tel + 3600*tperiod
-			start_ts = self.start_dt + datetime.timedelta(hours = period*tperiod)
+			start_tel = (self.start_dt - self.first_ts) / np.timedelta64(1,'s') + period*3600*tperiod_hrs
+			end_tel = start_tel + 3600*tperiod_hrs
+			start_ts = self.start_dt + datetime.timedelta(hours = period*tperiod_hrs)
 			ip_sec = self.hmi_data.loc[
 				(self.hmi_data['tel'] >= start_tel) & 
 				(self.hmi_data['tel'] <= end_tel),
@@ -171,7 +177,7 @@ class hmi_data_agg:
 			]
 			ip_tot = ip_sec.sum()/60 # Dividing by 60 because flowrates are in Gal/min or L/min
 			if agg_type == 'AVERAGE':
-				ip_tot = ip_tot/(60*tperiod)
+				ip_tot = ip_tot/(60*tperiod_hrs)
 			tots_row = [start_ts, ip_tot, len(ip_sec)]
 			tots_res.append(tots_row)
 
@@ -191,13 +197,15 @@ class hmi_data_agg:
 
 	def run_report(
 		self,
-		tperiod,
+		tperiods,
+		ttypes,
 		elids,
 		agg_types,
 		start_dt_str,
 		end_dt_str,
 		hmi_path = None,
-		output_csv = None
+		output_csv = False,
+		output_sql = True
 	):
 
 		# Select input data file
@@ -208,59 +216,104 @@ class hmi_data_agg:
 			self.hmi_path = askopenfilename(title = 'Select HMI data input file')
 			self.hmi_dir = os.path.dirname(self.hmi_path)
 
-		# Retrieve sql table directory
-		table_dir = gld.get_indir()
-		
 		# Get dates and date strings for output filenames
 		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
 		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
 
-		agg_types = [agg_type.upper() for agg_type in agg_types]
+		# Retrieve sql table directory
+		table_dir = gld.get_indir()
+		os.chdir(table_dir)
 
-		for elid, agg_type in zip(elids, agg_types):
+		# Open connection to sql database file
+		if output_sql:
+			conn = sqlite3.connect('cr2c_hmi_agg_data_{0}.db'.format(self.start_dt.year))
+
+		agg_types = [agg_type.upper() for agg_type in agg_types]
+		ttypes = [ttype.upper() for ttype in ttypes]
+
+		for elid, agg_type, tperiod, ttype in zip(elids, agg_types, tperiods, ttypes):
 
 			# Get prepped data
 			self.prep_data(elid)
 			# Get totalized values'
-			tots_res = self.get_tot_var(tperiod, elid, agg_type)
-			# Load data to SQL
-			os.chdir(table_dir)
-			conn = sqlite3.connect('cr2c_hmi_agg_data.db')
-			tots_res.to_sql('{0}_{1}s_{2}hour'.format(elid, agg_type, tperiod), conn, if_exists = 'append', index = False)
 
+			tots_res = self.get_tot_var(tperiod, ttype, elid, agg_type)
+			# Get month integer (for possible partitioning later on)
+			tots_res['Month'] = tots_res['Time'].dt.month
+			
+			# Reorder columns and set time index
+			# tots_res.set_index(tots_res['Time'], inplace = True)
+			tots_res = tots_res[['Time','Month','Value']]
+
+			# Output data as desired
+			if output_sql:
+
+				# SQL command strings for sqlite3
+				create_str = """
+					CREATE TABLE IF NOT EXISTS {0}_{1}{2}_{3}S (Time , Month, Value)
+				"""
+
+				insert_str = """
+					INSERT OR REPLACE INTO {0}_{1}{2}_{3}S (Time, Month, Value)
+					VALUES (?,?,?)
+				"""
+
+				# Load data to SQL
+				# Create the table if it doesn't exist
+				conn.execute(create_str.format(elid, tperiod, ttype, agg_type))
+				# Insert aggregated values for the elid and time period
+				conn.executemany(
+					insert_str.format(elid, tperiod, ttype, agg_type),
+					tots_res.to_records(index = False).tolist()
+				)
+				conn.commit()
+
+			if output_csv:
+				os.chdir(self.hmi_dir)
+				tots_res.to_csv('{0}_{1}{2}_{3}S.csv'.format(elid, tperiod, ttype, agg_type), index = False, encoding = 'utf-8')
+
+		# Close connection to sql database file
+		if output_sql:
+			conn.close()
 
 if __name__ == '__main__':
 
-	# hmi_dat = hmi_data_agg(
-	# 	'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-	# 	'gas' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
-	# )
-	# hmi_dat.run_report(
-	# 	1, # Number of hours you want to sum/average over
-	# 	['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-	# 	['total','total'], # Type of aggregate function you want (can be total or average)
-	# 	'10-21-17', # Start of date range you want summary data for
-	# 	'10-28-17' # End of date range you want summary data for)
-	# )
-	# hmi_dat = hmi_data_agg(
-	# 	'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-	# 	'water' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
-	# )
-	# hmi_dat.run_report(
-	# 	1, # Number of hours you want to sum/average over
-	# 	['FT202','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-	# 	['total','total'], # Type of aggregate function you want (can be total or average)
-	# 	'10-21-17', # Start of date range you want summary data for
-	# 	'10-28-17' # End of date range you want summary data for)
-	# )
-	# hmi_dat = hmi_data_agg(
-	# 	'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-	# 	'tmp' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
-	# )
-	# hmi_dat.run_report(
-	# 	1, # Number of hours you want to sum/average over
-	# 	['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-	# 	['average'], # Type of aggregate function you want (can be total or average)
-	# 	'10-12-17', # Start of date range you want summary data for
-	# 	'10-28-17' # End of date range you want summary data for)
-	# )
+	hmi_dat = hmi_data_agg(
+		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
+		'gas' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
+	)
+	hmi_dat.run_report(
+		[1,1], # Number of hours you want to sum/average over
+		['hour','hour'], # Type of time period (can be "hour" or "minute")
+		['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+		['total','total'], # Type of aggregate function you want (can be total or average)
+		'10-21-17', # Start of date range you want summary data for
+		'10-28-17' # End of date range you want summary data for)
+	)
+
+	hmi_dat = hmi_data_agg(
+		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
+		'water' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
+	)
+	hmi_dat.run_report(
+		[1,1,5], # Number of time periods you want to sum/average over
+		['hour','hour','minute'], # Type of time period (can be "hour" or "minute")
+		['FT202','FT305','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+		['total','total','average'], # Type of aggregate function you want (can be total or average)
+		'10-21-17', # Start of date range you want summary data for
+		'10-28-17' # End of date range you want summary data for)
+	)
+	hmi_dat = hmi_data_agg(
+		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
+		'tmp' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
+	)
+	hmi_dat.run_report(
+		[5], # Number of hours you want to sum/average over
+		['minute'],
+		['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+		['average'], # Type of aggregate function you want (can be total or average)
+		'10-21-17', # Start of date range you want summary data for
+		'10-28-17' # End of date range you want summary data for)
+	)
+
+
