@@ -2,7 +2,6 @@
 sys_runtime.py combines AIT302 TMP and FT305 flow rate data from HMI, AFMBR Effluent 
 Turbidity data from CR2CMonitoringData Google sheet. 
 
-
 Outputs:
 1. A csv file of the combined data showing whether system is running or not, and 
 whether the effluent is clear or not at each sampling timestamp. 
@@ -108,8 +107,11 @@ def plot_result():
 
 	# set up xy labels, ticks and figure legend
 	ax.set_xlabel('Date')
-	ax.set_ylabel('Historical Transmembrane Pressure (psi)')
-	ax2.set_ylabel('System Run Time (hr)')
+	ax.set_ylabel('Historical Transmembrane Pressure (psi)', labelpad=45)
+	ax.yaxis.set_label_position('right')
+	ax2.set_ylabel('System Run Time (hr)', labelpad=25)
+	ax2.set_ylim(-5, max(result['System RunTime']))
+	ax2.yaxis.set_label_position('left')
 	dateFmt = mdates.DateFormatter('%m/%d')
 	ax.xaxis.set_major_formatter(dateFmt)
 	ax.legend()
