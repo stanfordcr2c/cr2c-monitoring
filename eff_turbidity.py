@@ -96,28 +96,29 @@ def plot_result():
 
 	# plot continuous TMP data as lines
 	fig, ax = plt.subplots(figsize=(15, 5))
-	tmp = ax.plot(tmp.index, tmp.TMP, label='TMP from HMI')
+	ax2 = ax.twinx()
+	tmp = ax2.plot(tmp.index, tmp.TMP, label='TMP from HMI')
 
 	# plot clear effluent at blue points, and non-clear effluent as red points
-	ax2 = ax.twinx()
 	clear = result[result['Effluent is clear?'] == 'Yes']
 	not_clear = result[result['Effluent is clear?'] == 'No']
 	clear = ax.scatter(clear.index, clear['System RunTime'], color='b', s=55, label='Clear')
 	not_clear = ax.scatter(not_clear.index, not_clear['System RunTime'], color='r', label='Not Clear')
 
-	# set up xy labels, ticks and figure legend
+	# set up xy labels and ticks
 	ax.set_xlabel('Date')
 	ax.set_ylabel('Historical Transmembrane Pressure (psi)', labelpad=45)
 	ax.yaxis.set_label_position('right')
 	ax2.set_ylabel('System Run Time (hr)', labelpad=25)
-	ax2.set_ylim(-5, max(result['System RunTime']))
 	ax2.yaxis.set_label_position('left')
 	dateFmt = mdates.DateFormatter('%m/%d')
 	ax.xaxis.set_major_formatter(dateFmt)
-	ax.legend()
 
-	# autoscale x and y axes to show a tight plot
-	ax2.autoscale(enable=True, tight='True')
+	# combine legend from both ax and ax2
+	h1, l1 = ax.get_legend_handles_labels()
+	h2, l2 = ax2.get_legend_handles_labels()
+	ax.legend(h1+h2, l1+l2, loc = 4)
+	ax2.autoscale(enable=True, tight='True') 
 	plt.show()
 	fig.savefig(os.path.join(data_dir,'run_time_vs_eff_turbidity.png'))
 
