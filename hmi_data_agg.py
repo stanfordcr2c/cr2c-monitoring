@@ -114,8 +114,7 @@ class hmi_data_agg:
 		self, 
 		tperiod,
 		ttype,
-		elid, 
-		agg_type
+		elid
 	):
 
 		# Compute the area under the curve for each time period
@@ -175,9 +174,9 @@ class hmi_data_agg:
 				(self.hmi_data['tel'] <= end_tel),
 				'tot'
 			]
-			ip_tot = ip_sec.sum()/60 # Dividing by 60 because flowrates are in Gal/min or L/min
-			if agg_type == 'AVERAGE':
-				ip_tot = ip_tot/(60*tperiod_hrs)
+			# Dividing by 3600 because the time period is relative to hours 
+			# and the ip_sec variable is added up over seconds
+			ip_tot = ip_sec.sum()/(3600*tperiod_hrs)
 			tots_row = [start_ts, ip_tot, len(ip_sec)]
 			tots_res.append(tots_row)
 
@@ -200,7 +199,6 @@ class hmi_data_agg:
 		tperiods,
 		ttypes,
 		elids,
-		agg_types,
 		start_dt_str,
 		end_dt_str,
 		hmi_path = None,
@@ -228,16 +226,15 @@ class hmi_data_agg:
 		if output_sql:
 			conn = sqlite3.connect('cr2c_hmi_agg_data_{0}.db'.format(self.start_dt.year))
 
-		agg_types = [agg_type.upper() for agg_type in agg_types]
 		ttypes = [ttype.upper() for ttype in ttypes]
 
-		for elid, agg_type, tperiod, ttype in zip(elids, agg_types, tperiods, ttypes):
+		for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
 
 			# Get prepped data
 			self.prep_data(elid)
 			# Get totalized values'
 
-			tots_res = self.get_tot_var(tperiod, ttype, elid, agg_type)
+			tots_res = self.get_tot_var(tperiod, ttype, elid)
 			# Get month integer (for possible partitioning later on)
 			tots_res['Month'] = tots_res['Time'].dt.month
 			
@@ -260,17 +257,17 @@ class hmi_data_agg:
 
 				# Load data to SQL
 				# Create the table if it doesn't exist
-				conn.execute(create_str.format(elid, tperiod, ttype, agg_type))
+				conn.execute(create_str.format(elid, tperiod, ttype, 'AVERAGE'))
 				# Insert aggregated values for the elid and time period
 				conn.executemany(
-					insert_str.format(elid, tperiod, ttype, agg_type),
+					insert_str.format(elid, tperiod, ttype, 'AVERAGE'),
 					tots_res.to_records(index = False).tolist()
 				)
 				conn.commit()
 
 			if output_csv:
 				os.chdir(self.hmi_dir)
-				tots_res.to_csv('{0}_{1}{2}_{3}S.csv'.format(elid, tperiod, ttype, agg_type), index = False, encoding = 'utf-8')
+				tots_res.to_csv('{0}_{1}{2}_{3}S.csv'.format(elid, tperiod, ttype, 'AVERAGE'), index = False, encoding = 'utf-8')
 
 		# Close connection to sql database file
 		if output_sql:
@@ -287,8 +284,8 @@ if __name__ == '__main__':
 		['hour','hour'], # Type of time period (can be "hour" or "minute")
 		['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total'], # Type of aggregate function you want (can be total or average)
-		'10-21-17', # Start of date range you want summary data for
-		'10-28-17' # End of date range you want summary data for)
+		'5-11-17', # Start of date range you want summary data for
+		'8-20-17' # End of date range you want summary data for)
 	)
 
 	hmi_dat = hmi_data_agg(
@@ -300,8 +297,8 @@ if __name__ == '__main__':
 		['hour','hour','minute'], # Type of time period (can be "hour" or "minute")
 		['FT202','FT305','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['total','total','average'], # Type of aggregate function you want (can be total or average)
-		'10-21-17', # Start of date range you want summary data for
-		'10-28-17' # End of date range you want summary data for)
+		'5-11-17', # Start of date range you want summary data for
+		'8-20-17' # End of date range you want summary data for)
 	)
 	hmi_dat = hmi_data_agg(
 		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
@@ -312,8 +309,8 @@ if __name__ == '__main__':
 		['minute'],
 		['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['average'], # Type of aggregate function you want (can be total or average)
-		'10-21-17', # Start of date range you want summary data for
-		'10-28-17' # End of date range you want summary data for)
+		'5-11-17', # Start of date range you want summary data for
+		'8-20-17' # End of date range you want summary data for)
 	)
 
 
