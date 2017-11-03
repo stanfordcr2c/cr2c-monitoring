@@ -39,31 +39,30 @@ def get_indir():
 	
 	return os.path.join(mondir,'Data')
 
-def get_data(elids, agg_types, tperiods, ttypes, year, month_sub = None):
+def get_data(elids, tperiods, ttypes, year, month_sub = None):
 
 	data_indir = get_indir()
 
 	# Clean user inputs
 	ttypes = [ttype.upper() for ttype in ttypes]
-	agg_types = [agg_type.upper() for agg_type in agg_types]
 
 	# Load data from SQL
 	os.chdir(data_indir)
 	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
 	hmi_data_all = {}
 
-	for elid, agg_type, tperiod, ttype in zip(elids, agg_types, tperiods, ttypes):
+	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
 
 		if month_sub:
 
 			sql_str = """
-				SELECT * FROM {0}_{1}{2}_{3}S
+				SELECT * FROM {0}_{1}{2}_AVERAGES
 				WHERE Month = {4}
-			""".format(elid, tperiod, ttype, agg_type, month_sub)
+			""".format(elid, tperiod, ttype, month_sub)
 
 		else:
 
-			sql_str = "SELECT * FROM {0}_{1}{2}_{3}S".format(elid, tperiod, ttype, agg_type)
+			sql_str = "SELECT * FROM {0}_{1}{2}_AVERAGES".format(elid, tperiod, ttype)
 
 		hmi_data = pd.read_sql(
 			sql_str, 
@@ -77,7 +76,7 @@ def get_data(elids, agg_types, tperiods, ttypes, year, month_sub = None):
 		# Format the time variable
 		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
 
-		hmi_data_all['{0}_{1}{2}_{3}S'.format(elid, tperiod, ttype, agg_type, month_sub)] = hmi_data
+		hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
 
 	return hmi_data_all
 
