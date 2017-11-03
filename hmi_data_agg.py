@@ -280,10 +280,9 @@ if __name__ == '__main__':
 		'gas' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
 	)
 	hmi_dat.run_report(
-		[1,1], # Number of hours you want to sum/average over
+		[1,1], # Number of hours you want to average over
 		['hour','hour'], # Type of time period (can be "hour" or "minute")
 		['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		['total','total'], # Type of aggregate function you want (can be total or average)
 		'5-11-17', # Start of date range you want summary data for
 		'8-20-17' # End of date range you want summary data for)
 	)
@@ -293,10 +292,9 @@ if __name__ == '__main__':
 		'water' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
 	)
 	hmi_dat.run_report(
-		[1,1,5], # Number of time periods you want to sum/average over
+		[1,1,5], # Number of time periods you want to average over
 		['hour','hour','minute'], # Type of time period (can be "hour" or "minute")
 		['FT202','FT305','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		['total','total','average'], # Type of aggregate function you want (can be total or average)
 		'5-11-17', # Start of date range you want summary data for
 		'8-20-17' # End of date range you want summary data for)
 	)
@@ -305,10 +303,9 @@ if __name__ == '__main__':
 		'tmp' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
 	)
 	hmi_dat.run_report(
-		[5], # Number of hours you want to sum/average over
+		[5], # Number of hours you want to average over
 		['minute'],
 		['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		['average'], # Type of aggregate function you want (can be total or average)
 		'5-11-17', # Start of date range you want summary data for
 		'8-20-17' # End of date range you want summary data for)
 	)
