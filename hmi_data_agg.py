@@ -21,6 +21,7 @@ from pandas import read_excel
 import get_lab_data as gld
 import sqlite3
 import os
+from os.path import expanduser
 import sys
 from tkinter.filedialog import askopenfilename
 from tkinter.filedialog import askdirectory
@@ -64,39 +65,37 @@ class hmi_data_agg:
 
 		# Load variables and set output variable names
 		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
-		self.xvar = elid + '_ts'
-		self.yvar = elid + '_value'	
 
 		# Rename variable
-		self.hmi_data[self.yvar] = \
+		self.hmi_data['Value'] = \
 			self.hmi_data[varname.format(elid,'Value', self.qtype)]
 		# Set low/negative values to 0 (if a flow, otherwise remove) and remove unreasonably high values
 		if self.stype in ['GAS','WATER']:
-			self.hmi_data.loc[self.hmi_data[self.yvar] < lo_limit, self.yvar] = 0
+			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = 0
 		else:
-			self.hmi_data.loc[self.hmi_data[self.yvar] < lo_limit, self.yvar] = np.NaN	
-		self.hmi_data.loc[self.hmi_data[self.yvar] > hi_limit, self.yvar] = np.NaN	
+			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = np.NaN	
+		self.hmi_data.loc[self.hmi_data['Value'] > hi_limit, 'Value'] = np.NaN	
 
 		# Rename and format corresponding timestamp variable 
-		self.hmi_data[self.xvar ] = \
+		self.hmi_data['Time' ] = \
 			self.hmi_data[varname.format(elid, 'Time', self.qtype)]
-		self.hmi_data[self.xvar ] = \
-			pd.to_datetime(self.hmi_data[self.xvar])
+		self.hmi_data['Time' ] = \
+			pd.to_datetime(self.hmi_data['Time'])
 
 		# Filter dataset to clean values, time period and variable selected
 		self.hmi_data = self.hmi_data.loc[
-			(self.hmi_data[self.xvar] >= self.start_dt - datetime.timedelta(days = 1)) &
-			(self.hmi_data[self.xvar] <= self.end_dt + datetime.timedelta(days = 1))
+			(self.hmi_data['Time'] >= self.start_dt - datetime.timedelta(days = 1)) &
+			(self.hmi_data['Time'] <= self.end_dt + datetime.timedelta(days = 1))
 			, 
-			[self.xvar, self.yvar]
+			['Time', 'Value']
 		]
 		# Eliminate missing values and reset index
 		self.hmi_data.dropna(axis = 0, how = 'any', inplace = True)
 		self.hmi_data.reset_index(inplace = True)
 
 		# Get numeric time elapsed
-		self.first_ts = self.hmi_data[self.xvar][0]
-		self.last_ts  = self.hmi_data[self.xvar][len(self.hmi_data) - 1]
+		self.first_ts = self.hmi_data['Time'][0]
+		self.last_ts  = self.hmi_data['Time'][len(self.hmi_data) - 1]
 
 		# Check to make sure that the totals/averages do not include the first
 		# and last days for which data are available (just to ensure accuracy)
@@ -117,80 +116,52 @@ class hmi_data_agg:
 		elid
 	):
 
-		# Compute the area under the curve for each time period
+		# Get minute-level dataframe of timesteps for the time period requested
+		ts_array = np.arange(
+			self.start_dt, 
+			self.end_dt + datetime.timedelta(days = 1), 
+			np.timedelta64(1,'m')
+		)
+		empty_df = pd.DataFrame(ts_array, columns = ['Time'])
+
+		# Merge this with the HMI data and fill in NaNs by interpolating
+		hmi_data_all = self.hmi_data.merge(empty_df, on = 'Time', how = 'outer')
+		# ... need to set Time as an index to do this
+		hmi_data_all.set_index('Time')
+		hmi_data_all.loc[:,'Value'] = hmi_data_all['Value'].interpolate()
+		hmi_data_all.sort_values('Time',inplace = True)
+		# ... reset index so we can work with Time in a normal way again
+		hmi_data_all.reset_index(inplace = True)
+
+		# Get the time elapsed between adjacent Values (dividing by np.timedelta64 converts to floating number)
+		hmi_data_all['TimeEl'] = (hmi_data_all['Time'].shift(-1) - hmi_data_all['Time'])/np.timedelta64(1,'m')
+		# Compute the area under the curve for each timestep (relative to the next time step)
+		hmi_data_all['TotValue'] = hmi_data_all['Value']*hmi_data_all['TimeEl']
+		
+		# Extract the timedelta/datetime64 string from the ttype input argument (either 'h' or 'm')
+		ttype_d = ttype[0].lower()
+
+		# Calculate the "Time Category" variable which indicates the time range for the observation
+		hmi_data_all['TimeCat'] = \
+			np.floor(
+				(hmi_data_all['Time'] - self.start_dt)/\
+				np.timedelta64(tperiod, ttype_d)
+			)
+
+		# Group by time range and sum the TotValue variable!
+		tots_res = hmi_data_all.groupby('TimeCat').sum()
+		tots_res.reset_index(inplace = True)
+
+		# Retrieve the timestep from the TimeCat Variable
+		tots_res['TimeCat'] = pd.to_timedelta(tots_res['TimeCat']*tperiod, ttype_d)
+		tots_res['Time'] = self.start_dt + tots_res['TimeCat']
+		# Get average value for the time period (converting tdelta to minutes since observations)
+		tperiod_hrs = tperiod
 		if ttype == 'MINUTE':
 			tperiod_hrs = tperiod/60
-		else:
-			tperiod_hrs = tperiod
+		tots_res['Value'] = tots_res['TotValue']/(tperiod_hrs*60)
 
-		# Calculate time elapsed in seconds
-		self.hmi_data['tel'] = \
-			(self.hmi_data[self.xvar] - self.first_ts)/\
-			np.timedelta64(1,'s')
-		self.hmi_data['minute'] = self.hmi_data[self.xvar].values.astype('datetime64[m]')
-		# Calculate time elapsed in seconds at the beginning of the given minute
-		self.hmi_data['tel_mstrt'] = \
-			(self.hmi_data['minute'] - self.first_ts)/\
-			np.timedelta64(1,'s')
-		
-		# Create a variable giving the totalized component for the given section (tel to tel_next)
-		self.hmi_data['tot'] =\
-			(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel'])*\
-			(self.hmi_data[self.yvar].shift(-1) + self.hmi_data[self.yvar])/2
-
-		# Adjust the totalized component at the beginning of each minute (add the levtover time since 00:00)
-		self.hmi_data.loc[self.hmi_data['tel_mstrt'] != self.hmi_data['tel_mstrt'].shift(1),'tot'] = \
-			self.hmi_data['tot'] +\
-			(self.hmi_data['tel'] - self.hmi_data['tel_mstrt'])*\
-			0.5*(
-				self.hmi_data[self.yvar] +\
-				self.hmi_data[self.yvar].shift(1) +\
-				(self.hmi_data[self.yvar] - self.hmi_data[self.yvar].shift(1))/\
-				(self.hmi_data['tel'] - self.hmi_data['tel'].shift(1))*\
-				(self.hmi_data['tel_mstrt'] - self.hmi_data['tel'].shift(1))
-			)
-		
-		# Adjust the totalized component at the end of each minute (subtract the time after 00:00)
-		self.hmi_data.loc[self.hmi_data['tel_mstrt'] != self.hmi_data['tel_mstrt'].shift(-1),'tot'] = \
-			self.hmi_data['tot'] -\
-			(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel_mstrt'] - 60)*\
-			0.5*(
-				self.hmi_data[self.yvar] + \
-				self.hmi_data[self.yvar].shift(-1) + \
-				(self.hmi_data[self.yvar].shift(-1) - self.hmi_data[self.yvar])/\
-				(self.hmi_data['tel'].shift(-1) - self.hmi_data['tel'])*\
-				(self.hmi_data['tel_mstrt'] + 60 - self.hmi_data['tel'])
-			)
-
-		nperiods = (self.end_dt - self.start_dt).days*24/tperiod_hrs
-		nperiods = int(nperiods)
-		tots_res = []
-		for period in range(nperiods):
-			start_tel = (self.start_dt - self.first_ts) / np.timedelta64(1,'s') + period*3600*tperiod_hrs
-			end_tel = start_tel + 3600*tperiod_hrs
-			start_ts = self.start_dt + datetime.timedelta(hours = period*tperiod_hrs)
-			ip_sec = self.hmi_data.loc[
-				(self.hmi_data['tel'] >= start_tel) & 
-				(self.hmi_data['tel'] <= end_tel),
-				'tot'
-			]
-			# Dividing by 3600 because the time period is relative to hours 
-			# and the ip_sec variable is added up over seconds
-			ip_tot = ip_sec.sum()/(3600*tperiod_hrs)
-			tots_row = [start_ts, ip_tot, len(ip_sec)]
-			tots_res.append(tots_row)
-
-		# Convert to pandas dataframe	
-		tots_res = pd.DataFrame(tots_res, columns = ['Time', 'Value', 'observed'])
-		# # Convert rows with no data to missing
-		tots_res.loc[tots_res['observed'] == 0,'Value'] = np.NaN
-		# Fill in these rows by interpolating between values
-		# First declare as time series
-		tots_res.set_index('Time', inplace = True)
-		# Use built in interpolation functionality for time series
-		tots_res.loc[:,'Value'] = tots_res.interpolate()
-		# Convert back to df (with time as variable)
-		tots_res.reset_index(inplace = True)
+		# Output
 		return tots_res[['Time','Value']]
 
 
@@ -273,6 +244,87 @@ class hmi_data_agg:
 		if output_sql:
 			conn.close()
 
+# Manages output directories
+def get_indir():
+	
+	# Find the CR2C.Operations folder on Box Sync on the given machine
+	targetdir = os.path.join('Box Sync','CR2C.Operations')
+	mondir = None
+	print("Searching for Codiga Center's Operations folder on Box Sync...")
+	for dirpath, dirname, filename in os.walk(expanduser('~')):
+		if dirpath.find(targetdir) > 0:
+			mondir = os.path.join(dirpath,'MonitoringProcedures')
+			print("Found Codiga Center's Operations folder on Box Sync")
+			break
+			
+	# Alert user if Box Sync folder not found on machine
+	if not mondir:
+		if os.path.isdir('D:/'):
+			for dirpath, dirname, filename in os.walk('D:/'):
+				if dirpath.find(targetdir) > 0:
+					mondir = os.path.join(dirpath,'MonitoringProcedures')
+					print("Found Codiga Center's Operations folder on Box Sync")
+					break
+		if not mondir:
+			print("Could not find Codiga Center's Operations folder in Box Sync")
+			print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
+			sys.exit()
+	
+	return os.path.join(mondir,'Data')
+
+def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = None, end_dt_str = None):
+
+	data_indir = get_indir()
+
+	# Clean user inputs
+	ttypes = [ttype.upper() for ttype in ttypes]
+
+	# Convert date string inputs to dt variables
+	if start_dt_str:
+		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
+	if end_dt_str:
+		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+
+	# Load data from SQL
+	os.chdir(data_indir)
+	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
+	hmi_data_all = {}
+
+	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
+
+		if month_sub:
+
+			sql_str = """
+				SELECT * FROM {0}_{1}{2}_AVERAGES
+				WHERE Month = {4}
+			""".format(elid, tperiod, ttype, month_sub)
+
+		else:
+
+			sql_str = "SELECT * FROM {0}_{1}{2}_AVERAGES".format(elid, tperiod, ttype)
+
+		hmi_data = pd.read_sql(
+			sql_str, 
+			conn, 
+			coerce_float = True
+		)
+
+		# Dedupe data (some issue with duplicates)
+		hmi_data.drop_duplicates(inplace = True)
+		hmi_data.sort_values('Time', inplace = True)
+		# Format the time variable
+		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
+
+		if start_dt_str:
+			hmi_data = hmi_data.loc[hmi_data['Time'] >= start_dt,]
+		if end_dt_str:
+			hmi_data = hmi_data.loc[hmi_data['Time'] <= end_dt,]
+
+		hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
+
+	return hmi_data_all
+
+
 if __name__ == '__main__':
 
 	hmi_dat = hmi_data_agg(
@@ -286,7 +338,6 @@ if __name__ == '__main__':
 		'5-11-17', # Start of date range you want summary data for
 		'8-20-17' # End of date range you want summary data for)
 	)
-
 	hmi_dat = hmi_data_agg(
 		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
 		'water' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
