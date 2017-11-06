@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import datetime as datetime
 from datetime import datetime as dt
-from datetime import timedelta as tdelt
+from datetime import timedelta 
 from pandas import read_excel
 import get_lab_data as gld
 import sqlite3
@@ -28,37 +28,37 @@ from tkinter.filedialog import askdirectory
 
 class hmi_data_agg:
 
-	def __init__(self, qtype, stype):
+	def __init__(self, start_dt_str, end_dt_str):
 
-		self.qtype = qtype.upper()
-		self.stype = stype.upper()
+		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
+		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
 
 
-	def prep_data(self, elid):
+	def prep_data(self, hmi_path, elid, stype):
 
 		# Set high and low limits for sensors based on type (water, gas, ph, conductivity, temp)
-		if self.stype == 'WATER':
+		if stype == 'WATER':
 			hi_limit = 200
 			lo_limit = 0.2
-		elif self.stype == 'GAS':
+		elif stype == 'GAS':
 			hi_limit = 10
 			lo_limit = 0.005
-		elif self.stype == 'PH':
+		elif stype == 'PH':
 			hi_limit = 10
 			lo_limit = 4
-		elif self.stype == 'TEMP':
+		elif stype == 'TEMP':
 			hi_limit = 50
 			lo_limit = 0
-		elif self.stype == 'PRESSURE':
+		elif stype == 'PRESSURE':
 			hi_limit = 16
 			lo_limit = 13.4
-		elif self.stype == 'TMP':
+		elif stype == 'TMP':
 			hi_limit = 20
 			lo_limit = -20
 
 		# Load data
 		try:
-			self.hmi_data = pd.read_csv(self.hmi_path)
+			self.hmi_data = pd.read_csv(hmi_path)
 		except FileNotFoundError:
 			print('Please choose an existing input file with the HMI data')
 			sys.exit()
@@ -67,10 +67,11 @@ class hmi_data_agg:
 		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
 
 		# Rename variable
+		qtype = 'RAW'
 		self.hmi_data['Value'] = \
-			self.hmi_data[varname.format(elid,'Value', self.qtype)]
+			self.hmi_data[varname.format(elid,'Value', qtype)]
 		# Set low/negative values to 0 (if a flow, otherwise remove) and remove unreasonably high values
-		if self.stype in ['GAS','WATER']:
+		if stype in ['GAS','WATER']:
 			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = 0
 		else:
 			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = np.NaN	
@@ -78,14 +79,14 @@ class hmi_data_agg:
 
 		# Rename and format corresponding timestamp variable 
 		self.hmi_data['Time' ] = \
-			self.hmi_data[varname.format(elid, 'Time', self.qtype)]
+			self.hmi_data[varname.format(elid, 'Time', qtype)]
 		self.hmi_data['Time' ] = \
 			pd.to_datetime(self.hmi_data['Time'])
 
 		# Filter dataset to clean values, time period and variable selected
 		self.hmi_data = self.hmi_data.loc[
 			(self.hmi_data['Time'] >= self.start_dt - datetime.timedelta(days = 1)) &
-			(self.hmi_data['Time'] <= self.end_dt + datetime.timedelta(days = 1))
+			(self.hmi_data['Time'] < self.end_dt + datetime.timedelta(days = 1))
 			, 
 			['Time', 'Value']
 		]
@@ -93,7 +94,7 @@ class hmi_data_agg:
 		self.hmi_data.dropna(axis = 0, how = 'any', inplace = True)
 		self.hmi_data.reset_index(inplace = True)
 
-		# Get numeric time elapsed
+		# Get the first and last time
 		self.first_ts = self.hmi_data['Time'][0]
 		self.last_ts  = self.hmi_data['Time'][len(self.hmi_data) - 1]
 
@@ -126,11 +127,11 @@ class hmi_data_agg:
 
 		# Merge this with the HMI data and fill in NaNs by interpolating
 		hmi_data_all = self.hmi_data.merge(empty_df, on = 'Time', how = 'outer')
+		# Sort the dataset by Time (important for TimeEL below)
+		hmi_data_all.sort_values('Time', inplace = True)
 		# ... need to set Time as an index to do this
 		hmi_data_all.set_index('Time')
 		hmi_data_all.loc[:,'Value'] = hmi_data_all['Value'].interpolate()
-		# Sort the dataset by Time (important for TimeEL below)
-		hmi_data_all.sort_values('Time', inplace = True)
 		# ... reset index so we can work with Time in a normal way again
 		hmi_data_all.reset_index(inplace = True)
 
@@ -171,8 +172,7 @@ class hmi_data_agg:
 		tperiods,
 		ttypes,
 		elids,
-		start_dt_str,
-		end_dt_str,
+		stypes,
 		hmi_path = None,
 		output_csv = False,
 		output_sql = True
@@ -180,30 +180,30 @@ class hmi_data_agg:
 
 		# Select input data file
 		if hmi_path:
-			self.hmi_path = hmi_path
-			self.hmi_dir = os.path.dirname(hmi_path)
+			hmi_path = hmi_path
+			hmi_dir = os.path.dirname(hmi_path)
 		else:
-			self.hmi_path = askopenfilename(title = 'Select HMI data input file')
-			self.hmi_dir = os.path.dirname(self.hmi_path)
-
-		# Get dates and date strings for output filenames
-		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
-		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
+			hmi_path = askopenfilename(title = 'Select HMI data input file')
+			hmi_dir = os.path.dirname(hmi_path)
 
 		# Retrieve sql table directory
 		table_dir = gld.get_indir()
 		os.chdir(table_dir)
 
+		# Clean inputs
+		ttypes = [ttype.upper() for ttype in ttypes]
+		stypes = [stype.upper() for stype in stypes]
+
 		# Open connection to sql database file
 		if output_sql:
 			conn = sqlite3.connect('cr2c_hmi_agg_data_{0}.db'.format(self.start_dt.year))
 
-		ttypes = [ttype.upper() for ttype in ttypes]
+		for tperiod, ttype, elid, stype in zip(tperiods, ttypes, elids, stypes):
 
-		for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
+			print('Getting aggregated data for {0}...'.format(elid))
 
 			# Get prepped data
-			self.prep_data(elid)
+			self.prep_data(hmi_path, elid, stype)
 			# Get totalized values'
 
 			tots_res = self.get_tot_var(tperiod, ttype, elid)
@@ -323,7 +323,7 @@ def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = Non
 		if start_dt_str:
 			hmi_data = hmi_data.loc[hmi_data['Time'] >= start_dt,]
 		if end_dt_str:
-			hmi_data = hmi_data.loc[hmi_data['Time'] <= end_dt,]
+			hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
 
 		hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
 
@@ -333,37 +333,19 @@ def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = Non
 if __name__ == '__main__':
 
 	hmi_dat = hmi_data_agg(
-		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-		'gas' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
+		'5-11-17', # Start of date range you want summary data for
+		'8-7-17' # End of date range you want summary data for)
 	)
 	hmi_dat.run_report(
-		[1,1], # Number of hours you want to average over
-		['hour','hour'], # Type of time period (can be "hour" or "minute")
-		['FT700','FT704'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		'5-11-17', # Start of date range you want summary data for
-		'8-20-17' # End of date range you want summary data for)
+		[1,1,1,1,5], # Number of hours you want to average over
+		['hour','hour','hour','hour','minute'], # Type of time period (can be "hour" or "minute")
+		['FT700','FT704','FT202','FT305','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+		['gas','gas','water','water','water'], # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
 	)
-	hmi_dat = hmi_data_agg(
-		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-		'water' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
-	)
-	hmi_dat.run_report(
-		[1,1,5], # Number of time periods you want to average over
-		['hour','hour','minute'], # Type of time period (can be "hour" or "minute")
-		['FT202','FT305','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		'5-11-17', # Start of date range you want summary data for
-		'8-20-17' # End of date range you want summary data for)
-	)
-	hmi_dat = hmi_data_agg(
-		'raw', # Type of eDNA query (case insensitive, can be raw, 1 min, 1 hour)
-		'tmp' # Type of sensor (case insensitive, can be water, gas, pH, conductivity or temperature
-	)
-	hmi_dat.run_report(
-		[5], # Number of hours you want to average over
-		['minute'],
-		['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		'5-11-17', # Start of date range you want summary data for
-		'8-20-17' # End of date range you want summary data for)
-	)
-
+	# hmi_dat.run_report(
+	# 	[5], # Number of hours you want to average over
+	# 	['minute'], # Type of time period (can be "hour" or "minute")
+	# 	['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+	# 	['tmp'], # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
+	# )
 
