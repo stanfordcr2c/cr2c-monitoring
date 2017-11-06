@@ -135,6 +135,15 @@ class lab_plots:
 				type_list = ['Acetate','Propionate']
 				share_yax = False
 
+			if mtype == 'AMMONIA':
+
+				#Set plotting variables
+				id_vars_chrt = ['Date_Time','Stage','Type']
+				ylabel = r'$NH_3$' + ' (mg/L as N)'
+				mdata_long['Type'] = 'Ammonia'
+				type_list = ['Ammonia']
+				share_yax = True
+
 			# Filter to the dates desired for the plots
 			mdata_chart = mdata_long.loc[
 				(mdata_long.Date_Time >= self.start_dt) &
@@ -237,26 +246,44 @@ if __name__ == '__main__':
 	# Instantiate class
 	lplots = lab_plots(
 		# Start of chart date range (default is June 1st 2016)
-		'07-01-17', 
+		'9-28-17', 
 		# End of date range (default is today's date)
 		None
 	)
 
+	# # Create and output charts
+	# lplots.get_lab_plots(
+	# 	# List of monitoring data types to produce charts for (correspond to tabs on gsheets workbook)
+	# 	['PH','ALKALINITY'], 
+	# 	# Variable to break down into panels according to
+	# 	'Stage',
+	# 	# Stages to Subset to
+	# 	['Microscreen','AFBR','Duty AFMBR Effluent','Duty AFMBR MLSS']
+	# )
 	# Create and output charts
-	lplots.get_lab_plots(
+	# lplots.get_lab_plots(
+	# 	# List of monitoring data types to produce charts for (correspond to tabs on gsheets workbook)
+	# 	['COD','TSS','VFA'], 
+	# 	# Variable to break down into panels according to
+	# 	'Type',
+	# 	# Stages to Subset to
+	# 	['Microscreen','AFBR','Duty AFMBR Effluent','Duty AFMBR MLSS']
+	# )
+	# Instantiate class
+	lplots = lab_plots(
+		# Start of chart date range (default is June 1st 2016)
+		'5-7-17', 
+		# End of date range (default is today's date)
+		'10-1-17'
+	)
+	lplots = lplots.get_lab_plots(
 		# List of monitoring data types to produce charts for (correspond to tabs on gsheets workbook)
-		['PH','ALKALINITY'], 
+		['Ammonia'], 
 		# Variable to break down into panels according to
 		'Stage',
 		# Stages to Subset to
 		['Microscreen','AFBR','Duty AFMBR Effluent','Duty AFMBR MLSS']
+
 	)
-	# Create and output charts
-	lplots.get_lab_plots(
-		# List of monitoring data types to produce charts for (correspond to tabs on gsheets workbook)
-		['COD','TSS','VFA'], 
-		# Variable to break down into panels according to
-		'Type',
-		# Stages to Subset to
-		['Microscreen','AFBR','Duty AFMBR Effluent','Duty AFMBR MLSS']
-	)
+
+
