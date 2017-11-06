@@ -129,7 +129,8 @@ class hmi_data_agg:
 		# ... need to set Time as an index to do this
 		hmi_data_all.set_index('Time')
 		hmi_data_all.loc[:,'Value'] = hmi_data_all['Value'].interpolate()
-		hmi_data_all.sort_values('Time',inplace = True)
+		# Sort the dataset by Time (important for TimeEL below)
+		hmi_data_all.sort_values('Time', inplace = True)
 		# ... reset index so we can work with Time in a normal way again
 		hmi_data_all.reset_index(inplace = True)
 
@@ -155,7 +156,7 @@ class hmi_data_agg:
 		# Retrieve the timestep from the TimeCat Variable
 		tots_res['TimeCat'] = pd.to_timedelta(tots_res['TimeCat']*tperiod, ttype_d)
 		tots_res['Time'] = self.start_dt + tots_res['TimeCat']
-		# Get average value for the time period (converting tdelta to minutes since observations)
+		# Get average value for the time period (want to correct for whether the tperiod is 1 minute vs 1 hour (i.e. 60 minutes))
 		tperiod_hrs = tperiod
 		if ttype == 'MINUTE':
 			tperiod_hrs = tperiod/60
@@ -216,14 +217,18 @@ class hmi_data_agg:
 			# Output data as desired
 			if output_sql:
 
+				# Create key from "Time" variable to use when updating/inserting entry into sql table
+				tots_res['Tkey'] = tots_res['Time']
+				tots_res = tots_res[['Tkey','Time','Month','Value']]
+
 				# SQL command strings for sqlite3
 				create_str = """
-					CREATE TABLE IF NOT EXISTS {0}_{1}{2}_{3}S (Time , Month, Value)
+					CREATE TABLE IF NOT EXISTS {0}_{1}{2}_{3}S (Tkey INT PRIMARY KEY, Time , Month, Value)
 				"""
 
 				insert_str = """
-					INSERT OR REPLACE INTO {0}_{1}{2}_{3}S (Time, Month, Value)
-					VALUES (?,?,?)
+					INSERT OR REPLACE INTO {0}_{1}{2}_{3}S (Tkey, Time, Month, Value)
+					VALUES (?,?,?,?)
 				"""
 
 				# Load data to SQL
