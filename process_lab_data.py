@@ -28,7 +28,7 @@ class cr2c_monitor_run:
 	
 	def __init__(self):
 		
-		self.mtype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GasComp']
+		self.mtype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GasComp','Ammonia']
 		self.min_feas_dt_str = '6-1-16'
 		self.min_feas_dt = dt.strptime(self.min_feas_dt_str, '%m-%d-%y')
 		self.file_dt = dt.now()
@@ -290,13 +290,16 @@ class cr2c_monitor_run:
 
 		if mtype == 'PH':
 			self.set_var_format(mtype, 'Reading', float, 'numeric')
+
+		if mtype == 'Ammonia':
+			self.set_var_format(mtype, 'Reading (mg/L)', float, 'numeric')
 		
 		if mtype == 'ALKALINITY':
 			self.set_var_format(mtype,'Sample Volume (ml)', float, 'numeric')
 			self.set_var_format(mtype,'Acid Volume (ml, to pH 4.3)', float, 'numeric')
 			self.set_var_format(mtype,'Acid Normality (N)', float, 'numeric')
 
-		if mtype in ['COD','ALKALINITY','VFA']:
+		if mtype in ['COD','ALKALINITY','VFA','Ammonia']:
 			self.set_var_format(mtype,'Dilution Factor', float, 'numeric')
 		
 		if mtype == 'TSS_VSS':
@@ -326,7 +329,6 @@ class cr2c_monitor_run:
 
 		# Melt the data frame
 		df_long = pd.melt(self.mdata, id_vars = id_vars, value_vars = value_vars)
-
 		# Reorder columns
 		if mtype == 'GasComp':
 			col_order = ['Date_Time','Hel_Pressure','variable','obs_id','value']
@@ -334,6 +336,9 @@ class cr2c_monitor_run:
 		elif mtype in ['PH','ALKALINITY']:
 			col_order = ['Date_Time','Stage','obs_id','value']
 			varnames = ['Date_Time','Stage','obs_id','Value']
+		elif mtype == 'Ammonia':
+			col_order = ['Date_Time','Stage','value']
+			varnames = ['Date_Time','Stage','Value']
 		else:	
 			col_order = ['Date_Time','Stage','variable','obs_id','value']
 			varnames = ['Date_Time','Stage','Type','obs_id','Value']
@@ -450,6 +455,16 @@ class cr2c_monitor_run:
 				id_vars = ['Date_Time','Stage','obs_id']
 				value_vars = ['Acetate','Propionate']
 
+			# ======================================= Ammonia =============================================== #
+			if mtype == 'Ammonia':
+
+				# Compute Ammonia concentration
+				self.mdata['Ammonia'] = self.mdata['Reading (mg/L)']*self.mdata['Dilution Factor']
+
+				# Set id and value vars for recasting
+				id_vars = ['Date_Time','Stage']
+				value_vars = 'Ammonia'
+
 			# ======================================= GasComp ============================================ #
 			if mtype == 'GasComp':
 
@@ -469,7 +484,7 @@ class cr2c_monitor_run:
 			# Load data to SQL
 			os.chdir(self.data_outdir)
 			conn = sqlite3.connect('cr2c_lab_data.db')
-			mdata_long.to_sql(mtype + '_data', conn, if_exists = 'append', index = False)
+			mdata_long.to_sql(mtype + '_data', conn, if_exists = 'replace', index = False)
 
 
 # Execute script
