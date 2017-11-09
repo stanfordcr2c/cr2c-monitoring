@@ -80,8 +80,9 @@ class hmi_data_agg:
 		# Rename and format corresponding timestamp variable 
 		self.hmi_data['Time' ] = \
 			self.hmi_data[varname.format(elid, 'Time', qtype)]
+		# Set as datetime variable at second resolution (uses less memory than nanosecond!)
 		self.hmi_data['Time' ] = \
-			pd.to_datetime(self.hmi_data['Time'])
+			pd.to_datetime(self.hmi_data['Time'], unit = 's')
 
 		# Filter dataset to clean values, time period and variable selected
 		self.hmi_data = self.hmi_data.loc[
@@ -342,10 +343,10 @@ if __name__ == '__main__':
 		['FT700','FT704','FT202','FT305','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['gas','gas','water','water','water'], # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
 	)
-	# hmi_dat.run_report(
-	# 	[5], # Number of hours you want to average over
-	# 	['minute'], # Type of time period (can be "hour" or "minute")
-	# 	['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-	# 	['tmp'], # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
-	# )
+	hmi_dat.run_report(
+		[5], # Number of hours you want to average over
+		['minute'], # Type of time period (can be "hour" or "minute")
+		['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+		['tmp'], # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
+	)
 
