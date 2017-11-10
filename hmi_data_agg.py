@@ -82,7 +82,7 @@ class hmi_data_agg:
 			self.hmi_data[varname.format(elid, 'Time', qtype)]
 		# Set as datetime variable at second resolution (uses less memory than nanosecond!)
 		self.hmi_data['Time' ] = \
-			pd.to_datetime(self.hmi_data['Time'], unit = 's')
+			pd.to_datetime(self.hmi_data['Time']).values.astype('datetime64[s]')
 
 		# Filter dataset to clean values, time period and variable selected
 		self.hmi_data = self.hmi_data.loc[
@@ -132,7 +132,7 @@ class hmi_data_agg:
 		hmi_data_all.sort_values('Time', inplace = True)
 		# ... need to set Time as an index to do this
 		hmi_data_all.set_index('Time')
-		hmi_data_all.loc[:,'Value'] = hmi_data_all['Value'].interpolate()
+		hmi_data_all['Value'] = hmi_data_all['Value'].interpolate()
 		# ... reset index so we can work with Time in a normal way again
 		hmi_data_all.reset_index(inplace = True)
 
@@ -349,4 +349,11 @@ if __name__ == '__main__':
 		['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 		['tmp'], # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
 	)
+	# hmi_dat = hmi_data_agg('5-11-17','11-9-17')
+	# hmi_dat.run_report(
+	# 	[1,1],
+	# 	['hour','hour'],
+	# 	['AT304','AT310'],
+	# 	['temp','temp']
+	# )
 
