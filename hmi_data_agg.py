@@ -11,6 +11,7 @@ matplotlib.use("TkAgg",force=True)
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
 import matplotlib.dates as dates
+import seaborn as sns
 import pylab as pl
 import numpy as np
 import pandas as pd
@@ -18,7 +19,6 @@ import datetime as datetime
 from datetime import datetime as dt
 from datetime import timedelta 
 from pandas import read_excel
-import get_lab_data as gld
 import sqlite3
 import os
 from os.path import expanduser
@@ -28,13 +28,57 @@ from tkinter.filedialog import askdirectory
 
 class hmi_data_agg:
 
-	def __init__(self, start_dt_str, end_dt_str):
+	def __init__(self, start_dt_str, end_dt_str, hmi_path = None):
 
 		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
 		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
 
+		# Manages output directories
+		def get_dirs():
+			
+			# Find the CR2C.Operations folder on Box Sync on the given machine
+			targetdir = os.path.join('Box Sync','CR2C.Operations')
+			mondir = None
+			print("Searching for Codiga Center's Operations folder on Box Sync...")
+			for dirpath, dirname, filename in os.walk(expanduser('~')):
+				if dirpath.find(targetdir) > 0:
+					mondir = os.path.join(dirpath,'MonitoringProcedures')
+					print("Found Codiga Center's Operations folder on Box Sync")
+					break
+					
+			# Alert user if Box Sync folder not found on machine
+			if not mondir:
+				if os.path.isdir('D:/'):
+					for dirpath, dirname, filename in os.walk('D:/'):
+						if dirpath.find(targetdir) > 0:
+							mondir = os.path.join(dirpath,'MonitoringProcedures')
+							print("Found Codiga Center's Operations folder on Box Sync")
+							break
+				if not mondir:
+					print("Could not find Codiga Center's Operations folder in Box Sync")
+					print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
+					sys.exit()
 
-	def prep_data(self, hmi_path, elid, stype):
+			data_dir = os.path.join(mondir,'Data')
+
+			return data_dir
+		
+		self.data_dir = get_dirs()
+
+		# Select input data file and load data for run
+		if hmi_path:
+			hmi_dir = os.path.dirname(hmi_path)
+		else:
+			hmi_path = askopenfilename(title = 'Select HMI data input file')
+			hmi_dir = os.path.dirname(hmi_path)
+		try:
+			self.hmi_data_all = pd.read_csv(hmi_path)
+		except FileNotFoundError:
+			print('Please choose an existing input file with the HMI data')
+			sys.exit()
+
+
+	def prep_data(self, elid, stype):
 
 		# Set high and low limits for sensors based on type (water, gas, ph, conductivity, temp)
 		if stype == 'WATER':
@@ -56,18 +100,13 @@ class hmi_data_agg:
 			hi_limit = 20
 			lo_limit = -20
 
-		# Load data
-		try:
-			self.hmi_data = pd.read_csv(hmi_path)
-		except FileNotFoundError:
-			print('Please choose an existing input file with the HMI data')
-			sys.exit()
-
 		# Load variables and set output variable names
 		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
 
+
 		# Rename variable
 		qtype = 'RAW'
+		self.hmi_data = self.hmi_data_all
 		self.hmi_data['Value'] = \
 			self.hmi_data[varname.format(elid,'Value', qtype)]
 		# Set low/negative values to 0 (if a flow, otherwise remove) and remove unreasonably high values
@@ -104,11 +143,14 @@ class hmi_data_agg:
 		if self.first_ts >= self.start_dt or self.last_ts <= self.end_dt:
 			start_dt_warn = self.first_ts + np.timedelta64(1,'D')
 			end_dt_warn   =  self.last_ts - np.timedelta64(1,'D')
-			start_dt_warn = dt.strftime(start_dt_warn, '%m-%d-%y')
-			end_dt_warn = dt.strftime(end_dt_warn, '%m-%d-%y')
+			start_dt_warn_str = dt.strftime(start_dt_warn, '%m-%d-%y')
+			end_dt_warn_str = dt.strftime(end_dt_warn, '%m-%d-%y')
 			warn_msg = \
 				'Given the range of data available for {0}, accurate aggregate values can only be obtained for: {1} to {2}'
-			print(warn_msg.format(elid, start_dt_warn, end_dt_warn))
+			print(warn_msg.format(elid, start_dt_warn_str, end_dt_warn_str))
+			# Change start_dt and end_dt of system to avoid overwriting sql file with empty data
+			self.start_dt = start_dt_warn
+			self.end_dt = end_dt_warn
 		
 
 	def get_tot_var(
@@ -174,22 +216,12 @@ class hmi_data_agg:
 		ttypes,
 		elids,
 		stypes,
-		hmi_path = None,
 		output_csv = False,
 		output_sql = True
 	):
 
-		# Select input data file
-		if hmi_path:
-			hmi_path = hmi_path
-			hmi_dir = os.path.dirname(hmi_path)
-		else:
-			hmi_path = askopenfilename(title = 'Select HMI data input file')
-			hmi_dir = os.path.dirname(hmi_path)
-
 		# Retrieve sql table directory
-		table_dir = gld.get_indir()
-		os.chdir(table_dir)
+		os.chdir(self.data_dir)
 
 		# Clean inputs
 		ttypes = [ttype.upper() for ttype in ttypes]
@@ -204,7 +236,7 @@ class hmi_data_agg:
 			print('Getting aggregated data for {0}...'.format(elid))
 
 			# Get prepped data
-			self.prep_data(hmi_path, elid, stype)
+			self.prep_data(elid, stype)
 			# Get totalized values'
 
 			tots_res = self.get_tot_var(tperiod, ttype, elid)
@@ -250,110 +282,315 @@ class hmi_data_agg:
 		if output_sql:
 			conn.close()
 
-# Manages output directories
-def get_indir():
-	
-	# Find the CR2C.Operations folder on Box Sync on the given machine
-	targetdir = os.path.join('Box Sync','CR2C.Operations')
-	mondir = None
-	print("Searching for Codiga Center's Operations folder on Box Sync...")
-	for dirpath, dirname, filename in os.walk(expanduser('~')):
-		if dirpath.find(targetdir) > 0:
-			mondir = os.path.join(dirpath,'MonitoringProcedures')
-			print("Found Codiga Center's Operations folder on Box Sync")
-			break
-			
-	# Alert user if Box Sync folder not found on machine
-	if not mondir:
-		if os.path.isdir('D:/'):
-			for dirpath, dirname, filename in os.walk('D:/'):
-				if dirpath.find(targetdir) > 0:
-					mondir = os.path.join(dirpath,'MonitoringProcedures')
-					print("Found Codiga Center's Operations folder on Box Sync")
-					break
-		if not mondir:
-			print("Could not find Codiga Center's Operations folder in Box Sync")
-			print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
-			sys.exit()
-	
-	return os.path.join(mondir,'Data')
 
-def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = None, end_dt_str = None):
+	def get_data(self, elids, tperiods, ttypes, year, month_sub = None, start_dt_str = None, end_dt_str = None):
 
-	data_indir = get_indir()
+		# Clean user inputs
+		ttypes = [ttype.upper() for ttype in ttypes]
 
-	# Clean user inputs
-	ttypes = [ttype.upper() for ttype in ttypes]
+		# Convert date string inputs to dt variables
+		if start_dt_str:
+			start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
+		if end_dt_str:
+			end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
 
-	# Convert date string inputs to dt variables
-	if start_dt_str:
-		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
-	if end_dt_str:
-		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+		# Load data from SQL
+		os.chdir(self.data_dir)
+		conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
+		hmi_data_all = {}
 
-	# Load data from SQL
-	os.chdir(data_indir)
-	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
-	hmi_data_all = {}
+		for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
 
-	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
+			if month_sub:
 
-		if month_sub:
+				sql_str = """
+					SELECT * FROM {0}_{1}{2}_AVERAGES
+					WHERE Month = {4}
+				""".format(elid, tperiod, ttype, month_sub)
 
-			sql_str = """
-				SELECT * FROM {0}_{1}{2}_AVERAGES
-				WHERE Month = {4}
-			""".format(elid, tperiod, ttype, month_sub)
+			else:
 
-		else:
+				sql_str = "SELECT * FROM {0}_{1}{2}_AVERAGES".format(elid, tperiod, ttype)
 
-			sql_str = "SELECT * FROM {0}_{1}{2}_AVERAGES".format(elid, tperiod, ttype)
+			hmi_data = pd.read_sql(
+				sql_str, 
+				conn, 
+				coerce_float = True
+			)
 
-		hmi_data = pd.read_sql(
-			sql_str, 
-			conn, 
-			coerce_float = True
+			# Dedupe data (some issue with duplicates)
+			hmi_data.drop_duplicates('Time', inplace = True)
+			hmi_data.sort_values('Time', inplace = True)
+			# Format the time variable
+			hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
+
+			if start_dt_str:
+				hmi_data = hmi_data.loc[hmi_data['Time'] >= start_dt,]
+			if end_dt_str:
+				hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
+
+			hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
+
+		return hmi_data_all
+
+
+	def get_tmp_plots(
+		self,
+		start_dt_str,
+		end_dt_str,
+		outdir = None
+	):
+
+		start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
+		end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
+
+		if not outdir:
+			outdir = askdirectory(title = 'Directory to output charts/tables to')
+
+		# Get feeding data
+		feeding_dat_zm = self.get_data(['FT305'],[5],['minute'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_5MINUTE_AVERAGES']
+		feeding_dat_zm['FT305'] = feeding_dat_zm['Value']
+		feeding_dat = self.get_data(['FT305'],[1],['hour'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_1HOUR_AVERAGES']
+		feeding_dat['FT305'] = feeding_dat['Value']
+		# Get tmp data
+		tmp_dat_zm = self.get_data(['AIT302'],[5],['minute'], start_dt.year)['AIT302_5MINUTE_AVERAGES']
+		tmp_dat_zm['AIT302'] = tmp_dat_zm['Value']
+		tmp_dat = self.get_data(['AIT302'],[1],['hour'], start_dt.year)['AIT302_1HOUR_AVERAGES']
+		tmp_dat['AIT302'] = tmp_dat['Value']
+
+		# Merge the two files   
+		tmp_feed_dat = feeding_dat.merge(tmp_dat, on = 'Time')
+		tmp_feed_dat_zm = feeding_dat_zm.merge(tmp_dat_zm, on = 'Time')
+
+		# Remove index!
+		tmp_feed_dat.reset_index(inplace = True)
+		tmp_feed_dat_zm.reset_index(inplace = True)
+
+		# Group the dataset into days and weeks
+		tmp_feed_dat['Week'] = tmp_feed_dat['Time'].dt.week
+		tmp_feed_dat['tel_day'] = tmp_feed_dat['Time'].dt.hour*60 + tmp_feed_dat['Time'].dt.minute
+		tmp_feed_dat['Day']  = tmp_feed_dat['Time'].dt.weekday
+		tmp_feed_dat['Hour'] = tmp_feed_dat['Time'].dt.hour + tmp_feed_dat['Time'].dt.weekday*24
+
+		# Do the same for the "zoom" dataset
+		tmp_feed_dat_zm['Week'] = tmp_feed_dat_zm['Time'].dt.week
+		tmp_feed_dat_zm['tel_day'] = tmp_feed_dat_zm['Time'].dt.hour*60 + tmp_feed_dat_zm['Time'].dt.minute
+		tmp_feed_dat_zm['Day']  = tmp_feed_dat_zm['Time'].dt.weekday
+		tmp_feed_dat_zm['Hour'] = tmp_feed_dat_zm['Time'].dt.hour + tmp_feed_dat_zm['Time'].dt.weekday*24
+
+		# Get data for last week and hour
+		tmp_feed_week = tmp_feed_dat_zm.loc[
+			tmp_feed_dat_zm['Time'].dt.date -  tmp_feed_dat_zm['Time'].dt.date[len(tmp_feed_dat_zm) - 1] >= \
+			np.timedelta64(-6,'D'),
+		]
+		tmp_feed_day = tmp_feed_dat_zm.loc[
+			tmp_feed_dat_zm['Time'].dt.date -  tmp_feed_dat_zm['Time'].dt.date[len(tmp_feed_dat_zm) - 1] > \
+			np.timedelta64(-1,'D'),
+		]
+
+		# Plot!
+		sns.set_style('white')
+		# Last two months (or entire date range)
+		# TMP
+		ax1 = plt.subplot2grid((16,1),(0,0), rowspan = 2)
+		ax1.plot(tmp_feed_dat['Time'],tmp_feed_dat['AIT302'], 'g-', linewidth = 0.5)
+		ax1.set_title(
+			'Hourly Average TMP and Permeate Flux ({0} to {1})'.format(start_dt_str, end_dt_str),
+			fontweight = 'bold'
+		)
+		ax1.set_ylabel('TMP (psia)')
+		ax1.xaxis.set_ticklabels([])
+		# Flow
+		ax2 = plt.subplot2grid((16,1),(2,0), rowspan = 2)
+		ax2.plot(tmp_feed_dat['Time'],tmp_feed_dat['FT305'], 'b-', linewidth = 0.5)
+		ax2.set_ylabel('Flow (gpm)')
+		labels = ax2.get_xticklabels()
+		plt.setp(labels, rotation=45, fontsize=10)
+		# Last week
+		# TMP
+		ax3 = plt.subplot2grid((16,1),(6,0), rowspan = 2)
+		ax3.plot(tmp_feed_week['Time'],tmp_feed_week['AIT302'], 'g-', linewidth = 0.5)
+		ax3.set_title(
+			'Hourly Average TMP and Permeate Flux (last 7 days)',
+			fontweight = 'bold'
+		)
+		ax3.set_ylabel('TMP (psia)')
+		ax3.xaxis.set_ticklabels([])
+		# Flow
+		ax4 = plt.subplot2grid((16,1),(8,0), rowspan = 2)
+		ax4.plot(tmp_feed_week['Time'],tmp_feed_week['FT305'], 'b-', linewidth = 0.5)
+		ax4.set_ylabel('Flow (gpm)')
+		labels = ax4.get_xticklabels()
+		plt.setp(labels, rotation=45, fontsize=10)
+		# Last day
+		# TMP
+		ax5 = plt.subplot2grid((16,1),(12,0), rowspan = 2)
+		ax5.plot(tmp_feed_day['Time'],tmp_feed_day['AIT302'], 'g-', linewidth = 0.5)
+		ax5.set_title(
+			'Hourly Average TMP and Permeate Flux (last 24 hours)',
+			fontweight = 'bold'
+		)
+		ax5.set_ylabel('TMP (psia)')
+		ax5.xaxis.set_ticklabels([])
+		# Flow
+		ax6 = plt.subplot2grid((16,1),(14,0), rowspan = 2)
+		ax6.plot(tmp_feed_day['Time'],tmp_feed_day['FT305'], 'b-', linewidth = 0.5)
+		ax6.set_ylabel('Flow (gpm)')
+		labels = ax6.get_xticklabels()
+		plt.setp(labels, rotation=45, fontsize=10)
+
+		# Output plots and/or sumstats csv files to directory of choice
+		plot_filename  = "FLOW_TMP_{0}_{1}.png".format(start_dt_str, end_dt_str)
+		fig = matplotlib.pyplot.gcf()
+		fig.set_size_inches(7, 12)
+		print('outputting plot')
+		plt.savefig(
+			os.path.join(outdir, plot_filename), 
+			width = 20, 
+			height = 160
 		)
 
-		# Dedupe data (some issue with duplicates)
-		hmi_data.drop_duplicates(inplace = True)
-		hmi_data.sort_values('Time', inplace = True)
-		# Format the time variable
-		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
 
-		if start_dt_str:
-			hmi_data = hmi_data.loc[hmi_data['Time'] >= start_dt,]
-		if end_dt_str:
-			hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
+	def get_feed_sumst(
+		self,
+		stype,
+		output_types,
+		start_dt_str,
+		end_dt_str,
+		outdir = None,
+		sum_period = 'DAY', 
+		plt_type = None, 
+		plt_colors = None,
+		ylabel = None,
+		get_nhours = None
+	):
+		
 
-		hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
+		start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
+		end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
 
-	return hmi_data_all
+		# Clean case of input arguments
+		sum_period = sum_period.upper()
+
+		plt_type = plt_type.upper()
+		if type(output_types) == list:
+			output_types = [output_type.upper() for output_type in output_types]
+		else:
+			output_types = output_types.upper()
+
+		# Define HMI element ids according to query type (water or biogas)
+		stype = stype.upper()
+		if stype == 'GAS':
+			elids = ['FT700','FT704']
+		if stype == 'WATER':
+			elids = ['FT202','FT305']
+
+		# Get output directory and string with all element ids from report
+		if not outdir:
+			outdir = askdirectory(title = 'Directory to output charts/tables to')
+
+		feeding_dat_all = self.get_data(elids, [1,1],['hour','hour'],start_dt.year)
+		feeding_dat = feeding_dat_all['{0}_{1}{2}_AVERAGES'.format(elids[0],1,'HOUR')]
+		feeding_dat['Time'] = feeding_dat['Time'].values.astype('datetime64[h]')
+		feeding_dat.drop_duplicates(['Time'], inplace = True)
+
+		# Retrieve element ids from aggregated data
+		all_elids = '_'.join(elids)
+
+		# Convert Time variable to pd.datetime variable
+		feeding_dat['Time'] = pd.to_datetime(feeding_dat['Time'])
+		feeding_dat['Date'] = feeding_dat['Time'].dt.date
+
+		# Filter to the dates desired for the plots
+		feeding_dat = feeding_dat.loc[
+			(feeding_dat.Time >= start_dt) &
+			(feeding_dat.Time < end_dt + timedelta(days = 1))
+		]
+
+		# Get dataset aggregated by Day, Week or Month
+		# Based on aggregation period, get the number of hours we are summing averages over (averages are in minutes)
+		if sum_period == 'HOUR':
+			xlabel = 'Time'
+			nhours = 1
+		else:
+			feeding_dat['Date'] = feeding_dat['Time'].dt.date
+
+		if sum_period == 'DAY':
+			xlabel = 'Date'
+			nhours = 24
+
+		if sum_period == 'WEEK':
+			xlabel = 'Weeks (since {0})'.format(start_dt_str)
+			feeding_dat[xlabel] = np.floor((feeding_dat['Time'] - start_dt)/np.timedelta64(7,'D'))
+			nhours = 24*7
+		
+		if sum_period == 'MONTH':
+			xlabel = 'Months (since {0}, as 30 days)'.format(start_dt_str)
+			feeding_dat[xlabel] = np.floor((feeding_dat['Time'] - start_dt)/np.timedelta64(30,'D'))
+			nhours = 24*7*30
 
 
-if __name__ == '__main__':
+		for elid in elids:
+			# Calculate the total (everything is in Gal or L /min so multiply by 60 to get value for the hour)
+			feeding_dat[elid] = feeding_dat_all['{0}_{1}{2}_AVERAGES'.format(elid,1,'HOUR')]['Value']*60
 
-	hmi_dat = hmi_data_agg(
-		'5-11-17', # Start of date range you want summary data for
-		'8-7-17' # End of date range you want summary data for)
-	)
-	hmi_dat.run_report(
-		[1,1,1,1,5], # Number of hours you want to average over
-		['hour','hour','hour','hour','minute'], # Type of time period (can be "hour" or "minute")
-		['FT700','FT704','FT202','FT305','FT305'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		['gas','gas','water','water','water'], # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
-	)
-	hmi_dat.run_report(
-		[5], # Number of hours you want to average over
-		['minute'], # Type of time period (can be "hour" or "minute")
-		['AIT302'], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-		['tmp'], # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
-	)
-	# hmi_dat = hmi_data_agg('5-11-17','11-9-17')
-	# hmi_dat.run_report(
-	# 	[1,1],
-	# 	['hour','hour'],
-	# 	['AT304','AT310'],
-	# 	['temp','temp']
-	# )
+
+		if get_nhours == 1:
+			for elid in elids:
+				feeding_dat['Number Hours {0}'.format(elid)] = \
+					np.where(feeding_dat[elid].values > 0, 1, 0)
+
+		agg_sumst = feeding_dat.groupby(xlabel).sum()
+
+		# Plot!
+		if 'PLOT' in output_types:
+
+			# Set the maximum number of tick labels
+			nobs  = len(agg_sumst.index.values)
+			nlims = nobs
+			if sum_period == 'DAY':
+				nlims = 12
+			# Get the indices of the x-axis values according to these tick labels
+			lim_len  = int(np.floor(nobs/nlims))
+			tic_idxs = [lim*lim_len for lim in range(nlims)]
+			tic_vals = [agg_sumst.index.values[tic_idx] for tic_idx in tic_idxs]
+			
+			if sum_period != 'DAY':
+				tic_vals = ['{0} - {1}'.format(int(tic_val), int(tic_val + 1)) for tic_val in tic_vals]
+
+			if plt_type == 'BAR':
+				ax = agg_sumst[elids].plot.bar(stacked = False, width = 0.8, color = plt_colors)
+				plt.xticks(tic_idxs,tic_vals)
+			else:
+				ax = agg_sumst[elids].plot(color = plt_colors)
+
+			plt.ylabel(ylabel)
+			plt.legend()
+
+			ax.yaxis.set_major_formatter(
+				tkr.FuncFormatter(lambda y, p: format(int(y), ','))
+			)
+			
+			plt.xticks(rotation = 45)
+			plt.tight_layout()
+
+			# Output plots and/or sumstats csv files to directory of choice
+			plot_filename  = "HMI{0}_{1}_{2}_{3}.png".format(stype, all_elids, start_dt_str, end_dt_str)
+			plt.savefig(
+				os.path.join(outdir, plot_filename), 
+				width = 20, 
+				height = 50
+			)
+
+		if 'TABLE' in output_types:
+
+			sumst_filename = "HMI{0}_{1}_{2}_{3}.csv".format(stype, all_elids, start_dt_str, end_dt_str)
+			agg_sumst.reset_index(inplace = True)
+			agg_sumst = agg_sumst[[xlabel] + elids]
+			agg_sumst.to_csv(
+				os.path.join(outdir, sumst_filename), 
+				index = False,
+				encoding = 'utf-8'
+			)
+
 
