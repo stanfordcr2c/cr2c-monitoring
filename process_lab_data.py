@@ -225,6 +225,8 @@ class labrun:
 	def clean_dataset(self, mtype, id_vars):
 
 		self.set_var_format(mtype, 'Date', None, "m-d-yy")
+		# Eliminate missing date variables
+		self.mdata.dropna(subset = ['Date'], inplace = True)
 		# Make sure all date variables are within a reasonable range
 		date_rng_warn = \
 			'A Date variable in {0} has been entered incorrectly as {1} and removed'
@@ -501,10 +503,13 @@ class labrun:
 				conn, 
 				coerce_float = True
 			)
-			mdata_all[mtype] = mdata_long
-
 			# Dedupe data (some issue with duplicates)
-			mdata_all[mtype].drop_duplicates(inplace = True)
+			mdata_long.drop_duplicates(inplace = True)
+			# Convert Date_Time variable to a pd datetime and eliminate missing values
+			mdata_long['Date_Time'] = pd.to_datetime(mdata_long['Date_Time'])
+			mdata_long.dropna(subset = ['Date_Time'], inplace = True)
+
+			mdata_all[mtype] = mdata_long
 
 		return mdata_all
 
@@ -727,8 +732,8 @@ class labrun:
 
 	def long_to_wide(self, df, id_vars):
 
-		# Create clean Date/Time Variable
-		df['Sample Date & Time'] = pd.to_datetime(df['Date_Time'])
+		# Create descriptive Date/Time Variable
+		df.rename(columns = {'Date_Time' : 'Sample Date & Time'}, inplace = True)
 		all_vars = id_vars + ['Value']
 		df = df[all_vars]
 
@@ -780,6 +785,7 @@ class labrun:
 			column_tuple = act_st_ord
 		else:
 			column_tuple = (act_st_ord, value_vars)
+
 		df_trunc = dfwide.Value.loc[start_dt:end_dt, column_tuple]
 
 		# Set column order (again, exception is for Ammonia with no type variable)
@@ -791,7 +797,8 @@ class labrun:
 
 		# Create days since seed variable and insert as the first column
 		if add_time_el == 1:
-			days_since_seed = np.array((df_trunc.index - self.min_feas_dt).days)
+			seed_dt = dt.strptime('5-11-17','%m-%d-%y')
+			days_since_seed = np.array((df_trunc.index - seed_dt).days)
 			df_trunc.insert(0, 'Days Since Seed', days_since_seed)
 
 		return df_trunc
