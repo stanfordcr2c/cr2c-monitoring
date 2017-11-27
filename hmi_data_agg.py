@@ -67,10 +67,10 @@ class hmi_data_agg:
 
 		# Select input data file and load data for run
 		if hmi_path:
-			hmi_dir = os.path.dirname(hmi_path)
+			self.hmi_dir = os.path.dirname(hmi_path)
 		else:
 			hmi_path = askopenfilename(title = 'Select HMI data input file')
-			hmi_dir = os.path.dirname(hmi_path)
+			self.hmi_dir = os.path.dirname(hmi_path)
 		try:
 			self.hmi_data_all = pd.read_csv(hmi_path)
 		except FileNotFoundError:
@@ -102,7 +102,6 @@ class hmi_data_agg:
 
 		# Load variables and set output variable names
 		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
-
 
 		# Rename variable
 		qtype = 'RAW'
