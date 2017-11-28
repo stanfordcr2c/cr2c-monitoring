@@ -1,4 +1,4 @@
-	from __future__ import print_function
+from __future__ import print_function
 import matplotlib
 matplotlib.use("TkAgg",force=True)
 import numpy as np
@@ -23,7 +23,7 @@ Calculate water head from pressure sensor readings, and compare it with the mano
 Plot the merged data to show results.
 '''
 
-def verify_reactor_pressure(pressure_path = None, hmi_path = None):
+def verify_reactor_pressure(hmi_path = None):
 
     # Get field pressure measurements
     #            AFBR  RAFMBR DAFMBR
@@ -45,21 +45,18 @@ def verify_reactor_pressure(pressure_path = None, hmi_path = None):
     # Get HMI pressure data
     #             AFBR    RAFMBR   DAFMBR
     pr_elids = ['PIT700','PIT702','PIT704']
-    if pressure_path:
-        pdat_hmi = pd.read_csv(pressure_path)
-        pdat_hmi['Time'] = pd.to_datetime(pdat_hmi['Time'])
-    else:
-        # Initialize hmi_data_agg instance
-        hmi_pr = hmi.hmi_data_agg('09-29-17', '11-22-17', hmi_path)
 
-        # Set up time and style variables
-        tperiods = [1, 1, 1]
-        ttypes = ['HOUR','HOUR','HOUR']
-        stypes = ['PRESSURE', 'PRESSURE', 'PRESSURE']
+    # Initialize hmi_data_agg instance
+    hmi_pr = hmi.hmi_data_agg('09-29-17', '11-22-17', hmi_path)
 
-        # Write the report to SQL database and then get data from it
-        hmi_pr.run_report(tperiods,ttypes,pr_elids,stypes, output_csv = True)
-        pdat_hmi = hmi_pr.get_data(pr_elids, tperiods, ttypes, 2017)
+    # Set up time and style variables
+    tperiods = [1, 1, 1]
+    ttypes = ['HOUR','HOUR','HOUR']
+    stypes = ['PRESSURE', 'PRESSURE', 'PRESSURE']
+
+    # Write the report to SQL database and then get data from it
+    hmi_pr.run_report(tperiods,ttypes,pr_elids,stypes, output_csv = True)
+    pdat_hmi = hmi_pr.get_data(pr_elids, tperiods, ttypes, 2017)
 
     for tperiod, ttype, pr_elid in zip(tperiods, ttypes, pr_elids):
         # Create keys of pressure sensor with specified time period. e.g. 'PIT700_1HOUR_AVERAGES'
@@ -101,5 +98,4 @@ def verify_reactor_pressure(pressure_path = None, hmi_path = None):
 
 verify_reactor_pressure(
     hmi_path = '/Users/joannalin/Box Sync/CR2C.Operations/MonitoringProcedures/Data/HMIPRESSURE_PIT700_PIT702_PIT704_9-29-17_11-22-17.csv',
-    # pressure_path = '/Users/joannalin/Box Sync/CR2C.Operations/MonitoringProcedures/Data/HMIPRESSURE_PIT700_PIT702_PIT704_9-29-17_11-22-17.csv'
 )
