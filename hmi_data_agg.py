@@ -26,6 +26,56 @@ import sys
 from tkinter.filedialog import askopenfilename
 from tkinter.filedialog import askdirectory
 
+def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = None, end_dt_str = None):
+
+	# Clean user inputs
+	ttypes = [ttype.upper() for ttype in ttypes]
+
+	# Convert date string inputs to dt variables
+	if start_dt_str:
+		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
+	if end_dt_str:
+		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+
+	# Load data from SQL
+	os.chdir(self.data_dir)
+	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
+	hmi_data_all = {}
+
+	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
+
+		if month_sub:
+
+			sql_str = """
+				SELECT * FROM {0}_{1}{2}_AVERAGES
+				WHERE Month = {4}
+			""".format(elid, tperiod, ttype, month_sub)
+
+		else:
+
+			sql_str = "SELECT * FROM {0}_{1}{2}_AVERAGES".format(elid, tperiod, ttype)
+
+		hmi_data = pd.read_sql(
+			sql_str, 
+			conn, 
+			coerce_float = True
+		)
+
+		# Dedupe data (some issue with duplicates)
+		hmi_data.drop_duplicates('Time', inplace = True)
+		hmi_data.sort_values('Time', inplace = True)
+		# Format the time variable
+		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
+
+		if start_dt_str:
+			hmi_data = hmi_data.loc[hmi_data['Time'] >= start_dt,]
+		if end_dt_str:
+			hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
+
+		hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
+
+	return hmi_data_all
+
 class hmi_data_agg:
 
 	def __init__(self, start_dt_str, end_dt_str, hmi_path = None):
@@ -283,57 +333,6 @@ class hmi_data_agg:
 			conn.close()
 
 
-	def get_data(self, elids, tperiods, ttypes, year, month_sub = None, start_dt_str = None, end_dt_str = None):
-
-		# Clean user inputs
-		ttypes = [ttype.upper() for ttype in ttypes]
-
-		# Convert date string inputs to dt variables
-		if start_dt_str:
-			start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
-		if end_dt_str:
-			end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
-
-		# Load data from SQL
-		os.chdir(self.data_dir)
-		conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
-		hmi_data_all = {}
-
-		for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
-
-			if month_sub:
-
-				sql_str = """
-					SELECT * FROM {0}_{1}{2}_AVERAGES
-					WHERE Month = {4}
-				""".format(elid, tperiod, ttype, month_sub)
-
-			else:
-
-				sql_str = "SELECT * FROM {0}_{1}{2}_AVERAGES".format(elid, tperiod, ttype)
-
-			hmi_data = pd.read_sql(
-				sql_str, 
-				conn, 
-				coerce_float = True
-			)
-
-			# Dedupe data (some issue with duplicates)
-			hmi_data.drop_duplicates('Time', inplace = True)
-			hmi_data.sort_values('Time', inplace = True)
-			# Format the time variable
-			hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
-
-			if start_dt_str:
-				hmi_data = hmi_data.loc[hmi_data['Time'] >= start_dt,]
-			if end_dt_str:
-				hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
-
-			hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
-
-		return hmi_data_all
-
-
 	def get_tmp_plots(
 		self,
 		start_dt_str,
@@ -348,14 +347,14 @@ class hmi_data_agg:
 			outdir = askdirectory(title = 'Directory to output charts/tables to')
 
 		# Get feeding data
-		feeding_dat_zm = self.get_data(['FT305'],[5],['minute'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_5MINUTE_AVERAGES']
+		feeding_dat_zm = get_data(['FT305'],[5],['minute'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_5MINUTE_AVERAGES']
 		feeding_dat_zm['FT305'] = feeding_dat_zm['Value']
-		feeding_dat = self.get_data(['FT305'],[1],['hour'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_1HOUR_AVERAGES']
+		feeding_dat = get_data(['FT305'],[1],['hour'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_1HOUR_AVERAGES']
 		feeding_dat['FT305'] = feeding_dat['Value']
 		# Get tmp data
-		tmp_dat_zm = self.get_data(['AIT302'],[5],['minute'], start_dt.year)['AIT302_5MINUTE_AVERAGES']
+		tmp_dat_zm = get_data(['AIT302'],[5],['minute'], start_dt.year)['AIT302_5MINUTE_AVERAGES']
 		tmp_dat_zm['AIT302'] = tmp_dat_zm['Value']
-		tmp_dat = self.get_data(['AIT302'],[1],['hour'], start_dt.year)['AIT302_1HOUR_AVERAGES']
+		tmp_dat = get_data(['AIT302'],[1],['hour'], start_dt.year)['AIT302_1HOUR_AVERAGES']
 		tmp_dat['AIT302'] = tmp_dat['Value']
 
 		# Merge the two files   
@@ -489,7 +488,7 @@ class hmi_data_agg:
 		if not outdir:
 			outdir = askdirectory(title = 'Directory to output charts/tables to')
 
-		feeding_dat_all = self.get_data(elids, [1,1],['hour','hour'],start_dt.year)
+		feeding_dat_all = get_data(elids, [1,1],['hour','hour'],start_dt.year)
 		feeding_dat = feeding_dat_all['{0}_{1}{2}_AVERAGES'.format(elids[0],1,'HOUR')]
 		feeding_dat['Time'] = feeding_dat['Time'].values.astype('datetime64[h]')
 		feeding_dat.drop_duplicates(['Time'], inplace = True)
