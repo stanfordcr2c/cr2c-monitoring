@@ -96,8 +96,6 @@ def verify_reactor_pressure(hmi_path = None):
     axes[ax_idx].xaxis.set_major_formatter(date_fmt)
     plt.show()
 
-    print (merged_pr[id_hmi + ' Gauge Pr. (in)'], merged_pr['Manometer Pressure: ' + id_gsheet])
-
 verify_reactor_pressure(
     # hmi_path = '/Users/joannalin/Box Sync/CR2C.Operations/MonitoringProcedures/Data/HMIPRESSURE_PIT700_PIT702_PIT704_9-29-17_11-22-17.csv'
 )
