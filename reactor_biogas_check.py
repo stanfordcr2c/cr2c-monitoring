@@ -46,17 +46,20 @@ def verify_reactor_pressure(hmi_path = None):
     #             AFBR    RAFMBR   DAFMBR
     pr_elids = ['PIT700','PIT702','PIT704']
 
-    # Initialize hmi_data_agg instance
-    hmi_pr = hmi.hmi_data_agg('09-29-17', '11-22-17', hmi_path)
-
     # Set up time and style variables
     tperiods = [1, 1, 1]
     ttypes = ['HOUR','HOUR','HOUR']
     stypes = ['PRESSURE', 'PRESSURE', 'PRESSURE']
 
-    # Write the report to SQL database and then get data from it
-    hmi_pr.run_report(tperiods,ttypes,pr_elids,stypes, output_csv = True)
-    pdat_hmi = hmi_pr.get_data(pr_elids, tperiods, ttypes, 2017)
+    # load reactor pressures from hmi csv file to sql database if path is provided
+    if hmi_path:
+        # Initialize hmi_data_agg instance
+        hmi_pr = hmi.hmi_data_agg('09-29-17', '11-22-17', hmi_path)
+        # Write the report to SQL database and then get data from it
+        hmi_pr.run_report(tperiods,ttypes,pr_elids,stypes, output_csv = False)
+
+    # get reactor pressures from sql database
+    pdat_hmi = hmi.get_data(pr_elids, tperiods, ttypes, 2017)
 
     for tperiod, ttype, pr_elid in zip(tperiods, ttypes, pr_elids):
         # Create keys of pressure sensor with specified time period. e.g. 'PIT700_1HOUR_AVERAGES'
@@ -79,16 +82,13 @@ def verify_reactor_pressure(hmi_path = None):
 
     # Plot manometer pressures vs HMI sensor gauge pressure
     nrows = 3
-    fig = plt.figure()
     fig, axes = plt.subplots(nrows, sharex = True)
     fig.set_size_inches(8, 20)
     ids_hmi = ['PIT700', 'PIT702', 'PIT704']
     ids_gsheet = ['R300', 'R301', 'R302']
     for ax_idx, (id_hmi, id_gsheet) in enumerate(zip(ids_hmi, ids_gsheet)):
         axes[ax_idx].plot(merged_pr['TS_mins'], merged_pr[id_hmi + ' Gauge Pr. (in)'])
-        axes[ax_idx].plot(merged_pr['TS_mins'], merged_pr['Manometer Pressure: ' + id_gsheet])
-
-        # axes[ax_idx].yaxis.set_major_locator(tkr.AutoLocator())
+        axes[ax_idx].plot(merged_pr['TS_mins'], pd.to_numeric(merged_pr['Manometer Pressure: ' + id_gsheet], 'coerce'))
         axes[ax_idx].legend()
 
     # Display only months and days on the x axis
@@ -97,5 +97,5 @@ def verify_reactor_pressure(hmi_path = None):
     plt.show()
 
 verify_reactor_pressure(
-    hmi_path = '/Users/joannalin/Box Sync/CR2C.Operations/MonitoringProcedures/Data/HMIPRESSURE_PIT700_PIT702_PIT704_9-29-17_11-22-17.csv',
+    # hmi_path = '/Users/joannalin/Box Sync/CR2C.Operations/MonitoringProcedures/Data/HMIPRESSURE_PIT700_PIT702_PIT704_9-29-17_11-22-17.csv'
 )
