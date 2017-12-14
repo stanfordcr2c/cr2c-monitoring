@@ -234,7 +234,7 @@ class hmi_data_agg:
 
 		for tperiod, ttype, elid, stype in zip(tperiods, ttypes, elids, stypes):
 
-			print('Getting aggregated data for {0}...'.format(elid))
+			print('Getting aggregated data for {0} ({1}{2})...'.format(elid, tperiod, ttype))
 
 			# Get prepped data
 			self.prep_data(elid, stype)
