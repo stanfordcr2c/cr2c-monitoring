@@ -537,18 +537,26 @@ class labrun:
 		mplot_list,
 		wrap_var,
 		stage_sub = None,
-		type_sub = None
+		type_sub = None,
+		outdir = None,
+		opfile_suff = None
 	):
 
-		# Request tables and charts output directory from user
-		tkTitle = 'Directory to output charts to...'
-		print(tkTitle)
-		self.charts_outdir = askdirectory(title = tkTitle)
+		if not outdir:
+			# Request tables and charts output directory from user
+			tkTitle = 'Directory to output charts to...'
+			print(tkTitle)
+			outdir = askdirectory(title = tkTitle)
 		try:
-			os.chdir(self.charts_outdir)
+			os.chdir(outdir)
 		except OSError:
 			print('Please choose a valid directory to output the charts to')
 			sys.exit()
+
+		if opfile_suff:
+			opfile_suff = '_' + opfile_suff
+		else:
+			opfile_suff = ''
 
 		# Clean case of mplot_list and wrap var inputs
 		mplot_list = [element.upper() for element in mplot_list]
@@ -709,13 +717,13 @@ class labrun:
 			mplot.set_xticklabels(rotation = 45)
 
 			# Output plot to given directory
-			plot_filename = "{0}_{1}_to_{2}.png"
-			os.chdir(self.charts_outdir)
+			plot_filename = "{0}{1}.png"
+			os.chdir(outdir)
 
 			# Add and position legend
 			if mtype in ['PH','ALKALINITY'] and wrap_var == 'Stage':
 				plt.savefig(
-					plot_filename.format(mtype, start_dt_str, end_dt_str), 
+					plot_filename.format(mtype, opfile_suff), 
 					bbox_inches = 'tight',
 					width = plot_wid, 
 					height = plot_len
@@ -724,7 +732,7 @@ class labrun:
 				handles, labels = ax.get_legend_handles_labels()
 				lgd = ax.legend(handles, labels, loc='upper left', bbox_to_anchor = (1,0.75))
 				plt.savefig(
-					plot_filename.format(mtype, start_dt_str, end_dt_str), 
+					plot_filename.format(mtype, opfile_suff), 
 					bbox_extra_artists = (lgd,),
 					bbox_inches = 'tight',
 					width = plot_wid, 
@@ -807,14 +815,21 @@ class labrun:
 
 
 	# Gets wide dataset, cleans and formats and outputs to csv
-	def summarize_tables(self, end_dt_str, ndays, add_time_el = True):
-		tkTitle = 'Directory to output tables to...'
-		tables_outdir = askdirectory(title = tkTitle)
+	def summarize_tables(self, end_dt_str, ndays, add_time_el = True, outdir = None, opfile_suff = None):
+		
+		if not outdir:
+			tkTitle = 'Directory to output tables to...'
+			outdir = askdirectory(title = tkTitle)
 		try:
-			os.chdir(tables_outdir)
+			os.chdir(outdir)
 		except OSError:
 			print('Please choose a valid directory to output the tables to')
 			sys.exit()
+
+		if opfile_suff:
+			opfile_suff = '_' + opfile_suff
+		else:
+			opfile_suff = ''
 
 		# Get start and end dates
 		end_dt = dt.strptime(end_dt_str,'%m-%d-%y') + timedelta(days = 1)
@@ -851,10 +866,10 @@ class labrun:
 		NH3trunc = self.clean_wide_table(NH3wide,['Value'], start_dt, end_dt, add_time_el)
 		
 		# Save
-		os.chdir(tables_outdir)
-		CODtrunc.to_csv('COD_table' + end_dt_str + '.csv')
-		VFAtrunc.to_csv('VFA_table' + end_dt_str + '.csv')
-		TSS_VSStrunc.to_csv('TSS_VSS_table' + end_dt_str + '.csv')
-		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + '.csv')
-		NH3trunc.to_csv('Ammonia_table' + end_dt_str + '.csv')
+		os.chdir(outdir)
+		CODtrunc.to_csv('COD_table' + end_dt_str + opfile_suff + '.csv')
+		VFAtrunc.to_csv('VFA_table' + end_dt_str + opfile_suff + '.csv')
+		TSS_VSStrunc.to_csv('TSS_VSS_table' + end_dt_str + opfile_suff + '.csv')
+		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
+		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
 

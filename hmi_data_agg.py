@@ -28,7 +28,7 @@ from tkinter.filedialog import askdirectory
 
 class hmi_data_agg:
 
-	def __init__(self, start_dt_str, end_dt_str, hmi_path = None):
+	def __init__(self, start_dt_str, end_dt_str, ip_path = None):
 
 		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
 		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
@@ -66,15 +66,15 @@ class hmi_data_agg:
 		self.data_dir = get_dirs()
 
 		# Select input data file and load data for run
-		if hmi_path:
-			self.hmi_dir = os.path.dirname(hmi_path)
+		if ip_path:
+			self.hmi_dir = os.path.dirname(ip_path)
 		else:
-			tkTitle = 'Select HMI data input file'
+			tkTitle = 'Select HMI data input file...'
 			print(tkTitle)
-			hmi_path = askopenfilename(title = tkTitle)
-			self.hmi_dir = os.path.dirname(hmi_path)
+			ip_path = askopenfilename(title = tkTitle)
+			self.hmi_dir = os.path.dirname(ip_path)
 		try:
-			self.hmi_data_all = pd.read_csv(hmi_path)
+			self.hmi_data_all = pd.read_csv(ip_path)
 		except FileNotFoundError:
 			print('Please choose an existing input file with the HMI data')
 			sys.exit()
@@ -339,16 +339,22 @@ class hmi_data_agg:
 		self,
 		start_dt_str,
 		end_dt_str,
-		outdir = None
+		outdir = None,
+		opfile_suff = None
 	):
 
 		start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
 		end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
 
 		if not outdir:
-			tkTitle = 'Directory to output charts/tables to'
+			tkTitle = 'Directory to output charts/tables to...'
 			print(tkTitle)
 			outdir = askdirectory(title = tkTitle)
+
+		if opfile_suff:
+			opfile_suff = '_' + opfile_suff
+		else:
+			opfile_suff = ''
 
 		# Get feeding data
 		feeding_dat_zm = self.get_data(['FT305'],[5],['minute'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_5MINUTE_AVERAGES']
@@ -443,7 +449,7 @@ class hmi_data_agg:
 		plt.setp(labels, rotation=45, fontsize=10)
 
 		# Output plots and/or sumstats csv files to directory of choice
-		plot_filename  = "FLOW_TMP_{0}_{1}.png".format(start_dt_str, end_dt_str)
+		plot_filename  = "FLOW_TMP{0}.png".format(opfile_suff)
 		fig = matplotlib.pyplot.gcf()
 		fig.set_size_inches(7, 12)
 		print('outputting plot')
@@ -460,12 +466,13 @@ class hmi_data_agg:
 		output_types,
 		start_dt_str,
 		end_dt_str,
-		outdir = None,
 		sum_period = 'DAY', 
 		plt_type = None, 
 		plt_colors = None,
 		ylabel = None,
-		get_nhours = None
+		get_nhours = None,
+		outdir = None,
+		opfile_suff = None
 	):
 		
 
@@ -474,6 +481,10 @@ class hmi_data_agg:
 
 		# Clean case of input arguments
 		sum_period = sum_period.upper()
+		if opfile_suff:
+			opfile_suff = '_' + opfile_suff
+		else:
+			opfile_suff = ''
 
 		plt_type = plt_type.upper()
 		if type(output_types) == list:
@@ -490,7 +501,7 @@ class hmi_data_agg:
 
 		# Get output directory and string with all element ids from report
 		if not outdir:
-			tkTitle = 'Directory to output charts/tables to'
+			tkTitle = 'Directory to output charts/tables to...'
 			print(tkTitle)
 			outdir = askdirectory(title = tkTitle)
 
@@ -580,7 +591,7 @@ class hmi_data_agg:
 			plt.tight_layout()
 
 			# Output plots and/or sumstats csv files to directory of choice
-			plot_filename  = "HMI{0}_{1}_{2}_{3}.png".format(stype, all_elids, start_dt_str, end_dt_str)
+			plot_filename  = "HMI{0}_{1}{2}.png".format(stype, all_elids, opfile_suff)
 			plt.savefig(
 				os.path.join(outdir, plot_filename), 
 				width = 20, 
@@ -589,7 +600,7 @@ class hmi_data_agg:
 
 		if 'TABLE' in output_types:
 
-			sumst_filename = "HMI{0}_{1}_{2}_{3}.csv".format(stype, all_elids, start_dt_str, end_dt_str)
+			sumst_filename = "HMI{0}_{1}{2}.csv".format(stype, all_elids, opfile_suff)
 			agg_sumst.reset_index(inplace = True)
 			agg_sumst = agg_sumst[[xlabel] + elids]
 			agg_sumst.to_csv(
