@@ -541,7 +541,9 @@ class labrun:
 	):
 
 		# Request tables and charts output directory from user
-		self.charts_outdir = askdirectory(title = 'Directory to output charts to')
+		tkTitle = 'Directory to output charts to...'
+		print(tkTitle)
+		self.charts_outdir = askdirectory(title = tkTitle)
 		try:
 			os.chdir(self.charts_outdir)
 		except OSError:
@@ -806,8 +808,8 @@ class labrun:
 
 	# Gets wide dataset, cleans and formats and outputs to csv
 	def summarize_tables(self, end_dt_str, ndays, add_time_el = True):
-
-		tables_outdir = askdirectory(title = 'Directory to output tables to:')
+		tkTitle = 'Directory to output tables to...'
+		tables_outdir = askdirectory(title = tkTitle)
 		try:
 			os.chdir(tables_outdir)
 		except OSError:

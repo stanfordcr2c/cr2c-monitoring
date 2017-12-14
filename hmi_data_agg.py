@@ -69,7 +69,9 @@ class hmi_data_agg:
 		if hmi_path:
 			self.hmi_dir = os.path.dirname(hmi_path)
 		else:
-			hmi_path = askopenfilename(title = 'Select HMI data input file')
+			tkTitle = 'Select HMI data input file'
+			print(tkTitle)
+			hmi_path = askopenfilename(title = tkTitle)
 			self.hmi_dir = os.path.dirname(hmi_path)
 		try:
 			self.hmi_data_all = pd.read_csv(hmi_path)
@@ -344,7 +346,9 @@ class hmi_data_agg:
 		end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
 
 		if not outdir:
-			outdir = askdirectory(title = 'Directory to output charts/tables to')
+			tkTitle = 'Directory to output charts/tables to'
+			print(tkTitle)
+			outdir = askdirectory(title = tkTitle)
 
 		# Get feeding data
 		feeding_dat_zm = self.get_data(['FT305'],[5],['minute'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_5MINUTE_AVERAGES']
@@ -486,7 +490,9 @@ class hmi_data_agg:
 
 		# Get output directory and string with all element ids from report
 		if not outdir:
-			outdir = askdirectory(title = 'Directory to output charts/tables to')
+			tkTitle = 'Directory to output charts/tables to'
+			print(tkTitle)
+			outdir = askdirectory(title = tkTitle)
 
 		feeding_dat_all = self.get_data(elids, [1,1],['hour','hour'],start_dt.year)
 		feeding_dat = feeding_dat_all['{0}_{1}{2}_AVERAGES'.format(elids[0],1,'HOUR')]
