@@ -1,5 +1,5 @@
-''' 
-	This script calculates totals and averages for any given HMI data point(s), 
+'''
+	This script calculates totals and averages for any given HMI data point(s),
 	time period, and date range for which a raw eDNA query has been run (and a csv file
 	for that query obtained)
 	If desired, also outputs plots and summary tables
@@ -7,7 +7,7 @@
 
 from __future__ import print_function
 import matplotlib
-matplotlib.use("TkAgg",force=True) 
+matplotlib.use("TkAgg",force=True)
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
 import matplotlib.dates as dates
@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import datetime as datetime
 from datetime import datetime as dt
-from datetime import timedelta 
+from datetime import timedelta
 from pandas import read_excel
 import sqlite3
 import os
@@ -26,43 +26,92 @@ import sys
 from tkinter.filedialog import askopenfilename
 from tkinter.filedialog import askdirectory
 
+# Manages output directories
+def get_dirs():
+
+    # Find the CR2C.Operations folder on Box Sync on the given machine
+    targetdir = os.path.join('Box Sync','CR2C.Operations')
+    mondir = None
+    print("Searching for Codiga Center's Operations folder on Box Sync...")
+    for dirpath, dirname, filename in os.walk(expanduser('~')):
+        if dirpath.find(targetdir) > 0:
+            mondir = os.path.join(dirpath,'MonitoringProcedures')
+            print("Found Codiga Center's Operations folder on Box Sync")
+            break
+
+    # Alert user if Box Sync folder not found on machine
+    if not mondir:
+        if os.path.isdir('D:/'):
+            for dirpath, dirname, filename in os.walk('D:/'):
+                if dirpath.find(targetdir) > 0:
+                    mondir = os.path.join(dirpath,'MonitoringProcedures')
+                    print("Found Codiga Center's Operations folder on Box Sync")
+                    break
+        if not mondir:
+            print("Could not find Codiga Center's Operations folder in Box Sync")
+            print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
+            sys.exit()
+
+    data_dir = os.path.join(mondir,'Data')
+
+    return data_dir
+
+def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = None, end_dt_str = None):
+
+	# Clean user inputs
+	ttypes = [ttype.upper() for ttype in ttypes]
+
+	# Convert date string inputs to dt variables
+	if start_dt_str:
+		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
+	if end_dt_str:
+		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+
+	# Load data from SQL
+	os.chdir(get_dirs())
+	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
+	hmi_data_all = {}
+
+	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
+
+		if month_sub:
+
+			sql_str = """
+				SELECT * FROM {0}_{1}{2}_AVERAGES
+				WHERE Month = {4}
+			""".format(elid, tperiod, ttype, month_sub)
+
+		else:
+
+			sql_str = "SELECT * FROM {0}_{1}{2}_AVERAGES".format(elid, tperiod, ttype)
+
+		hmi_data = pd.read_sql(
+			sql_str,
+			conn,
+			coerce_float = True
+		)
+
+		# Dedupe data (some issue with duplicates)
+		hmi_data.drop_duplicates('Time', inplace = True)
+		hmi_data.sort_values('Time', inplace = True)
+		# Format the time variable
+		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
+
+		if start_dt_str:
+			hmi_data = hmi_data.loc[hmi_data['Time'] >= start_dt,]
+		if end_dt_str:
+			hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
+
+		hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
+
+	return hmi_data_all
+
 class hmi_data_agg:
 
 	def __init__(self, start_dt_str, end_dt_str, ip_path = None):
 
 		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
 		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
-
-		# Manages output directories
-		def get_dirs():
-			
-			# Find the CR2C.Operations folder on Box Sync on the given machine
-			targetdir = os.path.join('Box Sync','CR2C.Operations')
-			mondir = None
-			print("Searching for Codiga Center's Operations folder on Box Sync...")
-			for dirpath, dirname, filename in os.walk(expanduser('~')):
-				if dirpath.find(targetdir) > 0:
-					mondir = os.path.join(dirpath,'MonitoringProcedures')
-					print("Found Codiga Center's Operations folder on Box Sync")
-					break
-					
-			# Alert user if Box Sync folder not found on machine
-			if not mondir:
-				if os.path.isdir('D:/'):
-					for dirpath, dirname, filename in os.walk('D:/'):
-						if dirpath.find(targetdir) > 0:
-							mondir = os.path.join(dirpath,'MonitoringProcedures')
-							print("Found Codiga Center's Operations folder on Box Sync")
-							break
-				if not mondir:
-					print("Could not find Codiga Center's Operations folder in Box Sync")
-					print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
-					sys.exit()
-
-			data_dir = os.path.join(mondir,'Data')
-
-			return data_dir
-		
 		self.data_dir = get_dirs()
 
 		# Select input data file and load data for run
@@ -78,7 +127,6 @@ class hmi_data_agg:
 		except FileNotFoundError:
 			print('Please choose an existing input file with the HMI data')
 			sys.exit()
-
 
 	def prep_data(self, elid, stype):
 
@@ -114,10 +162,10 @@ class hmi_data_agg:
 		if stype in ['GAS','WATER']:
 			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = 0
 		else:
-			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = np.NaN	
-		self.hmi_data.loc[self.hmi_data['Value'] > hi_limit, 'Value'] = np.NaN	
+			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = np.NaN
+		self.hmi_data.loc[self.hmi_data['Value'] > hi_limit, 'Value'] = np.NaN
 
-		# Rename and format corresponding timestamp variable 
+		# Rename and format corresponding timestamp variable
 		self.hmi_data['Time' ] = \
 			self.hmi_data[varname.format(elid, 'Time', qtype)]
 		# Set as datetime variable at second resolution (uses less memory than nanosecond!)
@@ -128,7 +176,7 @@ class hmi_data_agg:
 		self.hmi_data = self.hmi_data.loc[
 			(self.hmi_data['Time'] >= self.start_dt - datetime.timedelta(days = 1)) &
 			(self.hmi_data['Time'] < self.end_dt + datetime.timedelta(days = 1))
-			, 
+			,
 			['Time', 'Value']
 		]
 		# Eliminate missing values and reset index
@@ -152,10 +200,10 @@ class hmi_data_agg:
 			# Change start_dt and end_dt of system to avoid overwriting sql file with empty data
 			self.start_dt = start_dt_warn
 			self.end_dt = end_dt_warn
-		
+
 
 	def get_tot_var(
-		self, 
+		self,
 		tperiod,
 		ttype,
 		elid
@@ -163,8 +211,8 @@ class hmi_data_agg:
 
 		# Get minute-level dataframe of timesteps for the time period requested
 		ts_array = np.arange(
-			self.start_dt, 
-			self.end_dt + datetime.timedelta(days = 1), 
+			self.start_dt,
+			self.end_dt + datetime.timedelta(days = 1),
 			np.timedelta64(1,'m')
 		)
 		empty_df = pd.DataFrame(ts_array, columns = ['Time'])
@@ -183,7 +231,7 @@ class hmi_data_agg:
 		hmi_data_all['TimeEl'] = (hmi_data_all['Time'].shift(-1) - hmi_data_all['Time'])/np.timedelta64(1,'m')
 		# Compute the area under the curve for each timestep (relative to the next time step)
 		hmi_data_all['TotValue'] = hmi_data_all['Value']*hmi_data_all['TimeEl']
-		
+
 		# Extract the timedelta/datetime64 string from the ttype input argument (either 'h' or 'm')
 		ttype_d = ttype[0].lower()
 
@@ -243,7 +291,7 @@ class hmi_data_agg:
 			tots_res = self.get_tot_var(tperiod, ttype, elid)
 			# Get month integer (for possible partitioning later on)
 			tots_res['Month'] = tots_res['Time'].dt.month
-			
+
 			# Reorder columns and set time index
 			# tots_res.set_index(tots_res['Time'], inplace = True)
 			tots_res = tots_res[['Time','Month','Value']]
@@ -284,57 +332,6 @@ class hmi_data_agg:
 			conn.close()
 
 
-	def get_data(self, elids, tperiods, ttypes, year, month_sub = None, start_dt_str = None, end_dt_str = None):
-
-		# Clean user inputs
-		ttypes = [ttype.upper() for ttype in ttypes]
-
-		# Convert date string inputs to dt variables
-		if start_dt_str:
-			start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
-		if end_dt_str:
-			end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
-
-		# Load data from SQL
-		os.chdir(self.data_dir)
-		conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
-		hmi_data_all = {}
-
-		for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
-
-			if month_sub:
-
-				sql_str = """
-					SELECT * FROM {0}_{1}{2}_AVERAGES
-					WHERE Month = {4}
-				""".format(elid, tperiod, ttype, month_sub)
-
-			else:
-
-				sql_str = "SELECT * FROM {0}_{1}{2}_AVERAGES".format(elid, tperiod, ttype)
-
-			hmi_data = pd.read_sql(
-				sql_str, 
-				conn, 
-				coerce_float = True
-			)
-
-			# Dedupe data (some issue with duplicates)
-			hmi_data.drop_duplicates('Time', inplace = True)
-			hmi_data.sort_values('Time', inplace = True)
-			# Format the time variable
-			hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
-
-			if start_dt_str:
-				hmi_data = hmi_data.loc[hmi_data['Time'] >= start_dt,]
-			if end_dt_str:
-				hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
-
-			hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
-
-		return hmi_data_all
-
-
 	def get_tmp_plots(
 		self,
 		start_dt_str,
@@ -357,17 +354,17 @@ class hmi_data_agg:
 			opfile_suff = ''
 
 		# Get feeding data
-		feeding_dat_zm = self.get_data(['FT305'],[5],['minute'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_5MINUTE_AVERAGES']
+		feeding_dat_zm = get_data(['FT305'],[5],['minute'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_5MINUTE_AVERAGES']
 		feeding_dat_zm['FT305'] = feeding_dat_zm['Value']
-		feeding_dat = self.get_data(['FT305'],[1],['hour'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_1HOUR_AVERAGES']
+		feeding_dat = get_data(['FT305'],[1],['hour'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_1HOUR_AVERAGES']
 		feeding_dat['FT305'] = feeding_dat['Value']
 		# Get tmp data
-		tmp_dat_zm = self.get_data(['AIT302'],[5],['minute'], start_dt.year)['AIT302_5MINUTE_AVERAGES']
+		tmp_dat_zm = get_data(['AIT302'],[5],['minute'], start_dt.year)['AIT302_5MINUTE_AVERAGES']
 		tmp_dat_zm['AIT302'] = tmp_dat_zm['Value']
-		tmp_dat = self.get_data(['AIT302'],[1],['hour'], start_dt.year)['AIT302_1HOUR_AVERAGES']
+		tmp_dat = get_data(['AIT302'],[1],['hour'], start_dt.year)['AIT302_1HOUR_AVERAGES']
 		tmp_dat['AIT302'] = tmp_dat['Value']
 
-		# Merge the two files   
+		# Merge the two files
 		tmp_feed_dat = feeding_dat.merge(tmp_dat, on = 'Time')
 		tmp_feed_dat_zm = feeding_dat_zm.merge(tmp_dat_zm, on = 'Time')
 
@@ -454,8 +451,8 @@ class hmi_data_agg:
 		fig.set_size_inches(7, 12)
 		print('outputting plot')
 		plt.savefig(
-			os.path.join(outdir, plot_filename), 
-			width = 20, 
+			os.path.join(outdir, plot_filename),
+			width = 20,
 			height = 160
 		)
 
@@ -467,14 +464,15 @@ class hmi_data_agg:
 		start_dt_str,
 		end_dt_str,
 		sum_period = 'DAY', 
-		plt_type = None, 
+		plt_type = None,
+		plt_type = None,
 		plt_colors = None,
 		ylabel = None,
 		get_nhours = None,
 		outdir = None,
 		opfile_suff = None
 	):
-		
+
 
 		start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
 		end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
@@ -505,7 +503,7 @@ class hmi_data_agg:
 			print(tkTitle)
 			outdir = askdirectory(title = tkTitle)
 
-		feeding_dat_all = self.get_data(elids, [1,1],['hour','hour'],start_dt.year)
+		feeding_dat_all = get_data(elids, [1,1],['hour','hour'],start_dt.year)
 		feeding_dat = feeding_dat_all['{0}_{1}{2}_AVERAGES'.format(elids[0],1,'HOUR')]
 		feeding_dat['Time'] = feeding_dat['Time'].values.astype('datetime64[h]')
 		feeding_dat.drop_duplicates(['Time'], inplace = True)
@@ -539,7 +537,7 @@ class hmi_data_agg:
 			xlabel = 'Weeks (since {0})'.format(start_dt_str)
 			feeding_dat[xlabel] = np.floor((feeding_dat['Time'] - start_dt)/np.timedelta64(7,'D'))
 			nhours = 24*7
-		
+
 		if sum_period == 'MONTH':
 			xlabel = 'Months (since {0}, as 30 days)'.format(start_dt_str)
 			feeding_dat[xlabel] = np.floor((feeding_dat['Time'] - start_dt)/np.timedelta64(30,'D'))
@@ -570,7 +568,7 @@ class hmi_data_agg:
 			lim_len  = int(np.floor(nobs/nlims))
 			tic_idxs = [lim*lim_len for lim in range(nlims)]
 			tic_vals = [agg_sumst.index.values[tic_idx] for tic_idx in tic_idxs]
-			
+
 			if sum_period != 'DAY':
 				tic_vals = ['{0} - {1}'.format(int(tic_val), int(tic_val + 1)) for tic_val in tic_vals]
 
@@ -586,15 +584,15 @@ class hmi_data_agg:
 			ax.yaxis.set_major_formatter(
 				tkr.FuncFormatter(lambda y, p: format(int(y), ','))
 			)
-			
+
 			plt.xticks(rotation = 45)
 			plt.tight_layout()
 
 			# Output plots and/or sumstats csv files to directory of choice
 			plot_filename  = "HMI{0}_{1}{2}.png".format(stype, all_elids, opfile_suff)
 			plt.savefig(
-				os.path.join(outdir, plot_filename), 
-				width = 20, 
+				os.path.join(outdir, plot_filename),
+				width = 20,
 				height = 50
 			)
 
@@ -604,7 +602,7 @@ class hmi_data_agg:
 			agg_sumst.reset_index(inplace = True)
 			agg_sumst = agg_sumst[[xlabel] + elids]
 			agg_sumst.to_csv(
-				os.path.join(outdir, sumst_filename), 
+				os.path.join(outdir, sumst_filename),
 				index = False,
 				encoding = 'utf-8'
 			)
