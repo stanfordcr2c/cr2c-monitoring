@@ -67,23 +67,24 @@ def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = Non
 	if end_dt_str:
 		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
 
-	# Load data from SQL
+	# Create connection to SQL database
 	os.chdir(get_dirs())
 	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
 	hmi_data_all = {}
 
 	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
 
+		# month_sub insert
 		if month_sub:
-
-			sql_str = """
-				SELECT * FROM {0}_{1}{2}_AVERAGES
-				WHERE Month = {4}
-			""".format(elid, tperiod, ttype, month_sub)
-
+			msub_ins = 'WHERE Month == {0}'.format(month_sub)
 		else:
+			msub_ins = ''
 
-			sql_str = "SELECT * FROM {0}_{1}{2}_AVERAGES".format(elid, tperiod, ttype)
+		sql_str = """
+			SELECT distinct * FROM {0}_{1}{2}_AVERAGES
+			{3}
+			order by Time 
+		""".format(elid, tperiod, ttype, msub_ins)
 
 		hmi_data = pd.read_sql(
 			sql_str,
@@ -91,9 +92,6 @@ def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = Non
 			coerce_float = True
 		)
 
-		# Dedupe data (some issue with duplicates)
-		hmi_data.drop_duplicates('Time', inplace = True)
-		hmi_data.sort_values('Time', inplace = True)
 		# Format the time variable
 		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
 
@@ -106,6 +104,55 @@ def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = Non
 
 	return hmi_data_all
 
+# Function to eliminate misaligned time readings from dataset (can happen from bugs in pandas + timedelta)
+def clean_data(elids, tperiods, ttypes, year):
+
+	# Clean user inputs
+	ttypes = [ttype.upper() for ttype in ttypes]
+
+	# Read in all the data that will be cleaned
+	hmi_data_all = get_data(elids, tperiods, ttypes, year)
+
+	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
+
+		# First read in the data
+		hmi_data = hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid,tperiod,ttype)]
+		# Eliminate timesteps that are out of sync and dedupe
+		hmi_data['Time'] = hmi_data['Time'].values.astype('datetime64[m]')
+		hmi_data.drop_duplicates(inplace = True)
+
+		# Set number of nanoseconds in time period 
+		if ttype == 'HOUR':
+			nnanos = '1e+10*3600*{0}'
+		if ttype == 'MINUTE':
+			nnanos = '1e+10*60*{0}'
+		nnanos = nnanos.format(tperiod)
+ 
+ 		# Delete time periods that are out of sync (such as 20:05:00 when its an hourly dataset)
+		del_str = """
+			DELETE FROM {0}_{1}{2}_AVERAGES
+			WHERE Time % {3} != 0
+		""".format(elid, tperiod, ttype, nnanos)
+		ins_str = """
+			INSERT OR REPLACE INTO {0}_{1}{2}_AVERAGES (Tkey, Time, Month, Value)
+			VALUES (?,?,?,?)
+		""".format(elid, tperiod, ttype)
+
+		# Create connection to SQL database
+		conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
+		# Execute the delete statement
+		conn.execute(del_str)
+		# Load cleaned data back to the database
+		conn.executemany(
+			ins_str,
+			hmi_data.to_records(index = False).tolist()
+		)
+		conn.commit()
+		# Close connection to sql file
+		conn.close()
+
+
+# Primary HMI data aggregation class
 class hmi_data_agg:
 
 	def __init__(self, start_dt_str, end_dt_str, ip_path = None):
@@ -232,7 +279,7 @@ class hmi_data_agg:
 		# Compute the area under the curve for each timestep (relative to the next time step)
 		hmi_data_all['TotValue'] = hmi_data_all['Value']*hmi_data_all['TimeEl']
 
-		# Extract the timedelta/datetime64 string from the ttype input argument (either 'h' or 'm')
+		# Get the timedelta/datetime64 string from the ttype input argument (either 'h' or 'm')
 		ttype_d = ttype[0].lower()
 
 		# Calculate the "Time Category" variable which indicates the time range for the observation
@@ -246,6 +293,7 @@ class hmi_data_agg:
 		tots_res = hmi_data_all.groupby('TimeCat').sum()
 		tots_res.reset_index(inplace = True)
 
+
 		# Retrieve the timestep from the TimeCat Variable
 		tots_res['TimeCat'] = pd.to_timedelta(tots_res['TimeCat']*tperiod, ttype_d)
 		tots_res['Time'] = self.start_dt + tots_res['TimeCat']
@@ -254,6 +302,9 @@ class hmi_data_agg:
 		if ttype == 'MINUTE':
 			tperiod_hrs = tperiod/60
 		tots_res['Value'] = tots_res['TotValue']/(tperiod_hrs*60)
+
+		# Set data to minute-level resolution (bug in datetime or pandas can offset start_dt + TimeCat by a couple seconds)
+		tots_res['Time'] = tots_res['Time'].values.astype('datetime64[m]')
 
 		# Output
 		return tots_res[['Time','Value']]
@@ -305,27 +356,26 @@ class hmi_data_agg:
 
 				# SQL command strings for sqlite3
 				create_str = """
-					CREATE TABLE IF NOT EXISTS {0}_{1}{2}_{3}S (Tkey INT PRIMARY KEY, Time , Month, Value)
-				"""
-
-				insert_str = """
-					INSERT OR REPLACE INTO {0}_{1}{2}_{3}S (Tkey, Time, Month, Value)
+					CREATE TABLE IF NOT EXISTS {0}_{1}{2}_AVERAGES (Tkey INT PRIMARY KEY, Time , Month, Value)
+				""".format(elid, tperiod, ttype)
+				ins_str = """
+					INSERT OR REPLACE INTO {0}_{1}{2}_AVERAGES (Tkey, Time, Month, Value)
 					VALUES (?,?,?,?)
-				"""
+				""".format(elid, tperiod, ttype)
 
 				# Load data to SQL
 				# Create the table if it doesn't exist
-				conn.execute(create_str.format(elid, tperiod, ttype, 'AVERAGE'))
+				conn.execute(create_str)
 				# Insert aggregated values for the elid and time period
 				conn.executemany(
-					insert_str.format(elid, tperiod, ttype, 'AVERAGE'),
+					ins_str,
 					tots_res.to_records(index = False).tolist()
 				)
 				conn.commit()
 
 			if output_csv:
 				os.chdir(self.hmi_dir)
-				tots_res.to_csv('{0}_{1}{2}_{3}S.csv'.format(elid, tperiod, ttype, 'AVERAGE'), index = False, encoding = 'utf-8')
+				tots_res.to_csv('{0}_{1}{2}_AVERAGES.csv'.format(elid, tperiod, ttype), index = False, encoding = 'utf-8')
 
 		# Close connection to sql database file
 		if output_sql:
@@ -464,7 +514,6 @@ class hmi_data_agg:
 		start_dt_str,
 		end_dt_str,
 		sum_period = 'DAY', 
-		plt_type = None,
 		plt_type = None,
 		plt_colors = None,
 		ylabel = None,
