@@ -80,7 +80,7 @@ def get_data(
 	# Create connection to SQL database
 	os.chdir(get_dirs())
 	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
-	hmi_data_all = {}
+	hmi_data_all = pd.DataFrame()
 
 	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
 
@@ -104,22 +104,30 @@ def get_data(
 
 		# Format the time variable
 		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
+		# Rename Value variable to its corresponding element id
+		hmi_data.rename(columns = {'Value': elid}, inplace = True)
+		hmi_data.loc[:,'Time'] = hmi_data['Time'].values.astype('datetime64[m]')
+		hmi_data.drop_duplicates(['Time'], inplace = True)
 
 		if start_dt_str:
 			hmi_data = hmi_data.loc[hmi_data['Time'] >= start_dt,]
 		if end_dt_str:
 			hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
 
-		hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
+		if not len(hmi_data_all):
+			hmi_data_all = hmi_data
+		else:
+			hmi_data_all = hmi_data_all.merge(hmi_data[['Time', elid]], on = 'Time', how = 'outer')
 
-		if output_csv:
+	if output_csv:
 
-			if not outdir:
-				print('Directory to output HMI data to...')
-				outdir = askdirectory(title = 'Directory to output HMI data to...')
+		if not outdir:
+			print('Directory to output HMI data to...')
+			outdir = askdirectory(title = 'Directory to output HMI data to...')
 
-			os.chdir(outdir)
-			hmi_data.to_csv('{0}_{1}{2}_AVERAGES.csv'.format(elid, tperiod, ttype, month_sub), index = False, encoding = 'utf-8')
+		os.chdir(outdir)
+		op_fname = '_'.join(elids + [str(tperiod) for tperiod in tperiods]) + '.csv'
+		hmi_data_all.to_csv(op_fname, index = False, encoding = 'utf-8')
 
 
 	return hmi_data_all
@@ -136,30 +144,25 @@ def clean_data(elids, tperiods, ttypes, year):
 	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
 
 		# First read in the data
-		hmi_data = hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid,tperiod,ttype)]
+		hmi_data = hmi_data_all[['Tkey','Time','Month',elid]]
+		hmi_data.rename(columns = {elid: 'Value'}, inplace = True)
 		# Eliminate timesteps that are out of sync and dedupe
 		hmi_data['Time'] = hmi_data['Time'].values.astype('datetime64[m]')
-		hmi_data.drop_duplicates(inplace = True)
-
-		# Set number of nanoseconds in time period 
-		if ttype == 'HOUR':
-			nnanos = '1e+10*3600*{0}'
-		if ttype == 'MINUTE':
-			nnanos = '1e+10*60*{0}'
-		nnanos = nnanos.format(tperiod)
+		# Leaving out Tkey because otherwise duplicate entries will still be unique
+		hmi_data.drop_duplicates(['Time','Month','Value'], inplace = True)
  
  		# Delete time periods that are out of sync (such as 20:05:00 when its an hourly dataset)
 		del_str = """
 			DELETE FROM {0}_{1}{2}_AVERAGES
-			WHERE Time % {3} != 0
-		""".format(elid, tperiod, ttype, nnanos)
+			WHERE Tkey % 1e+10 > 0
+		""".format(elid, tperiod, ttype)
 		ins_str = """
 			INSERT OR REPLACE INTO {0}_{1}{2}_AVERAGES (Tkey, Time, Month, Value)
 			VALUES (?,?,?,?)
 		""".format(elid, tperiod, ttype)
 
 		# Create connection to SQL database
-		conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
+		conn = sqlite3.connect('cr2c_hmi_agg_data_{0}.db'.format(year))
 		# Execute the delete statement
 		conn.execute(del_str)
 		# Load cleaned data back to the database
@@ -170,6 +173,8 @@ def clean_data(elids, tperiods, ttypes, year):
 		conn.commit()
 		# Close connection to sql file
 		conn.close()
+
+	return
 
 
 # Primary HMI data aggregation class
