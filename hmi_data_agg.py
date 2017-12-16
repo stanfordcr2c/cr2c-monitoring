@@ -56,7 +56,17 @@ def get_dirs():
 
     return data_dir
 
-def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = None, end_dt_str = None):
+def get_data(
+	elids, 
+	tperiods, 
+	ttypes, 
+	year, 
+	month_sub = None, 
+	start_dt_str = None, 
+	end_dt_str = None, 
+	output_csv = False, 
+	outdir = None
+):
 
 	# Clean user inputs
 	ttypes = [ttype.upper() for ttype in ttypes]
@@ -101,6 +111,16 @@ def get_data(elids, tperiods, ttypes, year, month_sub = None, start_dt_str = Non
 			hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
 
 		hmi_data_all['{0}_{1}{2}_AVERAGES'.format(elid, tperiod, ttype, month_sub)] = hmi_data
+
+		if output_csv:
+
+			if not outdir:
+				print('Directory to output HMI data to...')
+				outdir = askdirectory(title = 'Directory to output HMI data to...')
+
+			os.chdir(outdir)
+			hmi_data.to_csv('{0}_{1}{2}_AVERAGES.csv'.format(elid, tperiod, ttype, month_sub), index = False, encoding = 'utf-8')
+
 
 	return hmi_data_all
 
