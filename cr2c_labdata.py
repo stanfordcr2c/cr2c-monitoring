@@ -9,6 +9,7 @@ matplotlib.use("TkAgg",force=True)
 
 import numpy as np
 import pandas as pd
+import sqlite3
 from datetime import datetime as dt
 from datetime import timedelta
 
@@ -16,13 +17,8 @@ import warnings
 import os
 from os.path import expanduser
 import sys
+import cr2c_utils as cut
 
-import httplib2
-import sqlite3
-from apiclient import discovery
-from oauth2client import client
-from oauth2client import tools
-from oauth2client.file import Storage
 
 import seaborn as sns
 from tkinter.filedialog import askdirectory
@@ -30,11 +26,6 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
 import matplotlib.dates as dates
 
-try:
-    import argparse
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
-except ImportError:
-    flags = None
 
 class labrun:
 	
@@ -45,95 +36,8 @@ class labrun:
 		self.min_feas_dt = dt.strptime(self.min_feas_dt_str, '%m-%d-%y')
 		self.file_dt = dt.now()
 		self.file_dt_str = dt.strftime(self.file_dt,'%m-%d-%y')
+		self.data_dir, self.pydir = cut.get_dirs()
 
-		# Manages output directories
-		def get_dirs():
-			
-			# Find the CR2C.Operations folder on Box Sync on the given machine
-			targetdir = os.path.join('Box Sync','CR2C.Operations')
-			mondir = None
-			print("Searching for Codiga Center's Operations folder on Box Sync...")
-			for dirpath, dirname, filename in os.walk(expanduser('~')):
-				if dirpath.find(targetdir) > 0:
-					mondir = os.path.join(dirpath,'MonitoringProcedures')
-					print("Found Codiga Center's Operations folder on Box Sync")
-					break
-					
-			# Alert user if Box Sync folder not found on machine
-			if not mondir:
-				if os.path.isdir('D:/'):
-					for dirpath, dirname, filename in os.walk('D:/'):
-						if dirpath.find(targetdir) > 0:
-							mondir = os.path.join(dirpath,'MonitoringProcedures')
-							print("Found Codiga Center's Operations folder on Box Sync")
-							break
-				if not mondir:
-					print("Could not find Codiga Center's Operations folder in Box Sync")
-					print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
-					sys.exit()
-			pydir = os.path.join(mondir, 'Python')
-			data_dir = os.path.join(mondir,'Data')
-
-			return data_dir, pydir
-		
-		self.data_dir, self.pydir = get_dirs()
-
-    
-    # Gets valid user credentials from storage.
-    # If nothing has been stored, or if the stored credentials are invalid,
-    # the OAuth2 flow is completed to obtain the new credentials.
-	def get_credentials(self):
-
-		SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
-		CLIENT_SECRET_FILE = 'client_secret.json'
-		APPLICATION_NAME = 'cr2c-monitoring'
-
-		home_dir = os.path.expanduser('~')
-		credential_dir = os.path.join(home_dir, '.credentials')
-
-		if not os.path.exists(credential_dir):
-			os.makedirs(credential_dir)
-		credential_path = os.path.join(
-			credential_dir,
-			'sheets.googleapis.com-cr2c-monitoring.json'
-		)
-		store = Storage(credential_path)
-		credentials = store.get()
-
-		os.chdir(os.path.join(self.pydir,'GoogleProjectsAdmin'))
-		spreadsheetId = open('spreadsheetId.txt').read()
-
-		if not credentials or credentials.invalid:	
-			flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-			flow.user_agent = APPLICATION_NAME
-			credentials = tools.run_flow(flow, store, flags)
-
-		return credentials, spreadsheetId
-
-	# Retrieves all data from a gsheets file given list of sheet names
-	def get_gsheet_data(self, sheet_names):
-
-		credentials, spreadsheetId = self.get_credentials()
-		http = credentials.authorize(httplib2.Http())
-		discoveryUrl = (
-			'https://sheets.googleapis.com/$discovery/rest?'
-			'version=v4'
-		)
-		service = discovery.build(
-			'sheets', 
-			'v4', 
-			http = http,
-			discoveryServiceUrl = discoveryUrl
-		)
-		range_names = [sheet_name + '!A:G' for sheet_name in sheet_names]
-		gsheet_result = service.spreadsheets().values().batchGet(
-			spreadsheetId = spreadsheetId, 
-			ranges = range_names
-		).execute()	
-
-		gsheet_values = gsheet_result['valueRanges']
-
-		return gsheet_values
 
 	# Adds desriptive treatment stage variable to dataset for plotting
 	def get_stage_descs(self):
@@ -353,7 +257,7 @@ class labrun:
 	def process_data(self):
 		
 		# Load data from gsheets
-		all_sheets = self.get_gsheet_data(self.mtype_list)
+		all_sheets = cut.get_gsheet_data(self.mtype_list)
 
 		# Start loop through the gsheets
 		for sheet in all_sheets:

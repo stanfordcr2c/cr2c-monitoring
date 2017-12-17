@@ -20,41 +20,13 @@ from datetime import datetime as dt
 from datetime import timedelta
 from pandas import read_excel
 import sqlite3
+import cr2c_utils as cut
 import os
 from os.path import expanduser
 import sys
 from tkinter.filedialog import askopenfilename
 from tkinter.filedialog import askdirectory
 
-# Manages output directories
-def get_dirs():
-
-    # Find the CR2C.Operations folder on Box Sync on the given machine
-    targetdir = os.path.join('Box Sync','CR2C.Operations')
-    mondir = None
-    print("Searching for Codiga Center's Operations folder on Box Sync...")
-    for dirpath, dirname, filename in os.walk(expanduser('~')):
-        if dirpath.find(targetdir) > 0:
-            mondir = os.path.join(dirpath,'MonitoringProcedures')
-            print("Found Codiga Center's Operations folder on Box Sync")
-            break
-
-    # Alert user if Box Sync folder not found on machine
-    if not mondir:
-        if os.path.isdir('D:/'):
-            for dirpath, dirname, filename in os.walk('D:/'):
-                if dirpath.find(targetdir) > 0:
-                    mondir = os.path.join(dirpath,'MonitoringProcedures')
-                    print("Found Codiga Center's Operations folder on Box Sync")
-                    break
-        if not mondir:
-            print("Could not find Codiga Center's Operations folder in Box Sync")
-            print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
-            sys.exit()
-
-    data_dir = os.path.join(mondir,'Data')
-
-    return data_dir
 
 def get_data(
 	elids, 
@@ -78,7 +50,8 @@ def get_data(
 		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
 
 	# Create connection to SQL database
-	os.chdir(get_dirs())
+	data_dir = cut.get_dirs()[0]
+	os.chdir(data_dir)
 	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
 	hmi_data_all = pd.DataFrame()
 
@@ -184,7 +157,7 @@ class hmi_data_agg:
 
 		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
 		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
-		self.data_dir = get_dirs()
+		self.data_dir = cut.get_dirs()[0]
 
 		# Select input data file and load data for run
 		if ip_path:
