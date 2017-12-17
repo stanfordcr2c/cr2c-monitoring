@@ -429,15 +429,12 @@ class hmi_data_agg:
 			opfile_suff = ''
 
 		# Get feeding data
-		feeding_dat_zm = get_data(['FT305'],[5],['minute'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_5MINUTE_AVERAGES']
-		feeding_dat_zm['FT305'] = feeding_dat_zm['Value']
-		feeding_dat = get_data(['FT305'],[1],['hour'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)['FT305_1HOUR_AVERAGES']
-		feeding_dat['FT305'] = feeding_dat['Value']
+		feeding_dat_zm = get_data(['FT305'],[5],['minute'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		feeding_dat = get_data(['FT305'],[1],['hour'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+
 		# Get tmp data
-		tmp_dat_zm = get_data(['AIT302'],[5],['minute'], start_dt.year)['AIT302_5MINUTE_AVERAGES']
-		tmp_dat_zm['AIT302'] = tmp_dat_zm['Value']
-		tmp_dat = get_data(['AIT302'],[1],['hour'], start_dt.year)['AIT302_1HOUR_AVERAGES']
-		tmp_dat['AIT302'] = tmp_dat['Value']
+		tmp_dat_zm = get_data(['AIT302'],[5],['minute'], start_dt.year)
+		tmp_dat = get_data(['AIT302'],[1],['hour'], start_dt.year)
 
 		# Merge the two files
 		tmp_feed_dat = feeding_dat.merge(tmp_dat, on = 'Time')
@@ -577,10 +574,7 @@ class hmi_data_agg:
 			print(tkTitle)
 			outdir = askdirectory(title = tkTitle)
 
-		feeding_dat_all = get_data(elids, [1,1],['hour','hour'],start_dt.year)
-		feeding_dat = feeding_dat_all['{0}_{1}{2}_AVERAGES'.format(elids[0],1,'HOUR')]
-		feeding_dat['Time'] = feeding_dat['Time'].values.astype('datetime64[h]')
-		feeding_dat.drop_duplicates(['Time'], inplace = True)
+		feeding_dat = get_data(elids, [1,1],['hour','hour'],start_dt.year)
 
 		# Retrieve element ids from aggregated data
 		all_elids = '_'.join(elids)
@@ -616,12 +610,6 @@ class hmi_data_agg:
 			xlabel = 'Months (since {0}, as 30 days)'.format(start_dt_str)
 			feeding_dat[xlabel] = np.floor((feeding_dat['Time'] - start_dt)/np.timedelta64(30,'D'))
 			nhours = 24*7*30
-
-
-		for elid in elids:
-			# Calculate the total (everything is in Gal or L /min so multiply by 60 to get value for the hour)
-			feeding_dat[elid] = feeding_dat_all['{0}_{1}{2}_AVERAGES'.format(elid,1,'HOUR')]['Value']*60
-
 
 		if get_nhours == 1:
 			for elid in elids:
