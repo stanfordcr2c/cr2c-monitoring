@@ -269,6 +269,7 @@ class labrun:
 			mdata_list = sheet['values']
 
 			headers = mdata_list.pop(0) 
+
 			self.mdata = pd.DataFrame(mdata_list, columns = headers)
 
 			if mtype == 'COD':
@@ -390,7 +391,13 @@ class labrun:
 
 
 	# Queries Lab Data SQL File 
-	def get_data(self, mtypes):
+	def get_data(self, mtypes, start_dt_str = None, end_dt_str = None):
+
+		# Convert date string inputs to dt variables
+		if start_dt_str:
+			start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
+		if end_dt_str:
+			end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
 
 		# Load data from SQL
 		os.chdir(self.data_dir)
@@ -412,6 +419,11 @@ class labrun:
 			# Convert Date_Time variable to a pd datetime and eliminate missing values
 			mdata_long['Date_Time'] = pd.to_datetime(mdata_long['Date_Time'])
 			mdata_long.dropna(subset = ['Date_Time'], inplace = True)
+
+			if start_dt_str:
+				mdata_long = mdata_long.loc[mdata_long['Date_Time'] >= start_dt,:]
+			if end_dt_str:
+				mdata_long = mdata_long.loc[mdata_long['Date_Time'] <= end_dt + timedelta(days = 1),:]
 
 			mdata_all[mtype] = mdata_long
 
