@@ -31,8 +31,8 @@ from tkinter.filedialog import askdirectory
 def get_data(
 	elids, 
 	tperiods, 
-	ttypes, 
-	year, 
+	ttypes,
+	year = None, 
 	month_sub = None, 
 	start_dt_str = None, 
 	end_dt_str = None, 
@@ -44,15 +44,18 @@ def get_data(
 	ttypes = [ttype.upper() for ttype in ttypes]
 
 	# Convert date string inputs to dt variables
+	start_dt = dt.strptime('5-10-17','%m-%d-%y')
+	end_dt = dt.now()
 	if start_dt_str:
 		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
 	if end_dt_str:
 		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+	# Get list of years for which data are desired
+	years = np.arange(start_dt.year,end_dt.year + 1)
 
 	# Create connection to SQL database
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
-	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
 	hmi_data_all = pd.DataFrame()
 
 	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
@@ -69,11 +72,18 @@ def get_data(
 			order by Time 
 		""".format(elid, tperiod, ttype, msub_ins)
 
-		hmi_data = pd.read_sql(
-			sql_str,
-			conn,
-			coerce_float = True
-		)
+		# Loop through years for which data are desired
+		# (concatenate datasets)
+		hmi_data = pd.DataFrame()
+		for year in years:
+		
+			conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
+			hmi_data_yr = pd.read_sql(
+				sql_str,
+				conn,
+				coerce_float = True
+			)
+			hmi_data = pd.concat([hmi_data, hmi_data_yr], axis = 0)
 
 		# Format the time variable
 		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
@@ -153,22 +163,22 @@ def clean_data(elids, tperiods, ttypes, year):
 # Primary HMI data aggregation class
 class hmi_data_agg:
 
-	def __init__(self, start_dt_str, end_dt_str, ip_path = None):
+	def __init__(self, start_dt_str, end_dt_str, hmi_path = None):
 
 		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
 		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
 		self.data_dir = cut.get_dirs()[0]
 
 		# Select input data file and load data for run
-		if ip_path:
-			self.hmi_dir = os.path.dirname(ip_path)
+		if hmi_path:
+			self.hmi_dir = os.path.dirname(hmi_path)
 		else:
 			tkTitle = 'Select HMI data input file...'
 			print(tkTitle)
-			ip_path = askopenfilename(title = tkTitle)
-			self.hmi_dir = os.path.dirname(ip_path)
+			hmi_path = askopenfilename(title = tkTitle)
+			self.hmi_dir = os.path.dirname(hmi_path)
 		try:
-			self.hmi_data_all = pd.read_csv(ip_path)
+			self.hmi_data_all = pd.read_csv(hmi_path)
 		except FileNotFoundError:
 			print('Please choose an existing input file with the HMI data')
 			sys.exit()
@@ -325,32 +335,25 @@ class hmi_data_agg:
 		ttypes = [ttype.upper() for ttype in ttypes]
 		stypes = [stype.upper() for stype in stypes]
 
-		# Open connection to sql database file
-		if output_sql:
-			conn = sqlite3.connect('cr2c_hmi_agg_data_{0}.db'.format(self.start_dt.year))
-
 		for tperiod, ttype, elid, stype in zip(tperiods, ttypes, elids, stypes):
 
 			print('Getting aggregated data for {0} ({1}{2})...'.format(elid, tperiod, ttype))
 
 			# Get prepped data
 			self.prep_data(elid, stype)
-			# Get totalized values'
-
+			# Get totalized values
 			tots_res = self.get_tot_var(tperiod, ttype, elid)
-			# Get month integer (for possible partitioning later on)
+			# Get month integer allows data partitioning
 			tots_res['Month'] = tots_res['Time'].dt.month
+			# Get years for which report is run 
+			# (only matters if the time period is spread over more than one calendar year)
+			years = np.unique(tots_res['Time'].dt.year.values)
 
-			# Reorder columns and set time index
-			# tots_res.set_index(tots_res['Time'], inplace = True)
+			# Reorder columns
 			tots_res = tots_res[['Time','Month','Value']]
 
 			# Output data as desired
 			if output_sql:
-
-				# Create key from "Time" variable to use when updating/inserting entry into sql table
-				tots_res['Tkey'] = tots_res['Time']
-				tots_res = tots_res[['Tkey','Time','Month','Value']]
 
 				# SQL command strings for sqlite3
 				create_str = """
@@ -361,23 +364,35 @@ class hmi_data_agg:
 					VALUES (?,?,?,?)
 				""".format(elid, tperiod, ttype)
 
-				# Load data to SQL
-				# Create the table if it doesn't exist
-				conn.execute(create_str)
-				# Insert aggregated values for the elid and time period
-				conn.executemany(
-					ins_str,
-					tots_res.to_records(index = False).tolist()
-				)
-				conn.commit()
+				# Output data to sql database pertaining to its year
+				for year in years:
+
+					# Set connection to SQL database (pertaining to given year)
+					conn = sqlite3.connect('cr2c_hmi_agg_data_{0}.db'.format(year))
+
+					# Subset the data to its year
+					tots_res_yr = tots_res.loc[tots_res['Time'].dt.year == year,:]
+
+					# Create key from "Time" variable to use when updating/inserting entry into sql table
+					tots_res_yr['Tkey'] = tots_res_yr['Time']
+					tots_res_yr = tots_res_yr[['Tkey','Time','Month','Value']]
+
+					# Load data to SQL
+					# Create the table if it doesn't exist
+					conn.execute(create_str)
+					# Insert aggregated values for the elid and time period
+					conn.executemany(
+						ins_str,
+						tots_res_yr.to_records(index = False).tolist()
+					)
+					conn.commit()
+
+					# Close Connection
+					conn.close()
 
 			if output_csv:
 				os.chdir(self.hmi_dir)
 				tots_res.to_csv('{0}_{1}{2}_AVERAGES.csv'.format(elid, tperiod, ttype), index = False, encoding = 'utf-8')
-
-		# Close connection to sql database file
-		if output_sql:
-			conn.close()
 
 
 	def get_tmp_plots(
@@ -547,10 +562,14 @@ class hmi_data_agg:
 			print(tkTitle)
 			outdir = askdirectory(title = tkTitle)
 
-		feeding_dat = get_data(elids, [1,1],['hour','hour'],start_dt.year)
+		feeding_dat = get_data(elids, [1,1],['hour','hour'], start_dt.year)
 
 		# Retrieve element ids from aggregated data
 		all_elids = '_'.join(elids)
+
+		# Get hourly flow totals for each elid
+		for elid in elids:
+			feeding_dat[elid] = feeding_dat[elid]*60
 
 		# Convert Time variable to pd.datetime variable
 		feeding_dat['Time'] = pd.to_datetime(feeding_dat['Time'])
