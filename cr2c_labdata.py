@@ -31,7 +31,7 @@ class labrun:
 	
 	def __init__(self):
 		
-		self.mtype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GasComp','Ammonia']
+		self.mtype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GasComp','Ammonia','Sulfate']
 		self.min_feas_dt_str = '6-1-16'
 		self.min_feas_dt = dt.strptime(self.min_feas_dt_str, '%m-%d-%y')
 		self.file_dt = dt.now()
@@ -191,20 +191,19 @@ class labrun:
 					)
 				)
 				sys.exit()
+
+		if mtype in ['COD','Ammonia','Sulfate']:
 			self.set_var_format(mtype, 'Reading (mg/L)', float, 'numeric')
 
 		if mtype == 'PH':
 			self.set_var_format(mtype, 'Reading', float, 'numeric')
-
-		if mtype == 'Ammonia':
-			self.set_var_format(mtype, 'Reading (mg/L)', float, 'numeric')
 		
 		if mtype == 'ALKALINITY':
 			self.set_var_format(mtype,'Sample Volume (ml)', float, 'numeric')
 			self.set_var_format(mtype,'Acid Volume (ml, to pH 4.3)', float, 'numeric')
 			self.set_var_format(mtype,'Acid Normality (N)', float, 'numeric')
 
-		if mtype in ['COD','ALKALINITY','VFA','Ammonia']:
+		if mtype in ['COD','ALKALINITY','VFA','Ammonia','Sulfate']:
 			self.set_var_format(mtype,'Dilution Factor', float, 'numeric')
 		
 		if mtype == 'TSS_VSS':
@@ -241,7 +240,7 @@ class labrun:
 		elif mtype in ['PH','ALKALINITY']:
 			col_order = ['Date_Time','Stage','obs_id','value']
 			varnames = ['Date_Time','Stage','obs_id','Value']
-		elif mtype == 'Ammonia':
+		elif mtype in ['Ammonia','Sulfate']:
 			col_order = ['Date_Time','Stage','value']
 			varnames = ['Date_Time','Stage','Value']
 		else:	
@@ -367,6 +366,16 @@ class labrun:
 				# Set id and value vars for recasting
 				id_vars = ['Date_Time','Stage']
 				value_vars = 'Ammonia'
+
+			# ======================================= Sulfate =============================================== #
+			if mtype == 'Sulfate':
+
+				# Compute Sulfate concentration
+				self.mdata['Sulfate'] = self.mdata['Reading (mg/L)']*self.mdata['Dilution Factor']
+
+				# Set id and value vars for recasting
+				id_vars = ['Date_Time','Stage']
+				value_vars = 'Sulfate'
 
 			# ======================================= GasComp ============================================ #
 			if mtype == 'GasComp':
@@ -556,6 +565,15 @@ class labrun:
 				ylabel = r'$NH_3$' + ' (mg/L as N)'
 				mdata_long['Type'] = 'Ammonia'
 				type_list = ['Ammonia']
+				share_yax = True
+
+			if mtype == 'SULFATE':
+
+				# Set plotting variables
+				id_vars_chrt = ['Date_Time','Stage','Type']
+				ylabel = 'mg/L ' + r'$SO_4$'
+				mdata_long['Type'] = 'Sulfate'
+				type_list = ['Sulfate']
 				share_yax = True
 
 			# Filter to the dates desired for the plots
@@ -753,18 +771,20 @@ class labrun:
 		seed_dt = dt.strptime('05-10-17','%m-%d-%y')
 
 		# Load data from SQL
-		mdata_all = self.get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA','Ammonia'])
+		mdata_all = self.get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA','Ammonia','Sulfate'])
 
 		# Specify id variables (same for every type since combining Alkalinity and pH)
 		id_vars = ['Sample Date & Time','Stage','Type','obs_id']
 
-		# For Alkalinity and pH, need to add Type variable back in
+		# For Alkalinity, pH, NH3, and SO4, need to add Type variable back in
 		ALK = mdata_all['ALKALINITY']
 		ALK['Type'] = 'Alkalinity'
 		PH = mdata_all['PH']
 		PH['Type'] = 'pH'
 		NH3 = mdata_all['Ammonia']
-		# Concatenate the two and reset index
+		SO4 = mdata_all['Sulfate']
+
+		# Concatenate Alkaliity and pH and reset index
 		ALK_PH = pd.concat([PH,ALK], axis = 0, join = 'outer').reset_index(drop = True)
 
 		# Get wide data
@@ -773,6 +793,7 @@ class labrun:
 		TSS_VSSwide = self.long_to_wide(mdata_all['TSS_VSS'], id_vars)
 		ALK_PHwide = self.long_to_wide(ALK_PH, id_vars)
 		NH3wide = self.long_to_wide(NH3, ['Sample Date & Time','Stage'])
+		SO4wide = self.long_to_wide(SO4, ['Sample Date & Time','Stage'])
 		
 		# Truncate and set column order
 		CODtrunc = self.clean_wide_table(CODwide, ['Total','Soluble'], start_dt, end_dt, add_time_el)
@@ -780,6 +801,7 @@ class labrun:
 		TSS_VSStrunc = self.clean_wide_table(TSS_VSSwide,['TSS','VSS'], start_dt, end_dt, add_time_el)
 		ALK_PHtrunc = self.clean_wide_table(ALK_PHwide,['pH','Alkalinity'], start_dt, end_dt, add_time_el)
 		NH3trunc = self.clean_wide_table(NH3wide,['Value'], start_dt, end_dt, add_time_el)
+		SO4trunc = self.clean_wide_table(SO4wide,['Value'], start_dt, end_dt, add_time_el)
 		
 		# Save
 		os.chdir(outdir)
@@ -788,4 +810,5 @@ class labrun:
 		TSS_VSStrunc.to_csv('TSS_VSS_table' + end_dt_str + opfile_suff + '.csv')
 		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
 		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
+		SO4trunc.to_csv('Sulfate_table' + end_dt_str + opfile_suff + '.csv')
 
