@@ -509,7 +509,7 @@ class hmi_data_agg:
 		plot_filename  = "FLOW_TMP{0}.png".format(opfile_suff)
 		fig = matplotlib.pyplot.gcf()
 		fig.set_size_inches(7, 12)
-		print('outputting plot')
+
 		plt.savefig(
 			os.path.join(outdir, plot_filename),
 			width = 20,
@@ -562,7 +562,7 @@ class hmi_data_agg:
 			print(tkTitle)
 			outdir = askdirectory(title = tkTitle)
 
-		feeding_dat = get_data(elids, [1,1],['hour','hour'], start_dt.year)
+		feeding_dat = get_data(elids, [1,1],['hour','hour'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Retrieve element ids from aggregated data
 		all_elids = '_'.join(elids)
