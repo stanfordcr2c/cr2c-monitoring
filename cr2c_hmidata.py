@@ -515,6 +515,7 @@ class hmi_data_agg:
 			width = 20,
 			height = 160
 		)
+		plt.close()
 
 
 	def get_feed_sumst(
@@ -649,6 +650,7 @@ class hmi_data_agg:
 				width = 20,
 				height = 50
 			)
+			plt.close()
 
 		if 'TABLE' in output_types:
 
