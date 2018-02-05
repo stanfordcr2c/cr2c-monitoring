@@ -1,6 +1,7 @@
 import os
 from os.path import expanduser
 import sys
+import pandas as pd
 
 import httplib2
 from apiclient import discovery
@@ -93,13 +94,17 @@ def get_gsheet_data(sheet_names):
 		http = http,
 		discoveryServiceUrl = discoveryUrl
 	)
-	range_names = [sheet_name + '!A:G' for sheet_name in sheet_names]
+	range_names = [sheet_name + '!A:ZZ' for sheet_name in sheet_names]
 	gsheet_result = service.spreadsheets().values().batchGet(
 		spreadsheetId = spreadsheetId, 
 		ranges = range_names
 	).execute()	
 
-	gsheet_values = gsheet_result['valueRanges']
+	# Get values list from dictionary and extact headers (first item in list)
+	gsheet_values = gsheet_result['valueRanges'][0]['values']
+	headers = gsheet_values.pop(0) 
+	# Output a pandas dataframe
+	dframe = pd.DataFrame(gsheet_values, columns = headers)
 
-	return gsheet_values
+	return dframe
 
