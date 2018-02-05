@@ -159,8 +159,8 @@ def get_cod_bal(
 ):
 	
 	# Window for moving average calculation
-	ma_win = 21
-	start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
+	ma_win = 1
+	start_dt = dt.strptime(start_dt_str,'%m-%d-%y').date()
 	start_dt_query = start_dt - timedelta(days = ma_win)
 	start_dt_qstr = dt.strftime(start_dt_query,'%m-%d-%y')
 	end_dt   = dt.strptime(end_dt_str,'%m-%d-%y').date()
@@ -259,7 +259,7 @@ def get_cod_bal(
 	temp_dat_cln             = temp_dat[['Time','Reactor Temp']]
 
 	# List of hmi dataframes
-	hmi_dflist = [temp_dat_cln, feeding_dat_cln, gasprod_dat_cln]
+	hmi_dflist = [feeding_dat_cln, gasprod_dat_cln]
 	# Merge hmi datasets
 	hmidat = functools.reduce(lambda left,right: pd.merge(left,right, on='Time', how = 'outer'), hmi_dflist)
 	hmidat['Date'] = hmidat['Time'].dt.date
@@ -320,6 +320,7 @@ def get_cod_bal(
 	waste_dat['Date'] = pd.to_datetime(waste_dat['Date']).dt.date
 	waste_dat['Volume (gallons)'] = waste_dat['Volume (gallons)'].astype('float')
 	waste_dat['Wasted (L)'] = waste_dat['Volume (gallons)']*l_p_gal
+	waste_dat = waste_dat.loc[(waste_dat['Date'] >= start_dt) & (waste_dat['Date'] <= end_dt),:]
 	waste_dat_cln = waste_dat[['Date','Wasted (L)']]
 	# List of lab dataframes
 	lab_dflist = [cod_dat_cln, gc_dat_cln, waste_dat_cln, so4_dat_cln]
@@ -343,7 +344,7 @@ def get_cod_bal(
 	# Calculate daily totals and daily means for each date
 	dly_tots  = cod_bal_dat[['Date','Flow In','Flow Out','Meas Biogas Prod']].groupby('Date').sum()
 	dly_tots.reset_index(inplace = True)
-	dly_means = cod_bal_dat[['Date','Reactor Temp','CODt MS','CODt R','CODt Out','SO4 MS','CH4%','CO2%','Wasted (L)']].groupby('Date').mean()
+	dly_means = cod_bal_dat[['Date','CODt MS','CODt R','CODt Out','SO4 MS','CH4%','CO2%','Wasted (L)']].groupby('Date').mean()
 	dly_means.reset_index(inplace = True)
 
 	# Merge and fill in missing values
@@ -359,17 +360,17 @@ def get_cod_bal(
 	cod_cols = ['CODt MS','CODt R','CODt Out']
 	cod_bal_dly[cod_cols] = cod_bal_dly[cod_cols].rolling(ma_win).mean()
 	# Eliminate missing values (from period prior to start_dt) and reset index
-	cod_bal_dly.dropna(axis = 0, how = 'any', inplace = True)
+	# cod_bal_dly.dropna(axis = 0, how = 'any', inplace = True)
 	cod_bal_dly.reset_index(inplace = True)
 
 	# Put dates into weekly bins (relative to end date), denoted by beginning of week
-	cod_bal_dly['Weeks Back'] = pd.to_timedelta(np.floor((cod_bal_dly['Date'] - end_dt)/np.timedelta64(7,'D'))*7, unit = 'D')
-	cod_bal_dly['Week Start']   = end_dt + cod_bal_dly['Weeks Back']
+	cod_bal_dly['Weeks Back'] = pd.to_timedelta(np.floor((cod_bal_dly['Date'] - end_dt)/np.timedelta64(7,'D'))*7, unit = 'D') - timedelta(days = -7)
+	cod_bal_dly['Week Start'] = end_dt + cod_bal_dly['Weeks Back']
  
 	#=======================================> MERGE & PREP <=======================================	
 
 	#========================================> COD Balance <=======================================	
-	# Note: dividing by 1000 to express in kg
+	# Note: dividing by 1E6 to express in kg
 	# COD coming in from the Microscreen
 	cod_bal_dly['COD In']   = cod_bal_dly['CODt MS']*cod_bal_dly['Flow In']/1E6
 	# COD leaving the reactor
@@ -377,7 +378,7 @@ def get_cod_bal(
 	# COD wasted
 	cod_bal_dly['Wasted']   = cod_bal_dly['CODt R']*cod_bal_dly['Wasted (L)']/1E6
 	# COD content of gas (assumes that volume given by flowmeter is in STP)
-	cod_bal_dly['Biogas']   = cod_bal_dly['Meas Biogas Prod']*cod_bal_dly['CH4%']/Vol_STP*64/1E6
+	cod_bal_dly['Biogas']   = cod_bal_dly['Meas Biogas Prod']*cod_bal_dly['CH4%']/100/Vol_STP*64/1000
 	# COD from sulfate reduction (1.5g COD per g SO4)
 	cod_bal_dly['Sulfate Reduction'] = cod_bal_dly['SO4 MS']*cod_bal_dly['Flow In']/1.5/1E6
 	#========================================> COD Balance <=======================================	
@@ -385,11 +386,11 @@ def get_cod_bal(
 	cod_bal_wkly = cod_bal_dly.groupby('Week Start').sum(numeric_only = True)
 	cod_bal_wkly.reset_index(inplace = True)
 	cod_bal_wkly.loc[:,'Week Start'] = cod_bal_wkly['Week Start'].dt.date
-	cod_bal_wkly.to_csv('/Users/josebolorinos/Google Drive/Codiga Center/Charts and Data/cod_bal_wkly.csv')
+	cod_bal_wkly = cod_bal_wkly.loc[cod_bal_wkly['Week Start'] < end_dt,:]
 
 	#===========================================> Plot! <==========================================
 	nWeeks = np.arange(len(cod_bal_wkly))
-	bWidth = 1/len(cod_bal_wkly)*15
+	bWidth = 0.8
 	pIn = plt.scatter(nWeeks,cod_bal_wkly['COD In'], c = 'r')
 	pBiogas = plt.bar(nWeeks,cod_bal_wkly['Biogas'], bWidth)
 	pOut = plt.bar(nWeeks,cod_bal_wkly['COD Out'], bWidth, bottom = cod_bal_wkly['Biogas'])
@@ -401,9 +402,9 @@ def get_cod_bal(
 	plt.tight_layout()
 	plt.savefig(
 		os.path.join(outdir, 'COD Balance.png'),
-		width = 20,
+		width = 30,
 		height = 50
-	)
+	) 
 	plt.close()
 	#===========================================> Plot! <==========================================		
 
@@ -501,5 +502,4 @@ def pressure_validation(
 # 	run_report = True
 # )
 
-# get_cod_bal('6-1-17','2-2-18','/Users/josebolorinos/Google Drive/Codiga Center/Miscellany')
 
