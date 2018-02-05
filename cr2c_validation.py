@@ -148,28 +148,25 @@ def get_sumvar(df, coefs):
 
 	return sumvar
 
-# df = pd.DataFrame([[1,1,1],[2,2,2],[1,1,1],[2,2,2],[1,1,1],[2,2,2]])
-# coefs = [1,1,0]
-# print(get_sumvar(df, coefs))
-
 def get_cod_bal(
 	start_dt_str,
 	end_dt_str,
-	tperiod,
 	outdir = None,
 	hmi_path = None,
 	run_agg_feeding = False,
 	run_agg_gasprod = False,
 	run_agg_temp = False,
 ):
-
-	# Set number of days to calculate moving average for (and set the start date for lab data accordingly)
-	ma_win = 14	
 	
+	# Window for moving average calculation
+	ma_win = 21
 	start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
-	start_dt_lab = start_dt - timedelta(days = ma_win)
-	start_dt_lab_str = dt.strftime(start_dt_lab,'%m-%d-%y')
-	end_dt   = dt.strptime(end_dt_str,'%m-%d-%y')
+	start_dt_query = start_dt - timedelta(days = ma_win)
+	start_dt_qstr = dt.strftime(start_dt_query,'%m-%d-%y')
+	end_dt   = dt.strptime(end_dt_str,'%m-%d-%y').date()
+
+	# This variable might not be necessary in the future, should probably remove
+	tperiod = 1
 
 	if not outdir:
 		tkTitle = 'Directory to output summary statistics/plots to'
@@ -186,6 +183,8 @@ def get_cod_bal(
 	afmbr_vol = 1700 # in L
 	l_p_gal = 3.78541 # Liters/Gallon
 
+	# L in a mol of gas at STP
+	Vol_STP = 22.4
 
 	#=========================================> HMI DATA <=========================================
 	
@@ -221,7 +220,6 @@ def get_cod_bal(
 		gas_elids,
 		[tperiod]*len(gas_elids),
 		['HOUR']*len(gas_elids), 
-		year = year,
 		start_dt_str = start_dt_str, 
 		end_dt_str = end_dt_str
 	)
@@ -230,7 +228,6 @@ def get_cod_bal(
 		[inf_elid, eff_elid],
 		[tperiod]*2, 
 		['HOUR']*2, 
-		year = year,
 		start_dt_str = start_dt_str,
 		end_dt_str = end_dt_str
 	)
@@ -238,7 +235,6 @@ def get_cod_bal(
 		temp_elids,
 		[tperiod]*len(temp_elids), 
 		['HOUR']*len(temp_elids), 
-		year = year,
 		start_dt_str = start_dt_str,
 		end_dt_str = end_dt_str
 	) 
@@ -267,65 +263,69 @@ def get_cod_bal(
 	# Merge hmi datasets
 	hmidat = functools.reduce(lambda left,right: pd.merge(left,right, on='Time', how = 'outer'), hmi_dflist)
 	hmidat['Date'] = hmidat['Time'].dt.date
-
 	#=========================================> HMI DATA <=========================================
 
 	#=========================================> LAB DATA <=========================================
 	
 	# Get lab data from file on box and filter to desired dates
-	labdat  = pld.labrun().get_data(['COD','GasComp'], start_dt_lab_str, end_dt_str)
-	
+	labdat  = pld.labrun().get_data(['COD','Sulfate','GasComp'], start_dt_qstr, end_dt_str)
+
 	# COD data
 	cod_dat = labdat['COD']
-	cod_dat['Date_Time'] = pd.to_datetime(cod_dat['Date_Time'])
+	cod_dat['Date'] = cod_dat['Date_Time'].dt.date
 
 	# Drop duplicates
 	cod_dat.drop_duplicates(keep = 'first', inplace = True)
 	# Get average of multiple values taken on same day
-	cod_dat = cod_dat.groupby(['Date_Time','Stage','Type']).mean()
+	cod_dat = cod_dat.groupby(['Date','Stage','Type']).mean()
 
 	# Convert to wide to get COD in and out of the reactors
 	cod_dat_wide = cod_dat.unstack(['Stage','Type'])
-	cod_dat_wide['CODs MS']  = cod_dat_wide['Value']['Microscreen']['Soluble']
-	cod_dat_wide['CODp MS']  = cod_dat_wide['Value']['Microscreen']['Particulate']
+	cod_dat_wide['CODt MS'] = cod_dat_wide['Value']['Microscreen']['Total']
 	# Weighted aveage COD concentrations in the reactors
-	cod_dat_wide['CODs R'] = \
-		(cod_dat_wide['Value']['AFBR']['Soluble']*afbr_vol +\
-		cod_dat_wide['Value']['Duty AFMBR MLSS']['Soluble']*afmbr_vol)/\
+	cod_dat_wide['CODt R'] = \
+		(cod_dat_wide['Value']['AFBR']['Total']*afbr_vol +\
+		cod_dat_wide['Value']['Duty AFMBR MLSS']['Total']*afmbr_vol)/\
 		(afbr_vol + afmbr_vol)
-	cod_dat_wide['CODp R'] = \
-		(cod_dat_wide['Value']['AFBR']['Particulate']*afbr_vol +\
-		cod_dat_wide['Value']['Duty AFMBR MLSS']['Particulate']*afmbr_vol)/\
-		(afbr_vol + afmbr_vol)
-	cod_dat_wide['CODs Out'] = cod_dat_wide['Value']['Duty AFMBR Effluent']['Soluble']
+	cod_dat_wide['CODt Out'] = cod_dat_wide['Value']['Duty AFMBR Effluent']['Total']
 	cod_dat_wide.reset_index(inplace = True)
+	cod_dat_cln = cod_dat_wide[['Date','CODt MS','CODt R','CODt Out']]
+	cod_dat_cln.columns = ['Date','CODt MS','CODt R','CODt Out']
 
-	if 'HOUR' == 'HOUR':
-		cod_dat_wide['Time'] = cod_dat_wide['Date_Time'].values.astype('datetime64[h]')
-	else:
-		cod_dat_wide['Time'] = cod_dat_wide['Date_Time'].values.astype('datetime64[m]')
-
-	cod_dat_cln = cod_dat_wide[['Time','CODs MS','CODp MS','CODs R','CODp R','CODs Out']]
-	cod_dat_cln.columns = ['Time','CODs MS','CODp MS','CODs R','CODp R','CODs Out']
+	# Sulfate data
+	so4_dat = labdat['Sulfate']
+	so4_dat['Date'] = so4_dat['Date_Time']
+	so4_dat.set_index(['Date','Stage'], inplace = True)
+	so4_dat_wide = so4_dat.unstack(['Stage'])
+	so4_dat_wide['SO4 MS'] = so4_dat_wide['Value']['Microscreen']
+	so4_dat_wide.reset_index(inplace = True)
+	so4_dat_cln = so4_dat_wide[['Date','SO4 MS']]
+	so4_dat_cln.columns = ['Date','SO4 MS']
+	so4_dat_cln.loc[:,'Date'] = so4_dat_cln['Date'].dt.date
 
 	# Gas Composition Data
 	gc_dat = labdat['GasComp']
+	gc_dat['Date'] = gc_dat['Date_Time'].dt.date
 	gc_dat = gc_dat.loc[(gc_dat['Type'].isin(['Methane (%)','Carbon Dioxide (%)']))]
-	gc_dat = gc_dat.groupby(['Date_Time','Type']).mean()
+	gc_dat = gc_dat.groupby(['Date','Type']).mean()
 	gc_dat_wide = gc_dat.unstack('Type')
 	gc_dat_wide['CH4%'] = gc_dat_wide['Value']['Methane (%)']
 	gc_dat_wide['CO2%'] = gc_dat_wide['Value']['Carbon Dioxide (%)']
 	gc_dat_wide.reset_index(inplace = True)
-	if 'HOUR' == 'HOUR':
-		gc_dat_wide['Time'] = gc_dat_wide['Date_Time'].values.astype('datetime64[h]')
-	else:
-		gc_dat_wide['Time'] = gc_dat_wide['Date_Time'].values.astype('datetime64[m]')
-	gc_dat_cln = gc_dat_wide[['Time','CH4%','CO2%']]
-	gc_dat_cln.columns = ['Time','CH4%','CO2%']
+	gc_dat_cln = gc_dat_wide[['Date','CH4%','CO2%']]
+	gc_dat_cln.columns = ['Date','CH4%','CO2%']
 
-	# Merge lab data by time
-	labdat = cod_dat_cln.merge(gc_dat_cln, on = 'Time', how = 'outer')
-	labdat['Date'] = labdat['Time'].dt.date
+	# Solids Wasting Data
+	waste_dat = cut.get_gsheet_data(['Wasted Solids'])
+	waste_dat['Date'] = pd.to_datetime(waste_dat['Date']).dt.date
+	waste_dat['Volume (gallons)'] = waste_dat['Volume (gallons)'].astype('float')
+	waste_dat['Wasted (L)'] = waste_dat['Volume (gallons)']*l_p_gal
+	waste_dat_cln = waste_dat[['Date','Wasted (L)']]
+	# List of lab dataframes
+	lab_dflist = [cod_dat_cln, gc_dat_cln, waste_dat_cln, so4_dat_cln]
+
+	# Merge lab datasets
+	labdat = functools.reduce(lambda left,right: pd.merge(left,right, on='Date', how = 'outer'), lab_dflist)
 	# Get daily average of readings if multiple readings in a day (also prevents merging issues!)
 	labdat_ud = labdat.groupby('Date').mean()
 	labdat_ud.reset_index(inplace = True)
@@ -334,7 +334,7 @@ def get_cod_bal(
 
 	#=======================================> MERGE & PREP <=======================================	
 	
-	# Merge Lab and HMI data
+	# Merge Lab and HMI 
 	cod_bal_dat = labdat_ud.merge(hmidat, on = 'Date', how = 'outer')
 
 	# Dedupe (merging many files, so any duplicates will cause big problems!)
@@ -343,152 +343,69 @@ def get_cod_bal(
 	# Calculate daily totals and daily means for each date
 	dly_tots  = cod_bal_dat[['Date','Flow In','Flow Out','Meas Biogas Prod']].groupby('Date').sum()
 	dly_tots.reset_index(inplace = True)
-	dly_means = cod_bal_dat[['Date','Reactor Temp','CODs MS','CODp MS','CODs R','CODp R','CODs Out','CH4%','CO2%']].groupby('Date').mean()
+	dly_means = cod_bal_dat[['Date','Reactor Temp','CODt MS','CODt R','CODt Out','SO4 MS','CH4%','CO2%','Wasted (L)']].groupby('Date').mean()
 	dly_means.reset_index(inplace = True)
 
 	# Merge and fill in missing values
 	cod_bal_dly = dly_tots.merge(dly_means, on = 'Date', how = 'outer')
 	cod_bal_dly.set_index('Date')
-	cod_bal_dly[['CH4%','CO2%','CODs MS','CODp MS','CODs R','CODp R','CODs Out']] = \
-		cod_bal_dly[['CH4%','CO2%','CODs MS','CODp MS','CODs R','CODp R','CODs Out']].interpolate()
+	cod_bal_dly[['CH4%','CO2%','CODt MS','CODt R','CODt Out','SO4 MS']] = \
+		cod_bal_dly[['CH4%','CO2%','CODt MS','CODt R','CODt Out','SO4 MS']].interpolate()
+
+	# Convert missing wasting data to 0 (assume no solids wasted that day)
+	cod_bal_dly.loc[np.isnan(cod_bal_dly['Wasted (L)']),'Wasted (L)'] = 0
 
 	# Get moving average of COD in reactors (data bounce around a lot)
-	cod_cols = ['CODs MS','CODp MS','CODs R','CODp R','CODs Out']
+	cod_cols = ['CODt MS','CODt R','CODt Out']
 	cod_bal_dly[cod_cols] = cod_bal_dly[cod_cols].rolling(ma_win).mean()
 	# Eliminate missing values (from period prior to start_dt) and reset index
 	cod_bal_dly.dropna(axis = 0, how = 'any', inplace = True)
 	cod_bal_dly.reset_index(inplace = True)
+
+	# Put dates into weekly bins (relative to end date), denoted by beginning of week
+	cod_bal_dly['Weeks Back'] = pd.to_timedelta(np.floor((cod_bal_dly['Date'] - end_dt)/np.timedelta64(7,'D'))*7, unit = 'D')
+	cod_bal_dly['Week Start']   = end_dt + cod_bal_dly['Weeks Back']
  
 	#=======================================> MERGE & PREP <=======================================	
 
-	#=================================> Estimate COD Consumption <=================================	
-
-	# First estimate particulate COD hydrolized by comparing the particulate COD
-	# that should accumulate in the reactor from influent particulate COD vs actual particulate COD
-	rvol = afbr_vol + afmbr_vol
-	cod_bal_dly['CODp R pot'] = \
-		(
-			# Mass that was in the reactors in the prior timestep
-			cod_bal_dly['CODp R'].shift(1)*rvol +
-			# Mass that was added by influent particulate COD
-			cod_bal_dly['CODp MS'].shift(1)*cod_bal_dly['Flow In'].shift(1)
-		)/\
-		rvol
-	# The hydrolized COD is the difference between the accumulated vs observed particulate COD
-	cod_bal_dly.loc[:,'CODp R hyd'] = cod_bal_dly['CODp R pot'] - cod_bal_dly['CODp R']
-	# Replace negative values with zero (no observable hydrolysis)
-	cod_bal_dly.loc[cod_bal_dly['CODp R hyd'] < 0,'CODp R hyd'] = 0
-
-	# Next compute the soluble COD that would accumulate without consumption by the biology
-	cod_bal_dly.loc[:,'CODs R pot'] = \
-		(
-			# Mass that was in the reactors in the prior timestep
-			cod_bal_dly['CODs R'].shift(1)*rvol +
-			# Mass that flowed in from the microscreen
-			cod_bal_dly['CODs MS'].shift(1)*cod_bal_dly['Flow In'].shift(1) + 
-			# Mass that hydrolyzed
-			cod_bal_dly['CODp R hyd'] - 
-			# Mass that flowed out through the membranes
-			cod_bal_dly['CODs Out']*cod_bal_dly['Flow Out'].shift(1)
-		)/\
-		rvol
-	# Consumed COD is the difference between the accumulated vs observed soluble COD (dividing by 1000 to get kg per m^3)
-	cod_bal_dly.loc[:,'COD Consumed'] = \
-		(cod_bal_dly['CODs R pot'] - cod_bal_dly['CODs R'])*rvol/1000
-	# Replace negative values with zero (no observable COD consumption)
-	cod_bal_dly.loc[cod_bal_dly['COD Consumed'] < 0, 'COD Consumed'] = 0
-
-	#=================================> Estimate COD Consumption <=================================	
-
-	#==============================> Estimate SE of COD Consumption  <=============================	
-
-	# Without assuming measurement error
-	se_df = cod_bal_dly.loc[:,['CODp R','CODs R','CODs Out']]
-	se_df['CODp MS -1'] = cod_bal_dly['CODp MS'].shift(1)
-	se_df['CODs MS -1'] = cod_bal_dly['CODs MS'].shift(1)
-	se_df['CODp R -1']  = cod_bal_dly['CODp R'].shift(1)
-	se_df['CODs R -1']  = cod_bal_dly['CODs R'].shift(1)
-
-
-	se_coefs = pd.DataFrame(-np.ones(len(cod_bal_dly)), columns = ['CODp R'])
-	se_coefs['CODs R']     = -np.ones(len(cod_bal_dly))
-	se_coefs['CODs Out']   = -cod_bal_dly['Flow Out'].shift(1)/rvol
-	se_coefs['CODp MS -1'] = cod_bal_dly['Flow In'].shift(1)/rvol
-	se_coefs['CODs MS -1'] = se_coefs['CODp MS -1']/rvol
-	se_coefs['CODp R -1']  = np.ones(len(cod_bal_dly))
-	se_coefs['CODs R -1']  = np.ones(len(cod_bal_dly))
-	se_coefs = se_coefs*rvol/1000
-
-	se_codcons = []
-	for index,row in se_coefs.iterrows():
-		se_codcons.append(
-			get_sumvar(
-				se_df,
-				list(row)
-			)**0.5
-		)
-	cod_bal_dly['COD Cons SE'] = se_codcons
-
-	#==============================> Estimate SE of COD Consumption  <=============================
-
 	#========================================> COD Balance <=======================================	
-	
-	# Get theoretical estimated methane output
-	gasprod_thry = []
-	for index,row in cod_bal_dly.iterrows():
-		gasprod_thry.append(
-			est_biogas_prod(
-				BODrem = row['COD Consumed'], 
-				infSO4 = 0, 
-				temp = row['Reactor Temp'], 
-				percCH4 = row['CH4%']/100, 
-				percCO2 = row['CO2%']/100, 
-				flowrate = 1, 
-				precision = 1E-6
-			)
-		)
-
-	cod_bal_dly['Thr CH4 Prod'] = [row[0] for row in gasprod_thry]
-	cod_bal_dly['Thr Biogas Prod'] = [row[1] for row in gasprod_thry]
-	# Actual estimated CH4 production
-	cod_bal_dly['Meas CH4 Prod'] = cod_bal_dly['Meas Biogas Prod']*cod_bal_dly['CH4%']/100
-	cod_bal_dly['Biogas Discrep (%)'] =	(cod_bal_dly['Meas Biogas Prod']/cod_bal_dly['Thr Biogas Prod'] - 1)*100
-	cod_bal_dly.loc[cod_bal_dly['Biogas Discrep (%)'] > 100,'Biogas Discrep (%)'] = 100
-	cod_bal_dly['CH4 Discrep (%)']    =	(cod_bal_dly['Meas CH4 Prod']/cod_bal_dly['Thr CH4 Prod'] - 1)*100
-	cod_bal_dly.loc[cod_bal_dly['CH4 Discrep (%)'] > 100,'CH4 Discrep (%)'] = 100
-
+	# Note: dividing by 1000 to express in kg
+	# COD coming in from the Microscreen
+	cod_bal_dly['COD In']   = cod_bal_dly['CODt MS']*cod_bal_dly['Flow In']/1E6
+	# COD leaving the reactor
+	cod_bal_dly['COD Out'] = cod_bal_dly['CODt Out']*cod_bal_dly['Flow Out']/1E6
+	# COD wasted
+	cod_bal_dly['Wasted']   = cod_bal_dly['CODt R']*cod_bal_dly['Wasted (L)']/1E6
+	# COD content of gas (assumes that volume given by flowmeter is in STP)
+	cod_bal_dly['Biogas']   = cod_bal_dly['Meas Biogas Prod']*cod_bal_dly['CH4%']/Vol_STP*64/1E6
+	# COD from sulfate reduction (1.5g COD per g SO4)
+	cod_bal_dly['Sulfate Reduction'] = cod_bal_dly['SO4 MS']*cod_bal_dly['Flow In']/1.5/1E6
 	#========================================> COD Balance <=======================================	
 
-	# Output csv with summary statistics
-	os.chdir(outdir)
-	output_vars = ['Date','Meas Biogas Prod','Thr Biogas Prod','Meas CH4 Prod','Thr CH4 Prod','Biogas Discrep (%)','CH4 Discrep (%)']
-	cod_bal_dly.to_csv('COD Balance Full.csv')
-	days_el = (cod_bal_dly['Date'] - cod_bal_dly['Date'][0])/np.timedelta64(24,'h')
+	cod_bal_wkly = cod_bal_dly.groupby('Week Start').sum(numeric_only = True)
+	cod_bal_wkly.reset_index(inplace = True)
+	cod_bal_wkly.loc[:,'Week Start'] = cod_bal_wkly['Week Start'].dt.date
+	cod_bal_wkly.to_csv('/Users/josebolorinos/Google Drive/Codiga Center/Charts and Data/cod_bal_wkly.csv')
 
-	cod_bal_dly.rename(
-		columns = {
-			'Thr Biogas Prod': 'Theoretical',
-			'Meas Biogas Prod': 'Measured'
-		},
-		inplace = True
-	)
-
-	fig, (ax1, ax2) = plt.subplots(2, sharex = True)
-	ax1.plot(cod_bal_dly['Date'], cod_bal_dly['Theoretical'])
-	ax1.plot(cod_bal_dly['Date'], cod_bal_dly['Measured'])
-	ax1.set_ylabel('Production (L/day)')
-	ax2.plot(cod_bal_dly['Date'], cod_bal_dly['Biogas Discrep (%)'])
-	ax2.set_ylabel('Discrepancy (%)')
-	ax1.legend()
-	ax2.axhline(linewidth = 0.5, color = 'black', linestyle = '--')
-	labels = ax2.get_xticklabels()
-	plt.setp(labels, rotation = 45)
+	#===========================================> Plot! <==========================================
+	nWeeks = np.arange(len(cod_bal_wkly))
+	bWidth = 1/len(cod_bal_wkly)*15
+	pIn = plt.scatter(nWeeks,cod_bal_wkly['COD In'], c = 'r')
+	pBiogas = plt.bar(nWeeks,cod_bal_wkly['Biogas'], bWidth)
+	pOut = plt.bar(nWeeks,cod_bal_wkly['COD Out'], bWidth, bottom = cod_bal_wkly['Biogas'])
+	pWasted = plt.bar(nWeeks,cod_bal_wkly['Wasted'], bWidth, bottom = cod_bal_wkly['COD Out'] + cod_bal_wkly['Biogas'])
+	pSO4 = plt.bar(nWeeks,cod_bal_wkly['Sulfate Reduction'], bWidth, bottom = cod_bal_wkly['COD Out'] + cod_bal_wkly['Biogas'] + cod_bal_wkly['Wasted'])
+	plt.xticks(nWeeks,cod_bal_wkly['Week Start'], rotation = 45) 
+	plt.legend((pIn,pBiogas[0],pOut[0],pWasted[0],pSO4[0]),('COD In','Biogas','COD Out','Solids Wasting','Sulfate Reduction'))
+	plt.ylabel('kg of COD Equivalents')
 	plt.tight_layout()
-
 	plt.savefig(
-		'COD Balance.png', 
-		bbox_inches = 'tight'
+		os.path.join(outdir, 'COD Balance.png'),
+		width = 20,
+		height = 50
 	)
+	plt.close()
+	#===========================================> Plot! <==========================================		
 
 
 '''
@@ -584,5 +501,5 @@ def pressure_validation(
 # 	run_report = True
 # )
 
-get_cod_bal('9-1-17','12-1-17',1,'/Users/josebolorinos/Google Drive/Codiga Center/Miscellany')
+# get_cod_bal('6-1-17','2-2-18','/Users/josebolorinos/Google Drive/Codiga Center/Miscellany')
 
