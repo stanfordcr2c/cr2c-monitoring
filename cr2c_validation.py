@@ -34,94 +34,28 @@ from cr2c_hmidata import hmi_data_agg as hmi_run
 def adj_Hcp(Hcp_gas, deriv_gas, temp):
 	return Hcp_gas*math.exp(deriv_gas*(1/(273 + temp) - (1/298)))
 
-def est_biogas_prod(BODrem, infSO4, temp, percCH4, percCO2, flowrate, precision):
+def est_diss_ch4(temp, percCH4):
 	
 	# =======> UNITS OF INPUT VARIABLES <=======
-	# infBOD_ult/infSO4 in mg/L, 
+	# gasVol in sL/m 
 	# temp in C 
-	# percents as decimals, 
-	# fowrate as m^3/day
-	# precision as a decimal
-
-
+	# percents as decimals x 100
 	# Assumed Henry's constants (from Sander 2015)
 	# Units of mM/atm @ 25 degrees C
 	Hcp_CH4 = 1.4
-	Hcp_CO2 = 33.4
-	Hcp_H2S = 101.325
-	Hcp_N2  = 0.65
-
 	# Assumed Clausius-Clapeyron Constants (dlnHcp/d(l/T))
-	deriv_ccCH4 = 1600
-	deriv_ccCO2 = 2300
-	deriv_ccH2S = 2100
-	deriv_ccN2  = 1300
-
-	# Volume of gas at STP (mL/mmol)
+	deriv_ccCH4 = 1900
+	# Volume of gas at STP (L/mol)
 	Vol_STP = 22.4
-	cubicft_p_L = 0.03531467
-
-	# Assumed N2 in air
-	percN2 = 0.78
-
-	# Assumed fraction of electrons used for respiration
-	fe = 0.9
-
-	# Observed pH at Korean plant (range 6.6-6.8)
-	pH = 6.7 
-
-	# Assumed BOD and SO4 removals 
-	# (observed at previous pilot tests of 93%-100% and 94%-97% at 59-77 degrees F)
-	perc_BODrem = 0.95
-	perc_SO4rem = 0.96
 	# Adjust gas constants to temperature
 	Hcp_CH4_adj = adj_Hcp(Hcp_CH4, deriv_ccCH4, temp)
-	Hcp_CO2_adj = adj_Hcp(Hcp_CO2, deriv_ccCO2, temp)
-	Hcp_H2S_adj = adj_Hcp(Hcp_H2S, deriv_ccH2S, temp)
-	Hcp_N2_adj  = adj_Hcp(Hcp_N2,  deriv_ccN2,  temp)
-	Vol_adj     = Vol_STP*(temp + 273)/273
-	# Get estimated CH4 production from BOD in wastewater
-	# BOD removed from methanogens (minus BOD from SO4 reducers, 1.5g SO4 reduced by 1 g BOD)
-	# and Converted to CH4 in wastewater
-	BODrem_SO4 = infSO4*perc_SO4rem/(1.5*fe)
-	BODconv_CH4 = (BODrem - BODrem_SO4)*fe 
-	# Moles of CH4: 1 mole of CH4 is 64 g of BOD, gets mol CH4 per cubic m (mmol/L)
-	CH4_prod_mol = BODconv_CH4/64
-	H2S_prod_mol = infSO4*perc_SO4rem/96
-	# CO2 estimate assumes given fraction of CH4 in biogas (by volume!)
-	CO2_prod_mol = CH4_prod_mol*percCO2/percCH4
-	# N2 estimate (not production per se) assumes equilibrium partitioning between air and water 
-	N2_prod_mol  = percN2*Hcp_N2_adj
-	# Get molar total for biogas
-	gas_prod_mol = CH4_prod_mol + CO2_prod_mol + H2S_prod_mol + N2_prod_mol
-	# Start with initial amount gas that partitions out of solution into headspace
-	# (assume 50% of total volume of gas produced) as well as the percentage discrepancy
-	# (start off at 50%)
-	gas_part_mol = 0.5*gas_prod_mol
-	balance_perc = -0.5
-	# Perform loops necessary to get within desired level of precision
-	while abs(balance_perc) >= precision:
-		try:
-			# Update the assumed amount of gas partitioned into the headspace
-			gas_part_mol   = gas_part_mol*(1 + balance_perc)
-			# Calculate the equilibrium partitioning of each gas into this amount of gas 
-			# (at the given temp and pressure)
-			CH4_gas_eq_mol = CH4_prod_mol/(1 + (Hcp_CH4_adj/gas_part_mol))
-			CO2_gas_eq_mol = CO2_prod_mol/(1 + (Hcp_CO2_adj/gas_part_mol))
-			N2_gas_eq_mol  = N2_prod_mol /(1 + (Hcp_N2_adj /gas_part_mol))
-			H2S_gas_eq_mol = H2S_prod_mol/(1 + (Hcp_H2S_adj/gas_part_mol))
-			gas_eq_mol     = CH4_gas_eq_mol + CO2_gas_eq_mol + H2S_gas_eq_mol + N2_gas_eq_mol
-			# Compare partitioned gas calculation to original amount assumed to have partitioned into the gas phase
-			balance_perc = (gas_eq_mol - gas_part_mol)/gas_part_mol
-			# Update CH4/Biogas calculations
-			percCH4_biogas = CH4_gas_eq_mol/gas_eq_mol 
-			CH4_gas_vol    = CH4_gas_eq_mol*Vol_adj*flowrate
-			biogas_gas_vol = CH4_gas_vol/percCH4_biogas
-		except ZeroDivisionError:
-			CH4_gas_vol, biogas_gas_vol = 0,0
-			break
+	# Moles of CH4: 1 mole of CH4 is 64 g of BOD
+	CH4_gas_atm = percCH4/100
+	# Assuming 1atm in reactors 
+	# (this is a good assumption, even 10 inches on manometer is equivalent to just 0.02 atm)
+	COD_diss_conc = CH4_gas_atm*Hcp_CH4_adj*64
 
-	return [CH4_gas_vol, biogas_gas_vol]
+	return COD_diss_conc
 
 
 # Function to estimate the sum of a set of variables in a pandas dataframe
@@ -149,8 +83,8 @@ def get_sumvar(df, coefs):
 	return sumvar
 
 def get_cod_bal(
-	start_dt_str,
 	end_dt_str,
+	nweeks,
 	outdir = None,
 	hmi_path = None,
 	run_agg_feeding = False,
@@ -160,10 +94,12 @@ def get_cod_bal(
 	
 	# Window for moving average calculation
 	ma_win = 1
-	start_dt = dt.strptime(start_dt_str,'%m-%d-%y').date()
+	end_dt   = dt.strptime(end_dt_str,'%m-%d-%y').date()
+	start_dt = end_dt - timedelta(days = 7*nweeks + 1)
+	start_dt = start_dt
+	start_dt_str = dt.strftime(start_dt, '%m-%d-%y')
 	start_dt_query = start_dt - timedelta(days = ma_win)
 	start_dt_qstr = dt.strftime(start_dt_query,'%m-%d-%y')
-	end_dt   = dt.strptime(end_dt_str,'%m-%d-%y').date()
 
 	# This variable might not be necessary in the future, should probably remove
 	tperiod = 1
@@ -240,12 +176,6 @@ def get_cod_bal(
 	) 
 
 	# Prep the HMI data
-	# NOTE 1: # Getting totals as the average flow (in liters or gallons per minute) x 
-	# 60 x 
-	# time period in hour equivalents x
-	# size of the time period
-	# NOTE 2: for now, getting the date of the time step to merge onto daily data
-	# In the future we could linearly interpolate between two different values on two days...
 	gasprod_dat['Meas Biogas Prod'] = (gasprod_dat['FT700'] + gasprod_dat['FT704'])*60*tperiod
 	gasprod_dat_cln                 = gasprod_dat[['Time','Meas Biogas Prod']]
 
@@ -255,20 +185,19 @@ def get_cod_bal(
 	feeding_dat_cln         = feeding_dat[['Time','Flow In','Flow Out']]
 
 	# Reactor Temperature HMI data
-	temp_dat['Reactor Temp'] = temp_dat[temp_elids].mean(axis = 1)
-	temp_dat_cln             = temp_dat[['Time','Reactor Temp']]
+	temp_dat['Reactor Temp (C)'] = temp_dat[temp_elids].mean(axis = 1)
+	temp_dat_cln             = temp_dat[['Time','Reactor Temp (C)']]
 
 	# List of hmi dataframes
-	hmi_dflist = [feeding_dat_cln, gasprod_dat_cln]
+	hmi_dflist = [feeding_dat_cln, gasprod_dat_cln, temp_dat]
 	# Merge hmi datasets
 	hmidat = functools.reduce(lambda left,right: pd.merge(left,right, on='Time', how = 'outer'), hmi_dflist)
 	hmidat['Date'] = hmidat['Time'].dt.date
 	#=========================================> HMI DATA <=========================================
 
 	#=========================================> LAB DATA <=========================================
-	
 	# Get lab data from file on box and filter to desired dates
-	labdat  = pld.labrun().get_data(['COD','Sulfate','GasComp'], start_dt_qstr, end_dt_str)
+	labdat  = pld.labrun().get_data(['COD','Sulfate','GasComp'])
 
 	# COD data
 	cod_dat = labdat['COD']
@@ -292,17 +221,6 @@ def get_cod_bal(
 	cod_dat_cln = cod_dat_wide[['Date','CODt MS','CODt R','CODt Out']]
 	cod_dat_cln.columns = ['Date','CODt MS','CODt R','CODt Out']
 
-	# Sulfate data
-	so4_dat = labdat['Sulfate']
-	so4_dat['Date'] = so4_dat['Date_Time']
-	so4_dat.set_index(['Date','Stage'], inplace = True)
-	so4_dat_wide = so4_dat.unstack(['Stage'])
-	so4_dat_wide['SO4 MS'] = so4_dat_wide['Value']['Microscreen']
-	so4_dat_wide.reset_index(inplace = True)
-	so4_dat_cln = so4_dat_wide[['Date','SO4 MS']]
-	so4_dat_cln.columns = ['Date','SO4 MS']
-	so4_dat_cln.loc[:,'Date'] = so4_dat_cln['Date'].dt.date
-
 	# Gas Composition Data
 	gc_dat = labdat['GasComp']
 	gc_dat['Date'] = gc_dat['Date_Time'].dt.date
@@ -316,12 +234,25 @@ def get_cod_bal(
 	gc_dat_cln.columns = ['Date','CH4%','CO2%']
 
 	# Solids Wasting Data
-	waste_dat = cut.get_gsheet_data(['Wasted Solids'])
-	waste_dat['Date'] = pd.to_datetime(waste_dat['Date']).dt.date
-	waste_dat['Volume (gallons)'] = waste_dat['Volume (gallons)'].astype('float')
-	waste_dat['Wasted (L)'] = waste_dat['Volume (gallons)']*l_p_gal
+	fieldvals_sheet = cut.get_gsheet_data(['DailyLogResponses'])
+	waste_dat = fieldvals_sheet[['Timestamp','AFMBR Volume Wasted (Gal)']]
+	waste_dat['Date'] = pd.to_datetime(waste_dat['Timestamp']).dt.date
+	waste_dat['AFMBR Volume Wasted (Gal)'] = waste_dat['AFMBR Volume Wasted (Gal)'].astype('float')
+	waste_dat['Wasted (L)'] = waste_dat['AFMBR Volume Wasted (Gal)']*l_p_gal
 	waste_dat = waste_dat.loc[(waste_dat['Date'] >= start_dt) & (waste_dat['Date'] <= end_dt),:]
 	waste_dat_cln = waste_dat[['Date','Wasted (L)']]
+
+	# Sulfate data
+	so4_dat = labdat['Sulfate']
+	so4_dat['Date'] = so4_dat['Date_Time']
+	so4_dat.set_index(['Date','Stage'], inplace = True)
+	so4_dat_wide = so4_dat.unstack(['Stage'])
+	so4_dat_wide['SO4 MS'] = so4_dat_wide['Value']['Microscreen']
+	so4_dat_wide.reset_index(inplace = True)
+	so4_dat_cln = so4_dat_wide[['Date','SO4 MS']]
+	so4_dat_cln.columns = ['Date','SO4 MS']
+	so4_dat_cln.loc[:,'Date'] = so4_dat_cln['Date'].dt.date
+	
 	# List of lab dataframes
 	lab_dflist = [cod_dat_cln, gc_dat_cln, waste_dat_cln, so4_dat_cln]
 
@@ -344,17 +275,29 @@ def get_cod_bal(
 	# Calculate daily totals and daily means for each date
 	dly_tots  = cod_bal_dat[['Date','Flow In','Flow Out','Meas Biogas Prod']].groupby('Date').sum()
 	dly_tots.reset_index(inplace = True)
-	dly_means = cod_bal_dat[['Date','CODt MS','CODt R','CODt Out','SO4 MS','CH4%','CO2%','Wasted (L)']].groupby('Date').mean()
+	dly_means = cod_bal_dat[['Date','CODt MS','CODt R','CODt Out','SO4 MS','CH4%','CO2%','Wasted (L)','Reactor Temp (C)']].groupby('Date').mean()
 	dly_means.reset_index(inplace = True)
 
 	# Merge and fill in missing values
 	cod_bal_dly = dly_tots.merge(dly_means, on = 'Date', how = 'outer')
 	cod_bal_dly.set_index('Date')
-	cod_bal_dly[['CH4%','CO2%','CODt MS','CODt R','CODt Out','SO4 MS']] = \
-		cod_bal_dly[['CH4%','CO2%','CODt MS','CODt R','CODt Out','SO4 MS']].interpolate()
-
 	# Convert missing wasting data to 0 (assume no solids wasted that day)
 	cod_bal_dly.loc[np.isnan(cod_bal_dly['Wasted (L)']),'Wasted (L)'] = 0
+	# First get means of observed data
+	cod_bal_means = cod_bal_dly[['CH4%','CO2%','CODt MS','CODt R','CODt Out','SO4 MS']].mean()
+	# Then interpolate
+	cod_bal_dly[['CH4%','CO2%','CODt MS','CODt R','CODt Out','SO4 MS']] = \
+		cod_bal_dly[['CH4%','CO2%','CODt MS','CODt R','CODt Out','SO4 MS']].interpolate()
+	# Then fill remaining missing values with the means of all variables
+	fill_values = {
+		'CH4%': cod_bal_means['CH4%'],
+		'CO2%': cod_bal_means['CO2%'],
+		'CODt MS': cod_bal_means['CODt MS'],
+		'CODt R': cod_bal_means['CODt R'],
+		'CODt Out': cod_bal_means['CODt Out'],
+		'SO4 MS': cod_bal_means['SO4 MS']
+	}
+	cod_bal_dly.fillna(value = fill_values)
 
 	# Get moving average of COD in reactors (data bounce around a lot)
 	cod_cols = ['CODt MS','CODt R','CODt Out']
@@ -362,11 +305,14 @@ def get_cod_bal(
 	# Eliminate missing values (from period prior to start_dt) and reset index
 	# cod_bal_dly.dropna(axis = 0, how = 'any', inplace = True)
 	cod_bal_dly.reset_index(inplace = True)
-
 	# Put dates into weekly bins (relative to end date), denoted by beginning of week
-	cod_bal_dly['Weeks Back'] = pd.to_timedelta(np.floor((cod_bal_dly['Date'] - end_dt)/np.timedelta64(7,'D'))*7, unit = 'D') - timedelta(days = -7)
+	cod_bal_dly['Weeks Back'] = \
+		pd.to_timedelta(np.floor((cod_bal_dly['Date'] - end_dt)/np.timedelta64(7,'D'))*7, unit = 'D') - timedelta(days = -7)
 	cod_bal_dly['Week Start'] = end_dt + cod_bal_dly['Weeks Back']
- 
+	cod_bal_dly = cod_bal_dly.loc[
+		(cod_bal_dly['Date'] >= start_dt) & (cod_bal_dly['Date'] <= end_dt),
+		:
+	]
 	#=======================================> MERGE & PREP <=======================================	
 
 	#========================================> COD Balance <=======================================	
@@ -374,15 +320,23 @@ def get_cod_bal(
 	# COD coming in from the Microscreen
 	cod_bal_dly['COD In']   = cod_bal_dly['CODt MS']*cod_bal_dly['Flow In']/1E6
 	# COD leaving the reactor
-	cod_bal_dly['COD Out'] = cod_bal_dly['CODt Out']*cod_bal_dly['Flow Out']/1E6
+	cod_bal_dly['COD Out']  = cod_bal_dly['CODt Out']*cod_bal_dly['Flow Out']/1E6
 	# COD wasted
 	cod_bal_dly['Wasted']   = cod_bal_dly['CODt R']*cod_bal_dly['Wasted (L)']/1E6
 	# COD content of gas (assumes that volume given by flowmeter is in STP)
 	cod_bal_dly['Biogas']   = cod_bal_dly['Meas Biogas Prod']*cod_bal_dly['CH4%']/100/Vol_STP*64/1000
+	# COD content of dissolved methane (estimated from temperature of reactors)
+	COD_diss_conc = map(est_diss_ch4,
+		cod_bal_dly['Reactor Temp (C)'].values, 
+		cod_bal_dly['CH4%'].values
+	)
+	cod_bal_dly.reset_index(inplace = True)
+	cod_bal_dly['Dissolved CH4'] = np.array(list(COD_diss_conc))*cod_bal_dly['Flow Out']/1E6
 	# COD from sulfate reduction (1.5g COD per g SO4)
 	cod_bal_dly['Sulfate Reduction'] = cod_bal_dly['SO4 MS']*cod_bal_dly['Flow In']/1.5/1E6
 	#========================================> COD Balance <=======================================	
 
+	# Convert to weekly data
 	cod_bal_wkly = cod_bal_dly.groupby('Week Start').sum(numeric_only = True)
 	cod_bal_wkly.reset_index(inplace = True)
 	cod_bal_wkly.loc[:,'Week Start'] = cod_bal_wkly['Week Start'].dt.date
@@ -391,14 +345,23 @@ def get_cod_bal(
 	#===========================================> Plot! <==========================================
 	nWeeks = np.arange(len(cod_bal_wkly))
 	bWidth = 0.8
-	pIn = plt.scatter(nWeeks,cod_bal_wkly['COD In'], c = 'r')
 	pBiogas = plt.bar(nWeeks,cod_bal_wkly['Biogas'], bWidth)
-	pOut = plt.bar(nWeeks,cod_bal_wkly['COD Out'], bWidth, bottom = cod_bal_wkly['Biogas'])
-	pWasted = plt.bar(nWeeks,cod_bal_wkly['Wasted'], bWidth, bottom = cod_bal_wkly['COD Out'] + cod_bal_wkly['Biogas'])
-	pSO4 = plt.bar(nWeeks,cod_bal_wkly['Sulfate Reduction'], bWidth, bottom = cod_bal_wkly['COD Out'] + cod_bal_wkly['Biogas'] + cod_bal_wkly['Wasted'])
+	bottomCum = cod_bal_wkly['Biogas'].values
+	pOut = plt.bar(nWeeks,cod_bal_wkly['COD Out'], bWidth, bottom = bottomCum)
+	bottomCum += cod_bal_wkly['COD Out']
+	pDiss = plt.bar(nWeeks,cod_bal_wkly['Dissolved CH4'], bWidth, bottom = bottomCum)
+	bottomCum += cod_bal_wkly['Dissolved CH4']
+	pWasted = plt.bar(nWeeks,cod_bal_wkly['Wasted'], bWidth, bottom = bottomCum)
+	bottomCum += cod_bal_wkly['Wasted']
+	pSO4 = plt.bar(nWeeks,cod_bal_wkly['Sulfate Reduction'], bWidth, bottom = bottomCum)
+	pIn = plt.scatter(nWeeks,cod_bal_wkly['COD In'], c = 'r')
 	plt.xticks(nWeeks,cod_bal_wkly['Week Start'], rotation = 45) 
-	plt.legend((pIn,pBiogas[0],pOut[0],pWasted[0],pSO4[0]),('COD In','Biogas','COD Out','Solids Wasting','Sulfate Reduction'))
+	plt.legend(
+		(pIn,pBiogas[0],pOut[0],pDiss[0],pWasted[0],pSO4[0]),
+		('COD In','Biogas','COD Out','Dissolved CH4','Solids Wasting','Sulfate Reduction')
+	)
 	plt.ylabel('kg of COD Equivalents')
+	plt.xlabel('Week Start Date')
 	plt.tight_layout()
 	plt.savefig(
 		os.path.join(outdir, 'COD Balance.png'),
@@ -493,6 +456,8 @@ def pressure_validation(
     date_fmt = dates.DateFormatter('%m/%d')
     axes[ax_idx].xaxis.set_major_formatter(date_fmt)
     plt.show()
+
+# get_cod_bal('02-09-18',8, outdir = '/Users/josebolorinos/Google Drive/Codiga Center/Miscellany')
 
 # pressure_validation(
 # 	'5-10-17',
