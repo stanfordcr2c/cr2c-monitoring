@@ -1,3 +1,4 @@
+
 '''
 	Script loads data from lab tests, computes water quality parameters,
 	and loads the data to an SQL database (no inputs required, fully automated!)
@@ -31,7 +32,8 @@ class labrun:
 	
 	def __init__(self):
 		
-		self.mtype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GasComp','Ammonia','Sulfate']
+		self.mtype_list = \
+			['PH','COD','TSS_VSS','ALKALINITY','VFA','GasComp','Ammonia','Sulfate','TKN']
 		self.min_feas_dt_str = '6-1-16'
 		self.min_feas_dt = dt.strptime(self.min_feas_dt_str, '%m-%d-%y')
 		self.file_dt = dt.now()
@@ -199,8 +201,8 @@ class labrun:
 			self.set_var_format(mtype, 'Reading', float, 'numeric')
 		
 		if mtype == 'ALKALINITY':
-			self.set_var_format(mtype,'Sample Volume (ml)', float, 'numeric')
-			self.set_var_format(mtype,'Acid Volume (ml, to pH 4.3)', float, 'numeric')
+			self.set_var_format(mtype,'Sample Volume (mL)', float, 'numeric')
+			self.set_var_format(mtype,'Acid Volume (mL, to pH 4.3)', float, 'numeric')
 			self.set_var_format(mtype,'Acid Normality (N)', float, 'numeric')
 
 		if mtype in ['COD','ALKALINITY','VFA','Ammonia','Sulfate']:
@@ -222,6 +224,18 @@ class labrun:
 			self.set_var_format(mtype,'Oxygen (%)', float, 'numeric')
 			self.set_var_format(mtype,'Methane (%)', float, 'numeric')
 			self.set_var_format(mtype,'Carbon Dioxide (%)', float, 'numeric')
+
+		if mtype == 'TKN':	
+			varnames = \
+			[
+				'Sample Volume (mL)','Initial pH','Sample Volume (mL)','Initial pH','End pH',
+				'Volume (mL)','Blank Initial pH','Blank End pH','Blank Volume (mL)',
+				'NH4Cl Sample Volume (mL)','NH4Cl Initial pH','NH4Cl End pH','NH4Cl Volume (mL)',
+				'Tryptophan Sample Volume (mL)','Tryptophan Initial pH','Tryptophan End pH','Tryptophan Volume (mL)',
+				'Acid Concentration (N)','NH4Cl Concentration (mg/L)','Tryptophan Concentration (mg/L)'
+			]
+			for varname in varnames:
+				self.set_var_format(mtype, varname, float, 'numeric')		
 			
 		# Get the obs_id variable (This step also removes duplicates and issues warnings)
 		self.manage_dups(mtype, id_vars)
@@ -240,7 +254,7 @@ class labrun:
 		elif mtype in ['PH','ALKALINITY']:
 			col_order = ['Date_Time','Stage','obs_id','value']
 			varnames = ['Date_Time','Stage','obs_id','Value']
-		elif mtype in ['Ammonia','Sulfate']:
+		elif mtype in ['Ammonia','TKN','Sulfate']:
 			col_order = ['Date_Time','Stage','value']
 			varnames = ['Date_Time','Stage','Value']
 		else:	
@@ -255,21 +269,10 @@ class labrun:
 	# Inputs lab testing results data and computes water quality parameters
 	def process_data(self):
 		
-		# Load data from gsheets
-		all_sheets = cut.get_gsheet_data(self.mtype_list)
-
 		# Start loop through the gsheets
-		for sheet in all_sheets:
+		for mtype in self.mtype_list:
 
-			# Retrieve the monitoring data type from the range name
-			mtype = sheet['range'].split('!')[0]
-
-			# Get data and header, convert to pandas data frame and clean
-			mdata_list = sheet['values']
-
-			headers = mdata_list.pop(0) 
-
-			self.mdata = pd.DataFrame(mdata_list, columns = headers)
+			self.mdata = cut.get_gsheet_data([mtype])
 
 			if mtype == 'COD':
 				self.clean_dataset(mtype,['Date','Stage','Type'])
@@ -339,8 +342,8 @@ class labrun:
 				
 				# Compute alkalinity
 				self.mdata['ALKALINITY'] = \
-				self.mdata['Acid Volume (ml, to pH 4.3)']*self.mdata['Acid Normality (N)']/\
-				self.mdata['Sample Volume (ml)']*self.mdata['Dilution Factor']*50*1000
+				self.mdata['Acid Volume (mL, to pH 4.3)']*self.mdata['Acid Normality (N)']/\
+				self.mdata['Sample Volume (mL)']*self.mdata['Dilution Factor']*50*1000
 
 				# Set id and value vars for cleaning	
 				id_vars = ['Date_Time','Stage','obs_id']			
@@ -366,6 +369,30 @@ class labrun:
 				# Set id and value vars for recasting
 				id_vars = ['Date_Time','Stage']
 				value_vars = 'Ammonia'
+
+			if mtype == 'TKN':
+
+				# Compute distillation recovery
+				self.mdata['Dist Recovery (%)'] = \
+					((self.mdata['NH4Cl Volume (mL)'] - self.mdata['Blank Volume (mL)'])*\
+					14.007*self.mdata['Acid Concentration (N)']*1000)/\
+					(self.mdata['NH4Cl Concentration (mg/L)']*self.mdata['NH4Cl Sample Volume (mL)'])
+
+				# Compute digestion efficiency
+				self.mdata['Digest Eff (%)'] = \
+					((self.mdata['Tryptophan Volume (mL)'] - self.mdata['Blank Volume (mL)'])*\
+					14.007*self.mdata['Acid Concentration (N)']*1000)/\
+					(self.mdata['Tryptophan Concentration (mg/L)']*self.mdata['Tryptophan Sample Volume (mL)'])	
+
+				# Compute corrected TKN value (corrected for distillation recovery and digestion efficiency)
+				self.mdata['mgTKN/L'] = \
+					(((self.mdata['Volume (mL)'] - self.mdata['Blank Volume (mL)'])*\
+					14.007*self.mdata['Acid Concentration (N)']*1000)/\
+					(self.mdata['Sample Volume (mL)']))/\
+					(self.mdata['Dist Recovery (%)']*self.mdata['Digest Eff (%)'])	
+
+				id_vars = ['Date_Time','Stage']
+				value_vars = 'mgTKN/L'
 
 			# ======================================= Sulfate =============================================== #
 			if mtype == 'Sulfate':
@@ -515,11 +542,13 @@ class labrun:
 
 			# Set format of date variable
 			mdata_long['Date_Time'] = pd.to_datetime(mdata_long['Date_Time'])
+			# ID variables for grouping by day 
+			# (for monitoring types that might have multiple observations in a day)
+			id_vars_chrt = ['Date_Time','Stage','Type']
 			
 			if mtype == 'COD':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'COD Reading (mg/L)'
 				type_list = ['Total','Soluble','Particulate']
 				share_yax = False
@@ -527,7 +556,6 @@ class labrun:
 			if mtype == 'TSS_VSS':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'Suspended Solids (mg/L)'
 				type_list = ['TSS','VSS']
 				share_yax = True
@@ -535,7 +563,6 @@ class labrun:
 			if mtype == 'PH':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'pH'
 				mdata_long['Type'] = 'pH'
 				type_list = ['pH']
@@ -544,7 +571,6 @@ class labrun:
 			if mtype == 'ALKALINITY':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'Alkalinity (mg/L as ' + r'$CaCO_3$)'
 				mdata_long['Type'] = 'Alkalinity'
 				type_list = ['Alkalinity']
@@ -553,7 +579,6 @@ class labrun:
 			if mtype == 'VFA':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'VFAs as mgCOD/L'
 				type_list = ['Acetate','Propionate']
 				share_yax = False
@@ -561,16 +586,22 @@ class labrun:
 			if mtype == 'AMMONIA':
 
 				#Set plotting variables
-				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = r'$NH_3$' + ' (mg/L as N)'
 				mdata_long['Type'] = 'Ammonia'
 				type_list = ['Ammonia']
 				share_yax = True
 
+			if mtype == 'TKN':
+
+				# Set plotting variables
+				ylabel = 'mgTKN/L'
+				mdata_long['Type'] = 'TKN'
+				type_list = ['TKN']
+				share_yax = True
+
 			if mtype == 'SULFATE':
 
 				# Set plotting variables
-				id_vars_chrt = ['Date_Time','Stage','Type']
 				ylabel = 'mg/L ' + r'$SO_4$'
 				mdata_long['Type'] = 'Sulfate'
 				type_list = ['Sulfate']
@@ -662,6 +693,7 @@ class labrun:
 					width = plot_wid, 
 					height = plot_len
 				)
+				plt.close()
 			else:
 				handles, labels = ax.get_legend_handles_labels()
 				lgd = ax.legend(handles, labels, loc='upper left', bbox_to_anchor = (1,0.75))
@@ -672,6 +704,7 @@ class labrun:
 					width = plot_wid, 
 					height = plot_len
 				)
+				plt.close()
 
 
 	def long_to_wide(self, df, id_vars):
