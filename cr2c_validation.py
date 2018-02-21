@@ -113,13 +113,14 @@ class cr2c_validation:
 		self,
 		end_dt_str,
 		nweeks,
-		plot = True
+		plot = True,
+		table = True
 	):
 		
 		# Window for moving average calculation
 		ma_win = 1
 		end_dt   = dt.strptime(end_dt_str,'%m-%d-%y').date()
-		start_dt = end_dt - timedelta(days = 7*nweeks + 1)
+		start_dt = end_dt - timedelta(days = 7*nweeks)
 		start_dt = start_dt
 		start_dt_str = dt.strftime(start_dt, '%m-%d-%y')
 		start_dt_query = start_dt - timedelta(days = ma_win)
@@ -375,7 +376,7 @@ class cr2c_validation:
 		
 		# Put dates into weekly bins (relative to end date), denoted by beginning of week
 		cod_bal_dly['Weeks Back'] = \
-			pd.to_timedelta(np.floor((cod_bal_dly['Date'] - end_dt)/np.timedelta64(7,'D'))*7, unit = 'D') - timedelta(days = -7)
+			pd.to_timedelta(np.floor((cod_bal_dly['Date'] - end_dt)/np.timedelta64(7,'D'))*7, unit = 'D')
 		cod_bal_dly['Week Start'] = end_dt + cod_bal_dly['Weeks Back']
 		cod_bal_dly = cod_bal_dly.loc[
 			(cod_bal_dly['Date'] >= start_dt) & (cod_bal_dly['Date'] <= end_dt),
@@ -444,12 +445,21 @@ class cr2c_validation:
 		#===========================================> Plot! <==========================================		
 		self.cod_bal_wkly = cod_bal_wkly
 
+		if table:
+			cod_bal_wkly[['Week Start','COD In','COD Out','Biogas','COD Wasted','Dissolved CH4','Sulfate Reduction']].\
+			to_csv(
+				os.path.join(self.outdir, 'COD Balance.csv'),
+				index = False,
+				encoding = 'utf-8'				
+			)
+
 	# Calculate basic biotechnology parameters to monitor biology in reactors
 	def get_biotech_params(
 		self,
 		end_dt_str,
 		nWeeks,
-		plot = True
+		plot = True,
+		table = True
 	):
 		
 		if self.cod_bal_wkly.empty:
@@ -469,24 +479,28 @@ class cr2c_validation:
 				self.cod_bal_wkly['VSS Out']*self.cod_bal_wkly['Flow Out']
 			)*7
 
+		vss_params = self.cod_bal_wkly[['Week Start','VSS SRT (days)','gVSS wasted/gCOD Removed']]
+
 		if plot:
 			fig, (ax1, ax2) = plt.subplots(2, 1, sharey = False)
 			ax1.plot(
-				self.cod_bal_wkly['Week Start'], 
-				self.cod_bal_wkly['gVSS wasted/gCOD Removed'],
+				vss_params['Week Start'], 
+				vss_params['gVSS wasted/gCOD Removed'],
 				linestyle = '-', marker = "o"
 			)
 			plt.sca(ax1)
 			plt.xticks(rotation = 45) 
 			plt.ylabel('gVSS wast./gCOD rem.')
+			plt.ylim(ymin = 0)
 			ax2.plot(
-				self.cod_bal_wkly['Week Start'], 
-				self.cod_bal_wkly['VSS SRT (days)'],
+				vss_params['Week Start'], 
+				vss_params['VSS SRT (days)'],
 				linestyle = '-', marker = "o"
 			)
 			plt.sca(ax2)
 			plt.xticks(rotation = 45)
 			plt.ylabel('VSS SRT (d)') 
+			plt.ylim(ymin = 0)
 			plt.xlabel('Week Start Date')
 			fig.tight_layout()
 			plt.savefig(
@@ -495,6 +509,13 @@ class cr2c_validation:
 				height = 100
 			) 
 			plt.close()
+
+		if table:
+			vss_params.to_csv(
+				os.path.join(self.outdir, 'VSS Parameters.csv'),
+				index = False,
+				encoding = 'utf-8'
+			)
 
 
 	'''
