@@ -25,9 +25,9 @@ import functools
 from tkinter.filedialog import askopenfilename
 from tkinter.filedialog import asksaveasfilename
 from tkinter.filedialog import askdirectory
-import cr2c_utils as cut
 import cr2c_labdata as pld
 import cr2c_hmidata as hmi
+import cr2c_fielddata as fld
 from cr2c_hmidata import hmi_data_agg as hmi_run
 
 
@@ -39,7 +39,8 @@ class cr2c_validation:
 		hmi_path = None, 
 		run_agg_feeding = False, 
 		run_agg_gasprod = False, 
-		run_agg_temp = False
+		run_agg_temp = False,
+		run_agg_press = False
 	):
 		
 		if not outdir:
@@ -54,6 +55,7 @@ class cr2c_validation:
 		self.run_agg_temp = run_agg_temp
 		self.afbr_vol = 1100 # in L
 		self.afmbr_vol = 1700 # in L
+		self.react_vol = 2800 # in L
 		self.cod_bal_wkly = pd.DataFrame([])
 
 
@@ -109,6 +111,7 @@ class cr2c_validation:
 
 		return sumvar
 
+
 	def get_cod_bal(
 		self,
 		end_dt_str,
@@ -126,13 +129,15 @@ class cr2c_validation:
 		start_dt_query = start_dt - timedelta(days = ma_win)
 		start_dt_qstr = dt.strftime(start_dt_query,'%m-%d-%y')
 
-		# This variable might not be necessary in the future, should probably remove
-		tperiod = 1
-
+		# HMI element IDs for gas, temperature and influent/effluent flow meters 
 		gas_elids  = ['FT700','FT704']
 		temp_elids = ['AT304','AT310']
 		inf_elid   = 'FT202'
 		eff_elid   = 'FT305'
+		# Length of time period for which data are being queried
+		perLen = 1
+		# Type of time period for which data are being queried
+		tperiod = 'HOUR'
 
 		# Reactor volumes
 		l_p_gal = 3.78541 # Liters/Gallon
@@ -146,70 +151,80 @@ class cr2c_validation:
 			get_hmi = hmi_run(start_dt_str, end_dt_str, hmi_path = self.hmi_path)
 		if self.run_agg_feeding:
 			get_hmi.run_report(
-				[tperiod]*2, # Number of hours you want to average over
-				['HOUR']*2, # Type of time period (can be "hour" or "minute")
+				[perLen]*2, # Number of hours you want to average over
+				[tperiod]*2, # Type of time period (can be "hour" or "minute")
 				[inf_elid, eff_elid], # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 				['water']*2, # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
 			)	
 		if self.run_agg_gasprod:
 			get_hmi.run_report(
-				[tperiod]*len(gas_elids), # Number of hours you want to average over
-				['HOUR']*len(gas_elids), # Type of time period (can be "hour" or "minute")
+				[perLen]*len(gas_elids), # Number of hours you want to average over
+				[tperiod]*len(gas_elids), # Type of time period (can be "hour" or "minute")
 				gas_elids, # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 				['gas']*len(gas_elids), # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
 			)
 		if self.run_agg_temp:
 			get_hmi.run_report(
-				[tperiod]*len(temp_elids), # Number of hours you want to average over
-				['HOUR']*len(temp_elids), # Type of time period (can be "hour" or "minute")
+				[perLen]*len(temp_elids), # Number of hours you want to average over
+				[tperiod]*len(temp_elids), # Type of time period (can be "hour" or "minute")
 				temp_elids, # Sensor ids that you want summary data for (have to be in HMI data file obviously)
 				['temp']*len(temp_elids), # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
 			)
 
 		# Read in the data
-		year = start_dt.year
-
 		gasprod_dat = hmi.get_data(
 			gas_elids,
-			[tperiod]*len(gas_elids),
-			['HOUR']*len(gas_elids), 
+			[perLen]*len(gas_elids),
+			[tperiod]*len(gas_elids), 
 			start_dt_str = start_dt_str, 
 			end_dt_str = end_dt_str
 		)
 		# Do the same for feeding and temperature
 		feeding_dat = hmi.get_data(
 			[inf_elid, eff_elid],
+			[perLen]*2, 
 			[tperiod]*2, 
-			['HOUR']*2, 
 			start_dt_str = start_dt_str,
 			end_dt_str = end_dt_str
 		)
 		temp_dat = hmi.get_data(
 			temp_elids,
+			[perLen]*len(temp_elids), 
 			[tperiod]*len(temp_elids), 
-			['HOUR']*len(temp_elids), 
 			start_dt_str = start_dt_str,
 			end_dt_str = end_dt_str
 		) 
-
 		# Prep the HMI data
-		gasprod_dat['Meas Biogas Prod'] = (gasprod_dat['FT700'] + gasprod_dat['FT704'])*60*tperiod
-		gasprod_dat_cln                 = gasprod_dat[['Time','Meas Biogas Prod']]
+		gasprod_dat['Meas Biogas Prod'] = (gasprod_dat['FT700'] + gasprod_dat['FT704'])*60*perLen
+		gasprod_dat['Date'] = gasprod_dat['Time'].dt.date
+		gasprod_dat_cln = gasprod_dat[['Date','Meas Biogas Prod']]
+		gasprod_dat_cln = gasprod_dat_cln.groupby('Date').sum()
+		gasprod_dat_cln.reset_index(inplace = True)
 
 		# Feeding HMI Data
-		feeding_dat['Flow In']  = feeding_dat[inf_elid]*60*tperiod*l_p_gal
-		feeding_dat['Flow Out'] = feeding_dat[eff_elid]*60*tperiod*l_p_gal
-		feeding_dat_cln         = feeding_dat[['Time','Flow In','Flow Out']]
+		feeding_dat['Flow In']  = feeding_dat[inf_elid]*60*perLen*l_p_gal
+		feeding_dat['Flow Out'] = feeding_dat[eff_elid]*60*perLen*l_p_gal
+		feeding_dat['Date'] = feeding_dat['Time'].dt.date
+		feeding_dat_cln = feeding_dat[['Date','Flow In','Flow Out']]
+		feeding_dat_cln = feeding_dat_cln.groupby('Date').sum()
+		feeding_dat_cln.reset_index(inplace = True)
 
 		# Reactor Temperature HMI data
-		temp_dat['Reactor Temp (C)'] = temp_dat[temp_elids].mean(axis = 1)
-		temp_dat_cln                 = temp_dat[['Time','Reactor Temp (C)']]
+		temp_dat['Reactor Temp (C)'] = \
+			(temp_dat['AT304']*self.afbr_vol + temp_dat['AT310']*self.afmbr_vol)/self.react_vol
+		temp_dat['Date'] = temp_dat['Time'].dt.date
+		temp_dat_cln = temp_dat[['Date','Reactor Temp (C)']]
+		temp_dat_cln = temp_dat_cln.groupby('Date').mean()
+		temp_dat_cln.reset_index(inplace = True)
 
 		# List of hmi dataframes
-		hmi_dflist = [feeding_dat_cln, gasprod_dat_cln, temp_dat]
+		hmi_dflist = [feeding_dat_cln, gasprod_dat_cln, temp_dat_cln]
 		# Merge hmi datasets
-		hmidat = functools.reduce(lambda left,right: pd.merge(left,right, on='Time', how = 'outer'), hmi_dflist)
-		hmidat['Date'] = hmidat['Time'].dt.date
+		hmidat_ud = functools.reduce(
+			lambda left,right: pd.merge(left,right, on = 'Date', how = 'outer'), 
+			hmi_dflist
+		)
+
 		#=========================================> HMI DATA <=========================================
 
 		#=========================================> LAB DATA <=========================================
@@ -219,12 +234,10 @@ class cr2c_validation:
 		# COD data
 		cod_dat = labdat['COD']
 		cod_dat['Date'] = cod_dat['Date_Time'].dt.date
-
 		# Drop duplicates
 		cod_dat.drop_duplicates(keep = 'first', inplace = True)
 		# Get average of multiple values taken on same day
 		cod_dat = cod_dat.groupby(['Date','Stage','Type']).mean()
-
 		# Convert to wide to get COD in and out of the reactors
 		cod_dat_wide = cod_dat.unstack(['Stage','Type'])
 		cod_dat_wide['CODt MS'] = cod_dat_wide['Value']['Microscreen']['Total']
@@ -232,7 +245,7 @@ class cr2c_validation:
 		cod_dat_wide['CODt R'] = \
 			(cod_dat_wide['Value']['AFBR']['Total']*self.afbr_vol +\
 			cod_dat_wide['Value']['Duty AFMBR MLSS']['Total']*self.afmbr_vol)/\
-			(self.afbr_vol + self.afmbr_vol)
+			(self.react_vol)
 		cod_dat_wide['CODt Out'] = cod_dat_wide['Value']['Duty AFMBR Effluent']['Total']
 		cod_dat_wide.reset_index(inplace = True)
 		cod_dat_cln = cod_dat_wide[['Date','CODt MS','CODt R','CODt Out']]
@@ -271,12 +284,11 @@ class cr2c_validation:
 		vss_dat_cln.columns = ['Date','VSS R','VSS Out']	
 
 		# Solids Wasting Data
-		fieldvals_sheet = cut.get_gsheet_data(['DailyLogResponses'])
-		waste_dat = fieldvals_sheet[['Timestamp','AFMBR Volume Wasted (Gal)']]
+		flddata = fld.get_data()
+		waste_dat = flddata[['Timestamp','AFMBR_Volume_Wasted_Gal']]
 		waste_dat['Date'] = pd.to_datetime(waste_dat['Timestamp']).dt.date
-		waste_dat['AFMBR Volume Wasted (Gal)'] = waste_dat['AFMBR Volume Wasted (Gal)'].astype('float')
+		waste_dat['AFMBR Volume Wasted (Gal)'] = waste_dat['AFMBR_Volume_Wasted_Gal'].astype('float')
 		waste_dat['Wasted (L)'] = waste_dat['AFMBR Volume Wasted (Gal)']*l_p_gal
-		waste_dat = waste_dat.loc[(waste_dat['Date'] >= start_dt) & (waste_dat['Date'] <= end_dt),:]
 		waste_dat_cln = waste_dat[['Date','Wasted (L)']]
 
 		# Sulfate data
@@ -300,54 +312,34 @@ class cr2c_validation:
 		labdat_ud.reset_index(inplace = True)
 		#=========================================> LAB DATA <=========================================
 
-		#=======================================> MERGE & PREP <=======================================	
+		#=======================================> MERGE & PREP <=======================================		
 		
-		# Merge Lab and HMI 
-		cod_bal_dat = labdat_ud.merge(hmidat, on = 'Date', how = 'outer')
-
-		# Dedupe (merging many files, so any duplicates will cause big problems!)
+		# Merge Lab and HMI
+		cod_bal_dat = labdat_ud.merge(hmidat_ud, on = 'Date', how = 'outer')
+		# Dedupe (merging many files, so any duplicates can cause big problems!)
 		cod_bal_dat.drop_duplicates(inplace = True)
 
-		# Calculate daily totals and daily means for each date
-		dly_tots  = cod_bal_dat[['Date','Flow In','Flow Out','Meas Biogas Prod']].groupby('Date').sum()
-		dly_tots.reset_index(inplace = True)
-		dly_means = \
-			cod_bal_dat[[
-				'Date',
-				'CODt MS','CODt R','CODt Out',
-				'VSS R','VSS Out',
-				'SO4 MS',
-				'CH4%','CO2%',
-				'Wasted (L)',
-				'Reactor Temp (C)'
-			]].\
-			groupby('Date').\
-			mean()
-		dly_means.reset_index(inplace = True)
-
-		# Merge and fill in missing values
-		cod_bal_dly = dly_tots.merge(dly_means, on = 'Date', how = 'outer')
-		cod_bal_dly.set_index('Date')
 		# Convert missing wasting data to 0 (assume no solids wasted that day)
-		cod_bal_dly.loc[np.isnan(cod_bal_dly['Wasted (L)']),'Wasted (L)'] = 0
-		
+		cod_bal_dat.loc[np.isnan(cod_bal_dat['Wasted (L)']),'Wasted (L)'] = 0
+		# Fill in missing lab data
 		# First get means of observed data
 		cod_bal_means = \
-			cod_bal_dly[[
+			cod_bal_dat[[
 				'CH4%','CO2%',
 				'CODt MS','CODt R','CODt Out',
 				'VSS R','VSS Out',
 				'SO4 MS'
 			]].mean()
-
 		# Then interpolate
-		cod_bal_dly[[
+		cod_bal_dat.sort_values(['Date'], inplace = True)
+		cod_bal_dat.set_index('Date', inplace = True)
+		cod_bal_dat[[
 			'CH4%','CO2%',
 			'CODt MS','CODt R','CODt Out',
 			'VSS R','VSS Out',
 			'SO4 MS'
 		]] = \
-			cod_bal_dly[[
+			cod_bal_dat[[
 				'CH4%','CO2%',
 				'CODt MS','CODt R','CODt Out',
 				'VSS R','VSS Out',
@@ -365,49 +357,48 @@ class cr2c_validation:
 			'VSS Out': cod_bal_means['VSS Out'],
 			'SO4 MS': cod_bal_means['SO4 MS']
 		}
-		cod_bal_dly.fillna(value = fill_values)
+		cod_bal_dat.fillna(value = fill_values, inplace = True)
 
 		# Get moving average of COD in reactors (data bounce around a lot)
 		cod_cols = ['CODt MS','CODt R','CODt Out']
-		cod_bal_dly[cod_cols] = cod_bal_dly[cod_cols].rolling(ma_win).mean()
-		# Eliminate missing values (from period prior to start_dt) and reset index
-		# cod_bal_dly.dropna(axis = 0, how = 'any', inplace = True)
-		cod_bal_dly.reset_index(inplace = True)
-		
+		cod_bal_dat[cod_cols] = cod_bal_dat[cod_cols].rolling(ma_win).mean()
+		# Reset index
+		cod_bal_dat.reset_index(inplace = True)
 		# Put dates into weekly bins (relative to end date), denoted by beginning of week
-		cod_bal_dly['Weeks Back'] = \
-			pd.to_timedelta(np.floor((cod_bal_dly['Date'] - end_dt)/np.timedelta64(7,'D'))*7, unit = 'D')
-		cod_bal_dly['Week Start'] = end_dt + cod_bal_dly['Weeks Back']
-		cod_bal_dly = cod_bal_dly.loc[
-			(cod_bal_dly['Date'] >= start_dt) & (cod_bal_dly['Date'] <= end_dt),
+		cod_bal_dat['Weeks Back'] = \
+			pd.to_timedelta(np.floor((cod_bal_dat['Date'] - end_dt)/np.timedelta64(7,'D'))*7, unit = 'D')
+		cod_bal_dat['Week Start'] = end_dt + cod_bal_dat['Weeks Back']
+		cod_bal_dat = cod_bal_dat.loc[
+			(cod_bal_dat['Date'] >= start_dt) & (cod_bal_dat['Date'] <= end_dt),
 			:
 		]
+
 		#=======================================> MERGE & PREP <=======================================	
 
 		#========================================> COD Balance <=======================================	
 		# Note: dividing by 1E6 to express in kg
 		# COD coming in from the Microscreen
-		cod_bal_dly['COD In']   = cod_bal_dly['CODt MS']*cod_bal_dly['Flow In']/1E6
+		cod_bal_dat['COD In']   = cod_bal_dat['CODt MS']*cod_bal_dat['Flow In']/1E6
 		# COD leaving the reactor
-		cod_bal_dly['COD Out']  = cod_bal_dly['CODt Out']*cod_bal_dly['Flow Out']/1E6
+		cod_bal_dat['COD Out']  = cod_bal_dat['CODt Out']*cod_bal_dat['Flow Out']/1E6
 		# COD wasted
-		cod_bal_dly['COD Wasted'] = cod_bal_dly['CODt R']*cod_bal_dly['Wasted (L)']/1E6
+		cod_bal_dat['COD Wasted'] = cod_bal_dat['CODt R']*cod_bal_dat['Wasted (L)']/1E6
 		# COD content of gas (assumes that volume given by flowmeter is in STP)
-		cod_bal_dly['Biogas']   = cod_bal_dly['Meas Biogas Prod']*cod_bal_dly['CH4%']/100/Vol_STP*64/1000
+		cod_bal_dat['Biogas']   = cod_bal_dat['Meas Biogas Prod']*cod_bal_dat['CH4%']/100/Vol_STP*64/1000
 		# COD content of dissolved methane (estimated from temperature of reactors)
 		COD_diss_conc = map(
 			self.est_diss_ch4,
-			cod_bal_dly['Reactor Temp (C)'].values, 
-			cod_bal_dly['CH4%'].values
+			cod_bal_dat['Reactor Temp (C)'].values, 
+			cod_bal_dat['CH4%'].values
 		)
-		cod_bal_dly.reset_index(inplace = True)
-		cod_bal_dly['Dissolved CH4'] = np.array(list(COD_diss_conc))*cod_bal_dly['Flow Out']/1E6
+
+		cod_bal_dat['Dissolved CH4'] = np.array(list(COD_diss_conc))*cod_bal_dat['Flow Out']/1E6
 		# COD from sulfate reduction (1.5g COD per g SO4)
-		cod_bal_dly['Sulfate Reduction'] = cod_bal_dly['SO4 MS']*cod_bal_dly['Flow In']/1.5/1E6
+		cod_bal_dat['Sulfate Reduction'] = cod_bal_dat['SO4 MS']*cod_bal_dat['Flow In']/1.5/1E6
 		#========================================> COD Balance <=======================================	
 
 		# Convert to weekly data
-		cod_bal_wkly = cod_bal_dly.groupby('Week Start').sum(numeric_only = True)
+		cod_bal_wkly = cod_bal_dat.groupby('Week Start').sum(numeric_only = True)
 		cod_bal_wkly.reset_index(inplace = True)
 		cod_bal_wkly.loc[:,'Week Start'] = cod_bal_wkly['Week Start'].dt.date
 		cod_bal_wkly = cod_bal_wkly.loc[cod_bal_wkly['Week Start'] < end_dt,:]
@@ -523,11 +514,12 @@ class cr2c_validation:
 	Calculate water head from pressure sensor readings, and compare it with the manometer readings.
 	Plot the merged data to show results.
 	'''
-	def pressure_validation(
+	def instr_val(
+		valtype,
 		start_dt_str,
 		end_dt_str,
-		pr_elids,
-		field_ids,
+		hmi_elids,
+		fld_ids,
 		run_report = False,
 		hmi_path = None
 	):
@@ -535,13 +527,9 @@ class cr2c_validation:
 	    # Get field pressure measurements
 	    #            AFBR  RAFMBR DAFMBR
 	    reactors = ['R300','R301','R302']
-	    fieldvals_sheet = cut.get_gsheet_data(['DailyLogResponses'])
-	    fieldvals_list = fieldvals_sheet[0]['values']
-	    headers = ['TimeStamp'] + fieldvals_list.pop(0)[1:]
-	    fieldvals_df = pd.DataFrame(fieldvals_list, columns = headers)
-	    pdat_field = fieldvals_df[['TimeStamp'] + ['Manometer Pressure: ' + reactor for reactor in reactors]]
-	    pdat_field['TimeStamp'] = pd.to_datetime(pdat_field['TimeStamp'])
-	    pdat_field['TS_mins'] = pdat_field['TimeStamp'].values.astype('datetime64[m]')
+	    fielddata = fld.get_data()
+	    pdat_fld = fieldvals_df[['TimeStamp'] + ['Manometer_Pressure_' + reactor for reactor in reactors]]
+	    pdat_fld['TS_mins'] = pdat_field['TimeStamp'].values.astype('datetime64[m]')
 
 	    # First subset hmi data to dates for which field measurements are available
 	    first_lts = pdat_field['TimeStamp'][0]
@@ -603,12 +591,14 @@ class cr2c_validation:
 	    axes[ax_idx].xaxis.set_major_formatter(date_fmt)
 	    plt.show()
 
-# pressure_validation(
-# 	'5-10-17',
-# 	'10-9-17',
-# 	['PIT700','PIT704'],
-# 	['Manometer Pressure: R300', 'Manometer Pressure: R302'],
-# 	run_report = True
-# )
-
+# # pressure_validation(
+# # 	'5-10-17',
+# # 	'10-9-17',
+# # 	['PIT700','PIT704'],
+# # 	['Manometer Pressure: R300', 'Manometer Pressure: R302'],
+# # 	run_report = True
+# # )
+# cr2c_vl = cr2c_validation(outdir = '/Users/josebolorinos/Google Drive/Codiga Center/Charts and Data/Monitoring Reports/Monitoring Report 2-23-18')
+# cr2c_vl.get_cod_bal('2-23-18', 8)
+# cr2c_vl.get_biotech_params('2-23-18', 6)
 
