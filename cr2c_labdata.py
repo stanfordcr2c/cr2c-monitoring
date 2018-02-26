@@ -1,7 +1,7 @@
 
 '''
 	Script loads data from lab tests, computes water quality parameters,
-	and loads the data to an SQL database (no inputs required, fully automated!)
+	and loads the data to an SQL database (no inputs required)
 '''
 
 from __future__ import print_function
@@ -30,7 +30,7 @@ import matplotlib.dates as dates
 
 class labrun:
 	
-	def __init__(self):
+	def __init__(self, verbose = False):
 		
 		self.mtype_list = \
 			['PH','COD','TSS_VSS','ALKALINITY','VFA','GasComp','Ammonia','Sulfate','TKN']
@@ -39,6 +39,8 @@ class labrun:
 		self.file_dt = dt.now()
 		self.file_dt_str = dt.strftime(self.file_dt,'%m-%d-%y')
 		self.data_dir, self.pydir = cut.get_dirs()
+		self.log_dir = os.path.join(self.data_dir,'Logs')
+		self.verbose = verbose
 
 
 	# Adds desriptive treatment stage variable to dataset for plotting
@@ -76,11 +78,12 @@ class labrun:
 		repeat_entries.extend(blank_entries)
 
 	    # If found, remove, print warning and output csv of duplicates/empties
-		if len(repeat_entries) > 0:
-			os.chdir(self.data_dir)
-			dup_filename = mtype + 'duplicates' + self.file_dt_str
-			warnings.warn(dup_warning.format(mtype,dup_filename + '.csv'))
-			self.mdata.iloc[repeat_entries].to_csv(dup_filename + '.csv')
+		if self.verbose:
+			if len(repeat_entries) > 0:
+				os.chdir(self.log_dir)
+				dup_filename = mtype + 'duplicates' + self.file_dt_str
+				warnings.warn(dup_warning.format(mtype,dup_filename + '.csv'))
+				self.mdata.iloc[repeat_entries].to_csv(dup_filename + '.csv')
 		
 		# Eliminate duplicate data entries and reset the index
 		self.mdata.drop_duplicates(keep = 'first', inplace = True)
@@ -248,19 +251,8 @@ class labrun:
 		# Melt the data frame
 		df_long = pd.melt(self.mdata, id_vars = id_vars, value_vars = value_vars)
 		# Reorder columns
-		if mtype == 'GasComp':
-			col_order = ['Date_Time','Hel_Pressure','variable','obs_id','value']
-			varnames = ['Date_Time','Hel_Pressure','Type','obs_id','Value']
-		elif mtype in ['PH','ALKALINITY']:
-			col_order = ['Date_Time','Stage','obs_id','value']
-			varnames = ['Date_Time','Stage','obs_id','Value']
-		elif mtype in ['Ammonia','TKN','Sulfate']:
-			col_order = ['Date_Time','Stage','value']
-			varnames = ['Date_Time','Stage','Value']
-		else:	
-			col_order = ['Date_Time','Stage','variable','obs_id','value']
-			varnames = ['Date_Time','Stage','Type','obs_id','Value']
-
+		col_order = ['Date_Time','Stage','variable','units','obs_id','value']
+		varnames = ['Date_Time','Stage','Type','units','obs_id','Value']
 		df_long = df_long[col_order]
 		df_long.columns = varnames
 
@@ -283,47 +275,38 @@ class labrun:
 
 			# ======================================= pH ======================================= #
 			if mtype == 'PH':
-
-				# Set id and value vars for cleaning
-				id_vars = ['Date_Time','Stage','obs_id']
-				value_vars = 'Reading'	
-
+				self.mdata[mtype] = self.mdata['Reading']
 				# Get time of sample collection from PH dataset and add to date variable to get single Date + Time variable
 				self.mdata['Date_str'] = self.mdata['Date'].dt.strftime('%m-%d-%y')
 				self.mdata['Date-Time_str'] = self.mdata.Date_str.str.cat(self.mdata['Time'], sep = ' ')
 				self.mdata['Date_Time'] = pd.to_datetime(self.mdata['Date-Time_str'])
+				self.mdata['units'] = '-'
 				mdata_dt = self.mdata[['Date','Date_Time']]
+				mdata_dt.drop_duplicates(inplace = True)
 
 			# ======================================= COD ======================================= #
 			if mtype == 'COD':
 
 				# Get actual cod measurement (after correcting for dilution factor)
 				self.mdata['act_reading'] = self.mdata['Reading (mg/L)']*self.mdata['Dilution Factor']
-
 				# Recast data
 				# Need to dedupe again due to what seems like a bug in pandas code
 				self.mdata.drop_duplicates(subset = ['Date','Stage','obs_id','Type'], inplace = True)
 				self.mdata.set_index(['Date','Stage','obs_id','Type'], inplace = True)
 				mdata_wide = self.mdata.unstack('Type')
-
 				# Create "Total" and "Soluble" variables and compute "Particulate Variable"
 				mdata_wide['Total'] = mdata_wide['act_reading']['TOTAL']
 				mdata_wide['Soluble'] = mdata_wide['act_reading']['SOLUBLE']
 				mdata_wide['Particulate'] = mdata_wide['Total'] - mdata_wide['Soluble']
-				
-				# Set id and value vars for recasting
-				id_vars = ['Date_Time','Stage','obs_id']
-				value_vars = ['Soluble','Total','Particulate']
-
 				# Subset to value variables and convert index to data
+				value_vars = ['Soluble','Total','Particulate']
 				self.mdata = mdata_wide[value_vars]
 				self.mdata.reset_index(inplace = True)
-				# Rename the columns
-				self.mdata.columns = ['Date','Stage','obs_id'] + value_vars
+				self.mdata['units'] = 'mg/L'	
+				self.mdata.columns = ['Date','Stage','obs_id'] + value_vars + ['units']
 
 			# ======================================= TSS/VSS ======================================= #
 			if mtype == 'TSS_VSS':
-
 				# Create TSS and VSS variables
 				self.mdata['TSS'] = \
 					(self.mdata['Temp105 (g)'] - self.mdata['Original (g)'])/\
@@ -332,108 +315,123 @@ class labrun:
 					self.mdata['TSS'] - \
 					(self.mdata['Temp550 (g)'] - self.mdata['Original (g)'])/\
 					self.mdata['Volume (ml)']*1E6
-
-				# Set id and value vars for cleaning
-				id_vars = ['Date_Time','Stage','obs_id']
+				self.mdata['units'] = 'mg/L'
+				# Set id and value vars for melting
 				value_vars = ['TSS','VSS']
 
 			# ======================================= ALKALINITY ======================================= #
 			if mtype == 'ALKALINITY':
-				
 				# Compute alkalinity
 				self.mdata['ALKALINITY'] = \
 				self.mdata['Acid Volume (mL, to pH 4.3)']*self.mdata['Acid Normality (N)']/\
 				self.mdata['Sample Volume (mL)']*self.mdata['Dilution Factor']*50*1000
-
-				# Set id and value vars for cleaning	
-				id_vars = ['Date_Time','Stage','obs_id']			
-				value_vars = 'ALKALINITY'
+				self.mdata['units'] = 'mg/L as CaCO3'
 
 			# ======================================= VFA =============================================== #
 			if mtype == 'VFA':
-
 				# Compute VFA concentrations
 				self.mdata['Acetate'] = self.mdata['Acetate (mgCOD/L)']*self.mdata['Dilution Factor']
 				self.mdata['Propionate'] = self.mdata['Propionate (mgCOD/L)']*self.mdata['Dilution Factor']
-
-				# Set id and value vars for recasting
-				id_vars = ['Date_Time','Stage','obs_id']
+				self.mdata['units'] = 'mgCOD/L'
+				# Set value vars for melting
 				value_vars = ['Acetate','Propionate']
 
 			# ======================================= Ammonia =============================================== #
 			if mtype == 'Ammonia':
-
 				# Compute Ammonia concentration
 				self.mdata['Ammonia'] = self.mdata['Reading (mg/L)']*self.mdata['Dilution Factor']
-
-				# Set id and value vars for recasting
-				id_vars = ['Date_Time','Stage']
-				value_vars = 'Ammonia'
+				self.mdata['units'] = 'mg/L'
 
 			if mtype == 'TKN':
-
 				# Compute distillation recovery
 				self.mdata['Dist Recovery (%)'] = \
 					((self.mdata['NH4Cl Volume (mL)'] - self.mdata['Blank Volume (mL)'])*\
 					14.007*self.mdata['Acid Concentration (N)']*1000)/\
 					(self.mdata['NH4Cl Concentration (mg/L)']*self.mdata['NH4Cl Sample Volume (mL)'])
-
 				# Compute digestion efficiency
 				self.mdata['Digest Eff (%)'] = \
 					((self.mdata['Tryptophan Volume (mL)'] - self.mdata['Blank Volume (mL)'])*\
 					14.007*self.mdata['Acid Concentration (N)']*1000)/\
 					(self.mdata['Tryptophan Concentration (mg/L)']*self.mdata['Tryptophan Sample Volume (mL)'])	
-
 				# Compute corrected TKN value (corrected for distillation recovery and digestion efficiency)
-				self.mdata['mgTKN/L'] = \
+				self.mdata['TKN'] = \
 					(((self.mdata['Volume (mL)'] - self.mdata['Blank Volume (mL)'])*\
 					14.007*self.mdata['Acid Concentration (N)']*1000)/\
 					(self.mdata['Sample Volume (mL)']))/\
 					(self.mdata['Dist Recovery (%)']*self.mdata['Digest Eff (%)'])	
-
-				id_vars = ['Date_Time','Stage']
-				value_vars = 'mgTKN/L'
+				# Set value vars for melting
+				self.mdata['units'] = 'mgTKN/L'
 
 			# ======================================= Sulfate =============================================== #
 			if mtype == 'Sulfate':
-
 				# Compute Sulfate concentration
 				self.mdata['Sulfate'] = self.mdata['Reading (mg/L)']*self.mdata['Dilution Factor']
-
-				# Set id and value vars for recasting
-				id_vars = ['Date_Time','Stage']
-				value_vars = 'Sulfate'
+				self.mdata['units'] = 'mg/L'
 
 			# ======================================= GasComp ============================================ #
 			if mtype == 'GasComp':
-
 				self.mdata['Hel_Pressure'] = self.mdata['Helium pressure (psi) +/- 50 psi']
-				# Set id and value vars for recasting
-				id_vars = ['Date_Time','Hel_Pressure','obs_id']
-				value_vars = ['Nitrogen (%)','Oxygen (%)','Methane (%)','Carbon Dioxide (%)']
-
+				self.mdata['Stage'] = 'NA'
+				self.mdata['units'] = '(see Type)'
+				# Set value vars for melting
+				value_vars = ['Hel_Pressure (psi)','Nitrogen (%)','Oxygen (%)','Methane (%)','Carbon Dioxide (%)']
 
 			# Add Sample Date-Time variable from PH
 			if mtype != 'PH':
 				self.mdata = self.mdata.merge(mdata_dt, on = 'Date')
 
 			# Convert to long format
+			id_vars = ['Date_Time','Stage','obs_id','units']
+			if mtype in ['PH','ALKALINITY','Ammonia','TKN','Sulfate']:
+				value_vars = [mtype]
 			mdata_long = self.wide_to_long(mtype, id_vars, value_vars)
+			# Create key unique by Date_Time, Stage, Type, and obs_id
+			mdata_long['Dkey'] = \
+				mdata_long[['Date_Time','Stage','Type','obs_id']].apply(lambda x: hash(tuple(x)), axis = 1)
+			# Reorder columns to put DKey as first column
+			colnames = list(mdata_long.columns.values)
+			mdata_long = mdata_long[colnames[-1:] + colnames[0:-1]]
 
 			# Load data to SQL
+			# SQL command strings for sqlite3
+			colNTypeStr = 'Date_Time INT, Stage TEXT, Type TEXT, units TEXT, obs_id INT, Value REAL'
+			colNStr = ','.join(mdata_long.columns.values)
+			colIns = ','.join(['?']*len(mdata_long.columns))
+			create_str = """
+				CREATE TABLE IF NOT EXISTS {0} (DKey INT PRIMARY KEY, {1})
+			""".format(mtype,colNTypeStr)
+			ins_str = """
+				INSERT OR REPLACE INTO {0} ({1})
+				VALUES ({2})
+			""".format(mtype,colNStr,colIns)
+			# Set connection to SQL database (pertaining to given year)
 			os.chdir(self.data_dir)
 			conn = sqlite3.connect('cr2c_lab_data.db')
-			mdata_long.to_sql(mtype + '_data', conn, if_exists = 'replace', index = False)
+			# Load data to SQL
+			# Create the table if it doesn't exist
+			conn.execute(create_str)
+			# Insert aggregated values for the elid and time period
+			conn.executemany(
+				ins_str,
+				mdata_long.to_records(index = False).tolist()
+			)
+			conn.commit()
+			# Close Connection
+			conn.close()
 
 
 	# Queries Lab Data SQL File 
-	def get_data(self, mtypes, start_dt_str = None, end_dt_str = None):
+	def get_data(self, mtypes, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None):
 
 		# Convert date string inputs to dt variables
 		if start_dt_str:
 			start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
 		if end_dt_str:
 			end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+
+		if output_csv and not outdir:
+			print('Directory to output Lab data to...')
+			outdir = askdirectory(title = 'Directory to output Lab data to...')
 
 		# Load data from SQL
 		os.chdir(self.data_dir)
@@ -446,21 +444,29 @@ class labrun:
 				mtype = 'TSS_VSS'
 
 			mdata_long = pd.read_sql(
-				'SELECT * FROM {}_data'.format(mtype), 
+				'SELECT * FROM {0}'.format(mtype), 
 				conn, 
 				coerce_float = True
 			)
+
 			# Dedupe data (some issue with duplicates)
 			mdata_long.drop_duplicates(inplace = True)
 			# Convert Date_Time variable to a pd datetime and eliminate missing values
 			mdata_long['Date_Time'] = pd.to_datetime(mdata_long['Date_Time'])
 			mdata_long.dropna(subset = ['Date_Time'], inplace = True)
-
+			# Filter to desired dates
+			mdata_long.drop('DKey', axis = 1, inplace = True)
 			if start_dt_str:
 				mdata_long = mdata_long.loc[mdata_long['Date_Time'] >= start_dt,:]
 			if end_dt_str:
 				mdata_long = mdata_long.loc[mdata_long['Date_Time'] <= end_dt + timedelta(days = 1),:]
+			
+			# Output csv if desired
+			if output_csv:
+				os.chdir(outdir)
+				mdata_long.to_csv(mtype + '.csv', index = False, encoding = 'utf-8')
 
+			# Write to dictionary
 			mdata_all[mtype] = mdata_long
 
 		return mdata_all
@@ -539,9 +545,6 @@ class labrun:
 				mtype = 'TSS_VSS'
 
 			mdata_long = mdata_all[mtype]
-
-			# Set format of date variable
-			mdata_long['Date_Time'] = pd.to_datetime(mdata_long['Date_Time'])
 			# ID variables for grouping by day 
 			# (for monitoring types that might have multiple observations in a day)
 			id_vars_chrt = ['Date_Time','Stage','Type']
@@ -844,4 +847,8 @@ class labrun:
 		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
 		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
 		SO4trunc.to_csv('Sulfate_table' + end_dt_str + opfile_suff + '.csv')
+
+pld = labrun()
+# pld.process_data()
+pld.get_data(['COD'],output_csv = True, outdir = '/Users/josebolorinos/Google Drive/Codiga Center/Charts and Data/Monitoring Reports/Monitoring Report 2-23-18')
 
