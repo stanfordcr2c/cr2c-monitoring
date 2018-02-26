@@ -94,6 +94,3 @@ def get_data(tableName = 'DailyLogResponses', start_dt_str = None, end_dt_str = 
 
 	return fielddata
 
-process_data()
-print(get_data())
-
