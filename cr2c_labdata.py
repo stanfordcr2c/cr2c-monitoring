@@ -387,7 +387,7 @@ class labrun:
 			mdata_long = self.wide_to_long(mtype, id_vars, value_vars)
 			# Create key unique by Date_Time, Stage, Type, and obs_id
 			mdata_long['Dkey'] = \
-				mdata_long[['Date_Time','Stage','Type','obs_id']].apply(lambda x: hash(tuple(x)), axis = 1)
+				mdata_long['Date_Time'].astype(str) + mdata_long['Stage'] + mdata_long['Type'] + mdata_long['obs_id'].astype(str)
 			# Reorder columns to put DKey as first column
 			colnames = list(mdata_long.columns.values)
 			mdata_long = mdata_long[colnames[-1:] + colnames[0:-1]]
@@ -536,7 +536,7 @@ class labrun:
 		start_dt, end_dt = self.manage_chart_dates(start_dt_str, end_dt_str)
 
 		# Get all of the lab data requested
-		mdata_all = self.get_data(mplot_list)
+		mdata_all = self.get_data(mplot_list, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Loop through the lab data types
 		for mtype in mplot_list:
@@ -550,7 +550,6 @@ class labrun:
 			id_vars_chrt = ['Date_Time','Stage','Type']
 			
 			if mtype == 'COD':
-
 				# Set plotting variables
 				ylabel = 'COD Reading (mg/L)'
 				type_list = ['Total','Soluble','Particulate']
@@ -847,8 +846,4 @@ class labrun:
 		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
 		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
 		SO4trunc.to_csv('Sulfate_table' + end_dt_str + opfile_suff + '.csv')
-
-pld = labrun()
-# pld.process_data()
-pld.get_data(['COD'],output_csv = True, outdir = '/Users/josebolorinos/Google Drive/Codiga Center/Charts and Data/Monitoring Reports/Monitoring Report 2-23-18')
 
