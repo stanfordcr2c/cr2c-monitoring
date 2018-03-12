@@ -284,8 +284,12 @@ class cr2c_validation:
 		vss_dat_cln.columns = ['Date','VSS R','VSS Out']	
 
 		# Solids Wasting Data
-		flddata = fld.get_data()
-		waste_dat = flddata[['Timestamp','AFMBR_Volume_Wasted_Gal']]
+		flddata1 = fld.get_data('DailyLogResponses')
+		flddata2 = fld.get_data('DailyLogResponsesV2')
+
+		waste_dat = pd.concat([flddata1,flddata2])
+		waste_dat = waste_dat.loc[:,['Timestamp','AFMBR_Volume_Wasted_Gal']]
+
 		waste_dat['Date'] = pd.to_datetime(waste_dat['Timestamp']).dt.date
 		waste_dat['AFMBR Volume Wasted (Gal)'] = waste_dat['AFMBR_Volume_Wasted_Gal'].astype('float')
 		waste_dat['Wasted (L)'] = waste_dat['AFMBR Volume Wasted (Gal)']*l_p_gal
@@ -405,8 +409,8 @@ class cr2c_validation:
 
 		#===========================================> Plot! <==========================================
 		if plot:
-			fig = plt.figure()
-			fig.suptitle('Weekly COD Mass Balance', fontsize = 14, fontweight = 'bold', y = 0.95)
+			fig, ax = plt.subplots()
+			title = fig.suptitle('Weekly COD Mass Balance', fontsize = 14, fontweight = 'bold', y = 0.95)
 			nWeeks = np.arange(len(cod_bal_wkly))
 			bWidth = 0.8
 			pBiogas = plt.bar(nWeeks,cod_bal_wkly['Biogas'], bWidth)
@@ -420,17 +424,25 @@ class cr2c_validation:
 			pSO4 = plt.bar(nWeeks,cod_bal_wkly['Sulfate Reduction'], bWidth, bottom = bottomCum)
 			pIn = plt.scatter(nWeeks,cod_bal_wkly['COD In'], c = 'r')
 			plt.xticks(nWeeks,cod_bal_wkly['Week Start'], rotation = 45) 
-			plt.legend(
-				(pIn,pBiogas[0],pOut[0],pDiss[0],pWasted[0],pSO4[0]),
-				('COD In','Biogas','COD Out','Dissolved CH4','Solids Wasting','Sulfate Reduction')
+			lgd = ax.legend(
+				# (pIn,pBiogas[0],pOut[0],pDiss[0],pWasted[0],pSO4[0]),
+				(pIn,pSO4[0],pWasted[0],pDiss[0],pOut[0],pBiogas[0]),
+				('COD In','Sulfate Reduction','Solids Wasting','Dissolved CH4','COD Out','Biogas'),
+				loc= 'center left',
+				bbox_to_anchor = (1, 0.5), 
+				fancybox = True, 
+				shadow = True, 
+				ncol = 1
 			)
-			plt.ylabel('kg of COD Equivalents')
-			plt.xlabel('Week Start Date')
-			plt.tight_layout()
+			plt.ylabel('kg of COD Equivalents',fontweight = 'bold')
+			plt.xlabel('Week Start Date', fontweight = 'bold')
+			# plt.tight_layout()
 			plt.savefig(
 				os.path.join(self.outdir, 'COD Balance.png'),
-				width = 30,
-				height = 50
+				bbox_extra_artists=(lgd,title,),
+				width = 50,
+				height = 50,
+				bbox_inches = 'tight'
 			) 
 			plt.close()
 		#===========================================> Plot! <==========================================		
@@ -474,13 +486,22 @@ class cr2c_validation:
 
 		if plot:
 			fig, (ax1, ax2) = plt.subplots(2, 1, sharey = False)
+			title = fig.suptitle(
+				'Weekly VSS Wasting Parameters (last 8 weeks)',
+				fontweight = 'bold',
+				fontsize = 14,
+				y = 0.95
+
+			)
+			fig.subplots_adjust(top = 0.85)
 			ax1.plot(
 				vss_params['Week Start'], 
 				vss_params['gVSS wasted/gCOD Removed'],
 				linestyle = '-', marker = "o"
 			)
+			ax1.grid(True, axis = 'y', linestyle = '--')
 			plt.sca(ax1)
-			plt.xticks(rotation = 45) 
+			ax1.xaxis.set_ticklabels([])
 			plt.ylabel('gVSS wast./gCOD rem.')
 			plt.ylim(ymin = 0)
 			ax2.plot(
@@ -488,16 +509,18 @@ class cr2c_validation:
 				vss_params['VSS SRT (days)'],
 				linestyle = '-', marker = "o"
 			)
+			ax2.grid(True, axis = 'y', linestyle = '--')
 			plt.sca(ax2)
 			plt.xticks(rotation = 45)
 			plt.ylabel('VSS SRT (d)') 
 			plt.ylim(ymin = 0)
 			plt.xlabel('Week Start Date')
-			fig.tight_layout()
 			plt.savefig(
 				os.path.join(self.outdir, 'VSS Removal.png'),
 				width = 30,
-				height = 100
+				height = 120,
+				bbox_extra_artists=(title,),
+				bbox_inches = 'tight'
 			) 
 			plt.close()
 
@@ -591,14 +614,4 @@ class cr2c_validation:
 	    axes[ax_idx].xaxis.set_major_formatter(date_fmt)
 	    plt.show()
 
-# # pressure_validation(
-# # 	'5-10-17',
-# # 	'10-9-17',
-# # 	['PIT700','PIT704'],
-# # 	['Manometer Pressure: R300', 'Manometer Pressure: R302'],
-# # 	run_report = True
-# # )
-# cr2c_vl = cr2c_validation(outdir = '/Users/josebolorinos/Google Drive/Codiga Center/Charts and Data/Monitoring Reports/Monitoring Report 2-23-18')
-# cr2c_vl.get_cod_bal('2-23-18', 8)
-# cr2c_vl.get_biotech_params('2-23-18', 6)
 
