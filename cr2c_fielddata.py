@@ -27,9 +27,10 @@ def process_data(tableName = 'DailyLogResponses'):
 
 	# Get the log data from gsheets
 	logdata = cut.get_gsheet_data([tableName])
+
 	# Eliminate special characters (':-?[]()') and replace spaces with '_'	
 	colnamesRaw = logdata.columns.values
-	colnamesCln = [rmChars('-:?[]()','',colname) for colname in colnamesRaw]
+	colnamesCln = [rmChars('-:?[]()<>.,','',colname) for colname in colnamesRaw]
 	colnamesCln = [rmChars(' ','_',colname) for colname in colnamesCln]
 	# Replace columns names of dataset with clean column names
 	logdata.columns = colnamesCln
@@ -63,7 +64,13 @@ def process_data(tableName = 'DailyLogResponses'):
 	conn.close()
 
 
-def get_data(tableName = 'DailyLogResponses', start_dt_str = None, end_dt_str = None):
+def get_data(
+	varName = None, 
+	start_dt_str = None, 
+	end_dt_str = None, 
+	output_csv = False, 
+	outdir = None
+):
 
 	# Convert date string inputs to dt variables
 	if start_dt_str:
@@ -71,16 +78,34 @@ def get_data(tableName = 'DailyLogResponses', start_dt_str = None, end_dt_str = 
 	if end_dt_str:
 		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
 
+	tableNames = ['DailyLogResponses','DailyLogResponsesV2']
+
 	# Load data from SQL
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
 	conn = sqlite3.connect('cr2c_field_data.db')
 
-	fielddata = pd.read_sql(
-		'SELECT * FROM DailyLogResponses', 
-		conn, 
-		coerce_float = True
-	)
+	if varName:
+		varNames = 'Timestamp,' + varName
+	else:
+		varNames = '*'
+
+	fielddata = pd.DataFrame([])
+
+	for tableName in tableNames:
+
+		fielddata = pd.concat(
+			[
+				fielddata,
+				pd.read_sql(
+					'SELECT {0} FROM {1}'.format(varNames,tableName), 
+					conn, 
+					coerce_float = True
+				)
+			],
+			axis = 0,
+			join = 'outer'
+		)
 	# Dedupe data (some issue with duplicates)
 	fielddata.drop_duplicates(inplace = True)
 	# Convert Date_Time variable to a pd datetime and eliminate missing values
@@ -92,5 +117,16 @@ def get_data(tableName = 'DailyLogResponses', start_dt_str = None, end_dt_str = 
 	if end_dt_str:
 		fielddata = fielddata.loc[fielddata['Date_Time'] <= end_dt + timedelta(days = 1),:]
 
+	if output_csv and not outdir:
+		print('Directory to output Lab data to...')
+		outdir = askdirectory(title = 'Directory to output Lab data to...')
+
+	# Output csv if desired
+	if output_csv:
+		op_fname = '{0}.csv'.format(varName)
+		os.chdir(outdir)
+		fielddata.to_csv(op_fname, index = False, encoding = 'utf-8')
+
 	return fielddata
+
 
