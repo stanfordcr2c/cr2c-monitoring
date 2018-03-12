@@ -284,11 +284,8 @@ class cr2c_validation:
 		vss_dat_cln.columns = ['Date','VSS R','VSS Out']	
 
 		# Solids Wasting Data
-		flddata1 = fld.get_data('DailyLogResponses')
-		flddata2 = fld.get_data('DailyLogResponsesV2')
-
-		waste_dat = pd.concat([flddata1,flddata2])
-		waste_dat = waste_dat.loc[:,['Timestamp','AFMBR_Volume_Wasted_Gal']]
+		waste_dat = fld.get_data(['AFMBR_Volume_Wasted_Gal'])
+		# waste_dat = waste_dat.loc[:,['Timestamp','AFMBR_Volume_Wasted_Gal']]
 
 		waste_dat['Date'] = pd.to_datetime(waste_dat['Timestamp']).dt.date
 		waste_dat['AFMBR Volume Wasted (Gal)'] = waste_dat['AFMBR_Volume_Wasted_Gal'].astype('float')
@@ -399,6 +396,7 @@ class cr2c_validation:
 		cod_bal_dat['Dissolved CH4'] = np.array(list(COD_diss_conc))*cod_bal_dat['Flow Out']/1E6
 		# COD from sulfate reduction (1.5g COD per g SO4)
 		cod_bal_dat['Sulfate Reduction'] = cod_bal_dat['SO4 MS']*cod_bal_dat['Flow In']/1.5/1E6
+		cod_bal_dat.to_csv(os.path.join(self.outdir,'cod_bal_dat.csv'), encoding = 'utf-8')
 		#========================================> COD Balance <=======================================	
 
 		# Convert to weekly data
@@ -471,7 +469,10 @@ class cr2c_validation:
 		# Dividing by 1E6 and 7 because units are totals for week and are in mg/L
 		# whereas COD units are in kg
 		self.cod_bal_wkly['gVSS wasted/gCOD Removed'] = \
-			self.cod_bal_wkly['Wasted (L)']*self.cod_bal_wkly['VSS R']/1E6/7/\
+			(
+				self.cod_bal_wkly['Wasted (L)']*self.cod_bal_wkly['VSS R'] + 
+				self.cod_bal_wkly['Flow Out']*self.cod_bal_wkly['VSS Out']
+			)/1E6/7/\
 			(self.cod_bal_wkly['COD In'] - self.cod_bal_wkly['COD Out'] - self.cod_bal_wkly['Sulfate Reduction'])
 
 		# No need to divide VSS concentration by 1E6 or 7 because same units in numerator and denominator
