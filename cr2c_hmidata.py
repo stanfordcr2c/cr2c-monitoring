@@ -87,9 +87,15 @@ def get_data(
 
 		# Format the time variable
 		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
+		# Set time variable
+		if ttype == 'HOUR':
+			hmi_data.loc[:,'Time'] = hmi_data['Time'].values.astype('datetime64[h]')
+		elif ttype == 'MINUTE':
+			hmi_data.loc[:,'Time'] = hmi_data['Time'].values.astype('datetime64[m]')
+
 		# Rename Value variable to its corresponding element id
 		hmi_data.rename(columns = {'Value': elid}, inplace = True)
-		hmi_data.loc[:,'Time'] = hmi_data['Time'].values.astype('datetime64[m]')
+		# Drop duplicates (happens with hourly aggregates sometimes...)
 		hmi_data.drop_duplicates(['Time'], inplace = True)
 
 		if start_dt_str:
@@ -437,6 +443,7 @@ class hmi_data_agg:
 		tmp_feed_dat['tel_day'] = tmp_feed_dat['Time'].dt.hour*60 + tmp_feed_dat['Time'].dt.minute
 		tmp_feed_dat['Day']  = tmp_feed_dat['Time'].dt.weekday
 		tmp_feed_dat['Hour'] = tmp_feed_dat['Time'].dt.hour + tmp_feed_dat['Time'].dt.weekday*24
+		tmp_feed_dat['Date'] = tmp_feed_dat['Time'].dt.date
 
 		# Do the same for the "zoom" dataset
 		tmp_feed_dat_zm['Week'] = tmp_feed_dat_zm['Time'].dt.week
@@ -444,24 +451,31 @@ class hmi_data_agg:
 		tmp_feed_dat_zm['Day']  = tmp_feed_dat_zm['Time'].dt.weekday
 		tmp_feed_dat_zm['Hour'] = tmp_feed_dat_zm['Time'].dt.hour + tmp_feed_dat_zm['Time'].dt.weekday*24
 
-		# Get data for last week and hour
-		tmp_feed_week = tmp_feed_dat_zm.loc[
-			tmp_feed_dat_zm['Time'].dt.date -  tmp_feed_dat_zm['Time'].dt.date[len(tmp_feed_dat_zm) - 1] >= \
+		# Get data for last week
+		tmp_feed_week = tmp_feed_dat.loc[
+			tmp_feed_dat['Time'].dt.date - end_dt.date() >= \
 			np.timedelta64(-6,'D'),
 		]
+		# For last week, get daily membrane flux (L/m2-hr)
+		tmp_feed_week = tmp_feed_week.groupby('Date').sum()
+		tmp_feed_week.reset_index(inplace = True)
+		l_p_gal = 3.78541 # Liters/Gallon
+		tmp_feed_week.loc[:,'Net Flux'] = tmp_feed_week['FT305']*60/(39.5*24)*l_p_gal
+
+		# Get data for last week
 		tmp_feed_day = tmp_feed_dat_zm.loc[
-			tmp_feed_dat_zm['Time'].dt.date -  tmp_feed_dat_zm['Time'].dt.date[len(tmp_feed_dat_zm) - 1] > \
+			tmp_feed_dat_zm['Time'].dt.date - end_dt.date() > \
 			np.timedelta64(-1,'D'),
 		]
 
 		# Plot!
 		sns.set_style('white')
-		# Last two months (or entire date range)
+		# Last 6 months (or entire date range)
 		# TMP
 		ax1 = plt.subplot2grid((16,1),(0,0), rowspan = 2)
 		ax1.plot(tmp_feed_dat['Time'],tmp_feed_dat['AIT302'], 'g-', linewidth = 0.5)
 		ax1.set_title(
-			'Hourly Average TMP and Permeate Flux ({0} to {1})'.format(start_dt_str, end_dt_str),
+			'Hourly Average TMP and Permeate Flow ({0} to {1})'.format(start_dt_str, end_dt_str),
 			fontweight = 'bold'
 		)
 		ax1.set_ylabel('TMP (psia)')
@@ -472,39 +486,33 @@ class hmi_data_agg:
 		ax2.set_ylabel('Flow (gpm)')
 		labels = ax2.get_xticklabels()
 		plt.setp(labels, rotation=45, fontsize=10)
-		# Last week
+		# Last day
 		# TMP
 		ax3 = plt.subplot2grid((16,1),(6,0), rowspan = 2)
-		ax3.plot(tmp_feed_week['Time'],tmp_feed_week['AIT302'], 'g-', linewidth = 0.5)
+		ax3.plot(tmp_feed_day['Time'],tmp_feed_day['AIT302'], 'g-', linewidth = 0.5)
 		ax3.set_title(
-			'Hourly Average TMP and Permeate Flux (last 7 days)',
+			'Hourly Average TMP and Permeate Flow (last 24 hours)',
 			fontweight = 'bold'
 		)
 		ax3.set_ylabel('TMP (psia)')
 		ax3.xaxis.set_ticklabels([])
 		# Flow
 		ax4 = plt.subplot2grid((16,1),(8,0), rowspan = 2)
-		ax4.plot(tmp_feed_week['Time'],tmp_feed_week['FT305'], 'b-', linewidth = 0.5)
+		ax4.plot(tmp_feed_day['Time'],tmp_feed_day['FT305'], 'b-', linewidth = 0.5)
 		ax4.set_ylabel('Flow (gpm)')
 		labels = ax4.get_xticklabels()
 		plt.setp(labels, rotation=45, fontsize=10)
-		# Last day
-		# TMP
-		ax5 = plt.subplot2grid((16,1),(12,0), rowspan = 2)
-		ax5.plot(tmp_feed_day['Time'],tmp_feed_day['AIT302'], 'g-', linewidth = 0.5)
+		# Average Daily flux for the last week
+		ax5 = plt.subplot2grid((16,1),(12,0), rowspan = 4)
+		ax5.plot(tmp_feed_week['Date'],tmp_feed_week['Net Flux'], 'b-', linewidth = 0.5)
+		ax5.set_ylim((0,max(tmp_feed_week['Net Flux'].values)*1.1))
+		ax5.set_ylabel('Net Flux (' + r'$L/m^2-hr$)')
 		ax5.set_title(
-			'Hourly Average TMP and Permeate Flux (last 24 hours)',
+			'Average Daily Net Membrane Flux (last 7 days)',
 			fontweight = 'bold'
-		)
-		ax5.set_ylabel('TMP (psia)')
-		ax5.xaxis.set_ticklabels([])
-		# Flow
-		ax6 = plt.subplot2grid((16,1),(14,0), rowspan = 2)
-		ax6.plot(tmp_feed_day['Time'],tmp_feed_day['FT305'], 'b-', linewidth = 0.5)
-		ax6.set_ylabel('Flow (gpm)')
-		labels = ax6.get_xticklabels()
+		)		
+		labels = ax5.get_xticklabels()
 		plt.setp(labels, rotation=45, fontsize=10)
-
 		# Output plots and/or sumstats csv files to directory of choice
 		plot_filename  = "FLOW_TMP{0}.png".format(opfile_suff)
 		fig = matplotlib.pyplot.gcf()
@@ -556,6 +564,8 @@ class hmi_data_agg:
 			elids = ['FT700','FT704']
 		if stype == 'WATER':
 			elids = ['FT202','FT305']
+		if stype == 'TEMP':
+			elids = ['AT304','AT310']
 
 		# Get output directory and string with all element ids from report
 		if not outdir:
@@ -662,5 +672,81 @@ class hmi_data_agg:
 				index = False,
 				encoding = 'utf-8'
 			)
+
+	def get_temp_plots(self, end_dt_str, outdir = None, opfile_suff = None, plt_colors = None):
+
+		elids = ['AT304','AT310']
+
+		end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
+		start_dt = end_dt - timedelta(days = 180)
+		start_dt_str = dt.strftime(start_dt,'%m-%d-%y')
+
+		if not outdir:
+			tkTitle = 'Directory to output charts/tables to...'
+			print(tkTitle)
+			outdir = askdirectory(title = tkTitle)
+
+		if opfile_suff:
+			opfile_suff = '_' + opfile_suff
+		else:
+			opfile_suff = ''
+
+		# Get temperature data
+		temp_dat = get_data(elids,[1,1],['hour','hour'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		temp_dat.loc[:,'Date'] = temp_dat['Time'].dt.date
+		
+		# Daily average for the last 6 months
+		temp_dat_dly = temp_dat.groupby('Date').mean()
+		temp_dat_dly.reset_index(inplace = True)
+
+		# Hourly average for the last week
+		temp_dat_week = temp_dat.loc[
+			temp_dat['Date'] - end_dt.date() >= \
+			np.timedelta64(-6,'D'),
+		]
+
+		# Plot daily average
+		ax1 = plt.subplot2grid((8,1),(0,0), rowspan = 3)
+		ax1.plot(temp_dat_dly['Date'],temp_dat_dly['AT304'], 'g-', linewidth = 0.5, color = plt_colors[0])
+		ax1.plot(temp_dat_dly['Date'],temp_dat_dly['AT310'], 'g-', linewidth = 0.5, color = plt_colors[1])
+		plt.set_title(
+			'Mean Daily Temperature ({0} to {1})'.format(start_dt_str, end_dt_str),
+			fontweight = 'bold'
+		)
+		ax1.set_ylabel('Temperature (°C)')
+		labels = ax1.get_xticklabels()
+		plt.setp(labels, rotation = 45, fontsize = 10)
+		# Plot hourly average
+		ax2 = plt.subplot2grid((8,1),(4,0), rowspan = 3)
+		afbrPlt = ax2.plot(temp_dat_week['Time'],temp_dat_week['AT304'], 'b-', linewidth = 0.5, color = plt_colors[0])
+		afmbrPlt = ax2.plot(temp_dat_week['Time'],temp_dat_week['AT310'], 'b-', linewidth = 0.5, color = plt_colors[1])
+		ax2.set_title(
+			'Mean Hourly Temperature (last 7 days)'.format(start_dt_str, end_dt_str),
+			fontweight = 'bold'
+		)
+		ax2.set_ylabel('Temperature (°C)')
+		labels = ax2.get_xticklabels()
+		plt.setp(labels, rotation = 45, fontsize = 10)
+		lgd = ax2.legend(
+			(afbrPlt[0],afmbrPlt[0]),
+			('AFBR','AFMBR'),
+			loc = 'center',
+			bbox_to_anchor = (0.5, -0.5), 
+			fancybox = True, 
+			shadow = True, 
+			ncol = 2
+		)
+		# Output plot to directory of choice
+		plot_filename  = "Temperature{0}.png".format(opfile_suff)
+		fig = matplotlib.pyplot.gcf()
+		fig.set_size_inches(7, 8)
+
+		plt.savefig(
+			os.path.join(outdir, plot_filename),
+			width = 20,
+			height = 80
+		)
+		plt.close()
+
 
 
