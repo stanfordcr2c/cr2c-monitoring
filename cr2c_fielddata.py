@@ -65,7 +65,7 @@ def process_data(tableName = 'DailyLogResponses'):
 
 
 def get_data(
-	varName = None, 
+	varNames = None, 
 	start_dt_str = None, 
 	end_dt_str = None, 
 	output_csv = False, 
@@ -85,10 +85,10 @@ def get_data(
 	os.chdir(data_dir)
 	conn = sqlite3.connect('cr2c_field_data.db')
 
-	if varName:
-		varNames = 'Timestamp,' + varName
+	if varNames:
+		varNamesAll = 'Timestamp,' + ','.join(varNames)
 	else:
-		varNames = '*'
+		varNamesAll = '*'
 
 	fielddata = pd.DataFrame([])
 
@@ -98,7 +98,7 @@ def get_data(
 			[
 				fielddata,
 				pd.read_sql(
-					'SELECT {0} FROM {1}'.format(varNames,tableName), 
+					'SELECT {0} FROM {1}'.format(varNamesAll,tableName), 
 					conn, 
 					coerce_float = True
 				)
@@ -123,7 +123,7 @@ def get_data(
 
 	# Output csv if desired
 	if output_csv:
-		op_fname = '{0}.csv'.format(varName)
+		op_fname = '{0}.csv'.format(','.join(varNames))
 		os.chdir(outdir)
 		fielddata.to_csv(op_fname, index = False, encoding = 'utf-8')
 
