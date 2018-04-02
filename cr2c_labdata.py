@@ -157,7 +157,7 @@ class labrun:
 			self.mdata['Stage'] = self.mdata['Stage'].str.strip()
 
 			# Check that the stage variable has been entered correctly
-			correct_stages = ['RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF']
+			correct_stages = ['LW','RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF']
 			stage_warning = \
 				'Check "Stage" entry {0} for {1} on dates: {2}. \n ' +\
 				'"Stage" should be written as one of the following: \n {3}'
