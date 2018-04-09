@@ -27,12 +27,66 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
 import matplotlib.dates as dates
 
+# Queries Lab Data SQL File 
+def get_data(ltypes, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None):
+
+	# Convert date string inputs to dt variables
+	if start_dt_str:
+		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
+	if end_dt_str:
+		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+
+	if output_csv and not outdir:
+		print('Directory to output Lab data to...')
+		outdir = askdirectory(title = 'Directory to output Lab data to...')
+
+	# Load data from SQL
+	data_dir = cut.get_dirs()[0]
+	os.chdir(data_dir)
+	conn = sqlite3.connect('cr2c_lab_data.db')
+
+	# Loop through types of lab data types (ltypes)
+	mdata_all = {}
+	for ltype in ltypes:
+
+		# Clean user input wrt TSS_VSS
+		if ltype.find('TSS') >= 0 or ltype.find('VSS') >= 0:
+			ltype = 'TSS_VSS'
+
+		mdata_long = pd.read_sql(
+			'SELECT * FROM {0}'.format(ltype), 
+			conn, 
+			coerce_float = True
+		)
+
+		# Dedupe data (some issue with duplicates)
+		mdata_long.drop_duplicates(inplace = True)
+		# Convert Date_Time variable to a pd datetime and eliminate missing values
+		mdata_long['Date_Time'] = pd.to_datetime(mdata_long['Date_Time'])
+		mdata_long.dropna(subset = ['Date_Time'], inplace = True)
+		# Filter to desired dates
+		mdata_long.drop('DKey', axis = 1, inplace = True)
+		if start_dt_str:
+			mdata_long = mdata_long.loc[mdata_long['Date_Time'] >= start_dt,:]
+		if end_dt_str:
+			mdata_long = mdata_long.loc[mdata_long['Date_Time'] <= end_dt + timedelta(days = 1),:]
+		
+		# Output csv if desired
+		if output_csv:
+			os.chdir(outdir)
+			mdata_long.to_csv(ltype + '.csv', index = False, encoding = 'utf-8')
+
+		# Write to dictionary
+		mdata_all[ltype] = mdata_long
+
+	return mdata_all
+
 
 class labrun:
 	
 	def __init__(self, verbose = False):
 		
-		self.mtype_list = \
+		self.ltype_list = \
 			['PH','COD','TSS_VSS','ALKALINITY','VFA','GasComp','Ammonia','Sulfate','TKN']
 		self.min_feas_dt_str = '6-1-16'
 		self.min_feas_dt = dt.strptime(self.min_feas_dt_str, '%m-%d-%y')
@@ -65,7 +119,7 @@ class labrun:
 
 	# Manages duplicate observations removes duplicates (with warnings)
 	# gets observation id's for purposeful duplicates 
-	def manage_dups(self, mtype, id_vars):
+	def manage_dups(self, ltype, id_vars):
 
 		# Set duplicates warning
 		dup_warning = \
@@ -81,8 +135,8 @@ class labrun:
 		if self.verbose:
 			if len(repeat_entries) > 0:
 				os.chdir(self.log_dir)
-				dup_filename = mtype + 'duplicates' + self.file_dt_str
-				warnings.warn(dup_warning.format(mtype,dup_filename + '.csv'))
+				dup_filename = ltype + 'duplicates' + self.file_dt_str
+				warnings.warn(dup_warning.format(ltype,dup_filename + '.csv'))
 				self.mdata.iloc[repeat_entries].to_csv(dup_filename + '.csv')
 		
 		# Eliminate duplicate data entries and reset the index
@@ -109,7 +163,7 @@ class labrun:
 		self.mdata['obs_id'] = obs_ids
 
 	# Tries to format a variable and outputs error message if the input data are off
-	def set_var_format(self, mtype, variable, format, format_prt):
+	def set_var_format(self, ltype, variable, format, format_prt):
 
 		var_typ_warn = \
 			'Check {0} variable in {1}. An entry is incorrect, format should be {2}'
@@ -123,26 +177,26 @@ class labrun:
 			else:
 				self.mdata[variable] = self.mdata[variable].astype(format)
 		except TypeError:
-			print(var_typ_warn.format(variable, mtype, format_prt))
+			print(var_typ_warn.format(variable, ltype, format_prt))
 			sys.exit()
 		except ValueError:
-			print(var_typ_warn.format(variable, mtype, format_prt))
+			print(var_typ_warn.format(variable, ltype, format_prt))
 			sys.exit()
 
 
 	# Cleans a processed dataset, converting it to long format for plotting, output, etc
-	def clean_dataset(self, mtype, id_vars):
+	def clean_dataset(self, ltype, id_vars):
 
-		self.set_var_format(mtype, 'Date', None, "m-d-yy")
+		self.set_var_format(ltype, 'Date', None, "m-d-yy")
 		# Eliminate missing date variables
 		self.mdata.dropna(subset = ['Date'], inplace = True)
 		# Make sure all date variables are within a reasonable range
 		date_rng_warn = \
 			'A Date variable in {0} has been entered incorrectly as {1} and removed'
 		if self.mdata.Date.min() < self.min_feas_dt:
-			print(date_rng_warn.format(mtype,self.mdata.Date.min()))
+			print(date_rng_warn.format(ltype,self.mdata.Date.min()))
 		if self.mdata.Date.max() > self.file_dt:
-			print(date_rng_warn.format(mtype,self.mdata.Date.max()))
+			print(date_rng_warn.format(ltype,self.mdata.Date.max()))
 		# Filter dates accordingly
 		self.mdata = self.mdata.loc[
 			(self.mdata.Date >= self.min_feas_dt) &
@@ -150,7 +204,7 @@ class labrun:
 		]
 
 		# Format and clean stage variable
-		if mtype != 'GasComp':
+		if ltype != 'GasComp':
 
 			self.mdata['Stage'] = self.mdata['Stage'].astype(str)
 			self.mdata['Stage'] = self.mdata['Stage'].str.upper()
@@ -167,7 +221,7 @@ class labrun:
 					[dt.strftime(stage_error,'%m-%d-%y') for stage_error in stage_errors.Date]
 				print(
 					stage_warning.format(
-						stage_errors.Stage.values, mtype, date_err_prt, correct_stages
+						stage_errors.Stage.values, ltype, date_err_prt, correct_stages
 					)
 				)
 				sys.exit()
@@ -175,7 +229,7 @@ class labrun:
 			self.get_stage_descs()
 
 		# Format and clean other variables
-		if mtype == 'COD':
+		if ltype == 'COD':
 
 			self.mdata['Type'] = self.mdata['Type'].astype(str)
 			self.mdata['Type'] = self.mdata['Type'].str.upper()
@@ -197,38 +251,38 @@ class labrun:
 				)
 				sys.exit()
 
-		if mtype in ['COD','Ammonia','Sulfate']:
-			self.set_var_format(mtype, 'Reading (mg/L)', float, 'numeric')
+		if ltype in ['COD','Ammonia','Sulfate']:
+			self.set_var_format(ltype, 'Reading (mg/L)', float, 'numeric')
 
-		if mtype == 'PH':
-			self.set_var_format(mtype, 'Reading', float, 'numeric')
+		if ltype == 'PH':
+			self.set_var_format(ltype, 'Reading', float, 'numeric')
 		
-		if mtype == 'ALKALINITY':
-			self.set_var_format(mtype,'Sample Volume (mL)', float, 'numeric')
-			self.set_var_format(mtype,'Acid Volume (mL, to pH 4.3)', float, 'numeric')
-			self.set_var_format(mtype,'Acid Normality (N)', float, 'numeric')
+		if ltype == 'ALKALINITY':
+			self.set_var_format(ltype,'Sample Volume (mL)', float, 'numeric')
+			self.set_var_format(ltype,'Acid Volume (mL, to pH 4.3)', float, 'numeric')
+			self.set_var_format(ltype,'Acid Normality (N)', float, 'numeric')
 
-		if mtype in ['COD','ALKALINITY','VFA','Ammonia','Sulfate']:
-			self.set_var_format(mtype,'Dilution Factor', float, 'numeric')
+		if ltype in ['COD','ALKALINITY','VFA','Ammonia','Sulfate']:
+			self.set_var_format(ltype,'Dilution Factor', float, 'numeric')
 		
-		if mtype == 'TSS_VSS':
-			self.set_var_format(mtype,'Volume (ml)', float, 'numeric')
-			self.set_var_format(mtype,'Original (g)', float, 'numeric')
-			self.set_var_format(mtype,'Temp105 (g)', float, 'numeric')
-			self.set_var_format(mtype,'Temp550 (g)', float, 'numeric')
+		if ltype == 'TSS_VSS':
+			self.set_var_format(ltype,'Volume (ml)', float, 'numeric')
+			self.set_var_format(ltype,'Original (g)', float, 'numeric')
+			self.set_var_format(ltype,'Temp105 (g)', float, 'numeric')
+			self.set_var_format(ltype,'Temp550 (g)', float, 'numeric')
 
-		if mtype == 'VFA':
-			self.set_var_format(mtype,'Acetate (mgCOD/L)', float, 'numeric')
-			self.set_var_format(mtype,'Propionate (mgCOD/L)', float, 'numeric')
+		if ltype == 'VFA':
+			self.set_var_format(ltype,'Acetate (mgCOD/L)', float, 'numeric')
+			self.set_var_format(ltype,'Propionate (mgCOD/L)', float, 'numeric')
 
-		if mtype == 'GasComp':
-			self.set_var_format(mtype,'Helium pressure (psi) +/- 50 psi', float, 'numeric')
-			self.set_var_format(mtype,'Nitrogen (%)', float, 'numeric')
-			self.set_var_format(mtype,'Oxygen (%)', float, 'numeric')
-			self.set_var_format(mtype,'Methane (%)', float, 'numeric')
-			self.set_var_format(mtype,'Carbon Dioxide (%)', float, 'numeric')
+		if ltype == 'GasComp':
+			self.set_var_format(ltype,'Helium pressure (psi) +/- 50 psi', float, 'numeric')
+			self.set_var_format(ltype,'Nitrogen (%)', float, 'numeric')
+			self.set_var_format(ltype,'Oxygen (%)', float, 'numeric')
+			self.set_var_format(ltype,'Methane (%)', float, 'numeric')
+			self.set_var_format(ltype,'Carbon Dioxide (%)', float, 'numeric')
 
-		if mtype == 'TKN':	
+		if ltype == 'TKN':	
 			varnames = \
 			[
 				'Sample Volume (mL)','Initial pH','Sample Volume (mL)','Initial pH','End pH',
@@ -238,15 +292,15 @@ class labrun:
 				'Acid Concentration (N)','NH4Cl Concentration (mg/L)','Tryptophan Concentration (mg/L)'
 			]
 			for varname in varnames:
-				self.set_var_format(mtype, varname, float, 'numeric')		
+				self.set_var_format(ltype, varname, float, 'numeric')		
 			
 		# Get the obs_id variable (This step also removes duplicates and issues warnings)
-		self.manage_dups(mtype, id_vars)
+		self.manage_dups(ltype, id_vars)
 		self.mdata.reset_index(inplace = True)
 
 
 	# Converts dataset to long 
-	def wide_to_long(self, mtype, id_vars, value_vars):
+	def wide_to_long(self, ltype, id_vars, value_vars):
 
 		# Melt the data frame
 		df_long = pd.melt(self.mdata, id_vars = id_vars, value_vars = value_vars)
@@ -262,20 +316,20 @@ class labrun:
 	def process_data(self):
 		
 		# Start loop through the gsheets
-		for mtype in self.mtype_list:
+		for ltype in self.ltype_list:
 
-			self.mdata = cut.get_gsheet_data([mtype])
+			self.mdata = cut.get_gsheet_data([ltype])
 
-			if mtype == 'COD':
-				self.clean_dataset(mtype,['Date','Stage','Type'])
-			elif mtype == 'GasComp':
-				self.clean_dataset(mtype,['Date','Helium pressure (psi) +/- 50 psi'])
+			if ltype == 'COD':
+				self.clean_dataset(ltype,['Date','Stage','Type'])
+			elif ltype == 'GasComp':
+				self.clean_dataset(ltype,['Date','Helium pressure (psi) +/- 50 psi'])
 			else:
-				self.clean_dataset(mtype,['Date','Stage'])
+				self.clean_dataset(ltype,['Date','Stage'])
 
 			# ======================================= pH ======================================= #
-			if mtype == 'PH':
-				self.mdata[mtype] = self.mdata['Reading']
+			if ltype == 'PH':
+				self.mdata[ltype] = self.mdata['Reading']
 				# Get time of sample collection from PH dataset and add to date variable to get single Date + Time variable
 				self.mdata['Date_str'] = self.mdata['Date'].dt.strftime('%m-%d-%y')
 				self.mdata['Date-Time_str'] = self.mdata.Date_str.str.cat(self.mdata['Time'], sep = ' ')
@@ -285,7 +339,7 @@ class labrun:
 				mdata_dt.drop_duplicates(inplace = True)
 
 			# ======================================= COD ======================================= #
-			if mtype == 'COD':
+			if ltype == 'COD':
 
 				# Get actual cod measurement (after correcting for dilution factor)
 				self.mdata['act_reading'] = self.mdata['Reading (mg/L)']*self.mdata['Dilution Factor']
@@ -306,7 +360,7 @@ class labrun:
 				self.mdata.columns = ['Date','Stage','obs_id'] + value_vars + ['units']
 
 			# ======================================= TSS/VSS ======================================= #
-			if mtype == 'TSS_VSS':
+			if ltype == 'TSS_VSS':
 				# Create TSS and VSS variables
 				self.mdata['TSS'] = \
 					(self.mdata['Temp105 (g)'] - self.mdata['Original (g)'])/\
@@ -320,7 +374,7 @@ class labrun:
 				value_vars = ['TSS','VSS']
 
 			# ======================================= ALKALINITY ======================================= #
-			if mtype == 'ALKALINITY':
+			if ltype == 'ALKALINITY':
 				# Compute alkalinity
 				self.mdata['ALKALINITY'] = \
 				self.mdata['Acid Volume (mL, to pH 4.3)']*self.mdata['Acid Normality (N)']/\
@@ -328,7 +382,7 @@ class labrun:
 				self.mdata['units'] = 'mg/L as CaCO3'
 
 			# ======================================= VFA =============================================== #
-			if mtype == 'VFA':
+			if ltype == 'VFA':
 				# Compute VFA concentrations
 				self.mdata['Acetate'] = self.mdata['Acetate (mgCOD/L)']*self.mdata['Dilution Factor']
 				self.mdata['Propionate'] = self.mdata['Propionate (mgCOD/L)']*self.mdata['Dilution Factor']
@@ -337,12 +391,12 @@ class labrun:
 				value_vars = ['Acetate','Propionate']
 
 			# ======================================= Ammonia =============================================== #
-			if mtype == 'Ammonia':
+			if ltype == 'Ammonia':
 				# Compute Ammonia concentration
 				self.mdata['Ammonia'] = self.mdata['Reading (mg/L)']*self.mdata['Dilution Factor']
 				self.mdata['units'] = 'mg/L'
 
-			if mtype == 'TKN':
+			if ltype == 'TKN':
 				# Compute distillation recovery
 				self.mdata['Dist Recovery (%)'] = \
 					((self.mdata['NH4Cl Volume (mL)'] - self.mdata['Blank Volume (mL)'])*\
@@ -363,13 +417,13 @@ class labrun:
 				self.mdata['units'] = 'mgTKN/L'
 
 			# ======================================= Sulfate =============================================== #
-			if mtype == 'Sulfate':
+			if ltype == 'Sulfate':
 				# Compute Sulfate concentration
 				self.mdata['Sulfate'] = self.mdata['Reading (mg/L)']*self.mdata['Dilution Factor']
 				self.mdata['units'] = 'mg/L'
 
 			# ======================================= GasComp ============================================ #
-			if mtype == 'GasComp':
+			if ltype == 'GasComp':
 				self.mdata['Hel_Pressure'] = self.mdata['Helium pressure (psi) +/- 50 psi']
 				self.mdata['Stage'] = 'NA'
 				self.mdata['units'] = '(see Type)'
@@ -377,14 +431,14 @@ class labrun:
 				value_vars = ['Hel_Pressure (psi)','Nitrogen (%)','Oxygen (%)','Methane (%)','Carbon Dioxide (%)']
 
 			# Add Sample Date-Time variable from PH
-			if mtype != 'PH':
+			if ltype != 'PH':
 				self.mdata = self.mdata.merge(mdata_dt, on = 'Date')
 
 			# Convert to long format
 			id_vars = ['Date_Time','Stage','obs_id','units']
-			if mtype in ['PH','ALKALINITY','Ammonia','TKN','Sulfate']:
-				value_vars = [mtype]
-			mdata_long = self.wide_to_long(mtype, id_vars, value_vars)
+			if ltype in ['PH','ALKALINITY','Ammonia','TKN','Sulfate']:
+				value_vars = [ltype]
+			mdata_long = self.wide_to_long(ltype, id_vars, value_vars)
 			# Create key unique by Date_Time, Stage, Type, and obs_id
 			mdata_long['Dkey'] = \
 				mdata_long['Date_Time'].astype(str) + mdata_long['Stage'] + mdata_long['Type'] + mdata_long['obs_id'].astype(str)
@@ -399,11 +453,11 @@ class labrun:
 			colIns = ','.join(['?']*len(mdata_long.columns))
 			create_str = """
 				CREATE TABLE IF NOT EXISTS {0} (DKey INT PRIMARY KEY, {1})
-			""".format(mtype,colNTypeStr)
+			""".format(ltype,colNTypeStr)
 			ins_str = """
 				INSERT OR REPLACE INTO {0} ({1})
 				VALUES ({2})
-			""".format(mtype,colNStr,colIns)
+			""".format(ltype,colNStr,colIns)
 			# Set connection to SQL database (pertaining to given year)
 			os.chdir(self.data_dir)
 			conn = sqlite3.connect('cr2c_lab_data.db')
@@ -418,59 +472,6 @@ class labrun:
 			conn.commit()
 			# Close Connection
 			conn.close()
-
-
-	# Queries Lab Data SQL File 
-	def get_data(self, mtypes, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None):
-
-		# Convert date string inputs to dt variables
-		if start_dt_str:
-			start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
-		if end_dt_str:
-			end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
-
-		if output_csv and not outdir:
-			print('Directory to output Lab data to...')
-			outdir = askdirectory(title = 'Directory to output Lab data to...')
-
-		# Load data from SQL
-		os.chdir(self.data_dir)
-		conn = sqlite3.connect('cr2c_lab_data.db')
-		mdata_all = {}
-		for mtype in mtypes:
-
-			# Clean user input wrt TSS_VSS
-			if mtype.find('TSS') >= 0 or mtype.find('VSS') >= 0:
-				mtype = 'TSS_VSS'
-
-			mdata_long = pd.read_sql(
-				'SELECT * FROM {0}'.format(mtype), 
-				conn, 
-				coerce_float = True
-			)
-
-			# Dedupe data (some issue with duplicates)
-			mdata_long.drop_duplicates(inplace = True)
-			# Convert Date_Time variable to a pd datetime and eliminate missing values
-			mdata_long['Date_Time'] = pd.to_datetime(mdata_long['Date_Time'])
-			mdata_long.dropna(subset = ['Date_Time'], inplace = True)
-			# Filter to desired dates
-			mdata_long.drop('DKey', axis = 1, inplace = True)
-			if start_dt_str:
-				mdata_long = mdata_long.loc[mdata_long['Date_Time'] >= start_dt,:]
-			if end_dt_str:
-				mdata_long = mdata_long.loc[mdata_long['Date_Time'] <= end_dt + timedelta(days = 1),:]
-			
-			# Output csv if desired
-			if output_csv:
-				os.chdir(outdir)
-				mdata_long.to_csv(mtype + '.csv', index = False, encoding = 'utf-8')
-
-			# Write to dictionary
-			mdata_all[mtype] = mdata_long
-
-		return mdata_all
-
 
 		# Sets the start and end dates for the charts, depending on user input
 	def manage_chart_dates(self, start_dt_str, end_dt_str):
@@ -536,33 +537,33 @@ class labrun:
 		start_dt, end_dt = self.manage_chart_dates(start_dt_str, end_dt_str)
 
 		# Get all of the lab data requested
-		mdata_all = self.get_data(mplot_list, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		mdata_all = get_data(mplot_list, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Loop through the lab data types
-		for mtype in mplot_list:
+		for ltype in mplot_list:
 
-			if mtype.find('TSS') >= 0 or mtype.find('VSS') >= 0:
-				mtype = 'TSS_VSS'
+			if ltype.find('TSS') >= 0 or ltype.find('VSS') >= 0:
+				ltype = 'TSS_VSS'
 
-			mdata_long = mdata_all[mtype]
+			mdata_long = mdata_all[ltype]
 			# ID variables for grouping by day 
 			# (for monitoring types that might have multiple observations in a day)
 			id_vars_chrt = ['Date_Time','Stage','Type']
 			
-			if mtype == 'COD':
+			if ltype == 'COD':
 				# Set plotting variables
 				ylabel = 'COD Reading (mg/L)'
 				type_list = ['Total','Soluble','Particulate']
 				share_yax = False
 
-			if mtype == 'TSS_VSS':
+			if ltype == 'TSS_VSS':
 
 				# Set plotting variables
 				ylabel = 'Suspended Solids (mg/L)'
 				type_list = ['TSS','VSS']
 				share_yax = True
 
-			if mtype == 'PH':
+			if ltype == 'PH':
 
 				# Set plotting variables
 				ylabel = 'pH'
@@ -570,7 +571,7 @@ class labrun:
 				type_list = ['pH']
 				share_yax = True
 
-			if mtype == 'ALKALINITY':
+			if ltype == 'ALKALINITY':
 
 				# Set plotting variables
 				ylabel = 'Alkalinity (mg/L as ' + r'$CaCO_3$)'
@@ -578,14 +579,14 @@ class labrun:
 				type_list = ['Alkalinity']
 				share_yax = True
 
-			if mtype == 'VFA':
+			if ltype == 'VFA':
 
 				# Set plotting variables
 				ylabel = 'VFAs as mgCOD/L'
 				type_list = ['Acetate','Propionate']
 				share_yax = False
 
-			if mtype == 'AMMONIA':
+			if ltype == 'AMMONIA':
 
 				#Set plotting variables
 				ylabel = r'$NH_3$' + ' (mg/L as N)'
@@ -593,7 +594,7 @@ class labrun:
 				type_list = ['Ammonia']
 				share_yax = True
 
-			if mtype == 'TKN':
+			if ltype == 'TKN':
 
 				# Set plotting variables
 				ylabel = 'mgTKN/L'
@@ -601,7 +602,7 @@ class labrun:
 				type_list = ['TKN']
 				share_yax = True
 
-			if mtype == 'SULFATE':
+			if ltype == 'SULFATE':
 
 				# Set plotting variables
 				ylabel = 'mg/L ' + r'$SO_4$'
@@ -669,7 +670,7 @@ class labrun:
 			    ax.xaxis.set_major_locator(dlocator)
 			    ax.xaxis.set_major_formatter(dfmt)
 			    # Different format for PH vs other y-axes
-			    if mtype == 'PH':
+			    if ltype == 'PH':
 			    	tkr.FormatStrFormatter('%0.2f')
 			    else:
 				    ax.yaxis.set_major_formatter(
@@ -687,10 +688,10 @@ class labrun:
 			plot_filename = "{0}{1}.png"
 			os.chdir(outdir)
 
-			# Add and position legend
-			if mtype in ['PH','ALKALINITY'] and wrap_var == 'Stage':
+			# Add and position the legend
+			if ltype in ['PH','ALKALINITY'] and wrap_var == 'Stage':
 				plt.savefig(
-					plot_filename.format(mtype, opfile_suff), 
+					plot_filename.format(ltype, opfile_suff), 
 					bbox_inches = 'tight',
 					width = plot_wid, 
 					height = plot_len
@@ -700,7 +701,7 @@ class labrun:
 				handles, labels = ax.get_legend_handles_labels()
 				lgd = ax.legend(handles, labels, loc='upper left', bbox_to_anchor = (1,0.75))
 				plt.savefig(
-					plot_filename.format(mtype, opfile_suff), 
+					plot_filename.format(ltype, opfile_suff), 
 					bbox_extra_artists = (lgd,),
 					bbox_inches = 'tight',
 					width = plot_wid, 
@@ -806,7 +807,7 @@ class labrun:
 		seed_dt = dt.strptime('05-10-17','%m-%d-%y')
 
 		# Load data from SQL
-		mdata_all = self.get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA','Ammonia','Sulfate'])
+		mdata_all = get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA','Ammonia','Sulfate'])
 
 		# Specify id variables (same for every type since combining Alkalinity and pH)
 		id_vars = ['Sample Date & Time','Stage','Type','obs_id']

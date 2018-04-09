@@ -229,7 +229,7 @@ class cr2c_validation:
 
 		#=========================================> LAB DATA <=========================================
 		# Get lab data from file on box and filter to desired dates
-		labdat  = pld.labrun().get_data(['COD','TSS_VSS','Sulfate','GasComp'])
+		labdat  = pld.get_data(['COD','TSS_VSS','Sulfate','GasComp'])
 
 		# COD data
 		cod_dat = labdat['COD']
@@ -387,16 +387,15 @@ class cr2c_validation:
 		# COD content of gas (assumes that volume given by flowmeter is in STP)
 		cod_bal_dat['Biogas']   = cod_bal_dat['Meas Biogas Prod']*cod_bal_dat['CH4%']/100/Vol_STP*64/1000
 		# COD content of dissolved methane (estimated from temperature of reactors)
-		COD_diss_conc = map(
+		cod_diss_conc = map(
 			self.est_diss_ch4,
 			cod_bal_dat['Reactor Temp (C)'].values, 
 			cod_bal_dat['CH4%'].values
 		)
 
-		cod_bal_dat['Dissolved CH4'] = np.array(list(COD_diss_conc))*cod_bal_dat['Flow Out']/1E6
+		cod_bal_dat['Dissolved CH4'] = np.array(list(cod_diss_conc))*cod_bal_dat['Flow Out']/1E6
 		# COD from sulfate reduction (1.5g COD per g SO4)
 		cod_bal_dat['Sulfate Reduction'] = cod_bal_dat['SO4 MS']*cod_bal_dat['Flow In']/1.5/1E6
-		cod_bal_dat.to_csv(os.path.join(self.outdir,'cod_bal_dat.csv'), encoding = 'utf-8')
 		#========================================> COD Balance <=======================================	
 
 		# Convert to weekly data
@@ -470,8 +469,8 @@ class cr2c_validation:
 		# whereas COD units are in kg
 		self.cod_bal_wkly['gVSS wasted/gCOD Removed'] = \
 			(
-				self.cod_bal_wkly['Wasted (L)']*self.cod_bal_wkly['VSS R'] + 
-				self.cod_bal_wkly['Flow Out']*self.cod_bal_wkly['VSS Out']
+				self.cod_bal_wkly['VSS R']*self.cod_bal_wkly['Wasted (L)'] + 
+				self.cod_bal_wkly['VSS Out']*self.cod_bal_wkly['Flow Out']
 			)/1E6/7/\
 			(self.cod_bal_wkly['COD In'] - self.cod_bal_wkly['COD Out'] - self.cod_bal_wkly['Sulfate Reduction'])
 

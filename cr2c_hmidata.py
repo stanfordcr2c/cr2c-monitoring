@@ -236,7 +236,7 @@ class hmi_data_agg:
 		# Filter dataset to clean values, time period and variable selected
 		self.hmi_data = self.hmi_data.loc[
 			(self.hmi_data['Time'] >= self.start_dt - datetime.timedelta(days = 1)) &
-			(self.hmi_data['Time'] < self.end_dt + datetime.timedelta(days = 1))
+			(self.hmi_data['Time'] < self.end_dt + datetime.timedelta(days = 2))
 			,
 			['Time', 'Value']
 		]
@@ -709,7 +709,7 @@ class hmi_data_agg:
 		ax1 = plt.subplot2grid((8,1),(0,0), rowspan = 3)
 		ax1.plot(temp_dat_dly['Date'],temp_dat_dly['AT304'], 'g-', linewidth = 0.5, color = plt_colors[0])
 		ax1.plot(temp_dat_dly['Date'],temp_dat_dly['AT310'], 'g-', linewidth = 0.5, color = plt_colors[1])
-		plt.set_title(
+		plt.title(
 			'Mean Daily Temperature ({0} to {1})'.format(start_dt_str, end_dt_str),
 			fontweight = 'bold'
 		)
