@@ -213,11 +213,20 @@ class labrun:
 			self.ldata['Stage'] = self.ldata['Stage'].str.strip()
 
 			# Check that the stage variable has been entered correctly
-			correct_stages = ['LW','RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF']
+			# Number of composite samplers on site
+			CSNos = [str(el + 1) for el in list(range(10))]
+			# Correct stage abbreviations
+			correct_stages = \
+				['LW','RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF'] 
+			# Add stages particular to a composite sampler
+			correct_stages_all = \
+				correct_stages +\
+				[stage + ' CS' + CSNo for CSNo in CSNos for stage in correct_stages]
+			# Warning to print if an incorrect stage is found
 			stage_warning = \
 				'Check "Stage" entry {0} for {1} on dates: {2}. \n ' +\
-				'"Stage" should be written as one of the following: \n {3}'
-			stage_errors = self.ldata[ ~ self.ldata['Stage'].isin(correct_stages)]
+				'"Stage" should be written as one of the following: \n {3} (or "[STAGE]" + " CS[#]" if logging a sample from a specific composite sampler)'
+			stage_errors = self.ldata[ ~ self.ldata['Stage'].isin(correct_stages_all)]
 			if len(stage_errors) > 0:
 				date_err_prt = \
 					[dt.strftime(stage_error,'%m-%d-%y') for stage_error in stage_errors.Date]
@@ -253,8 +262,12 @@ class labrun:
 				)
 				sys.exit()
 
-		if ltype in ['COD','Ammonia','Sulfate','BOD']:
+		if ltype in ['COD','Ammonia','Sulfate']:
 			self.set_var_format(ltype, 'Reading (mg/L)', float, 'numeric')
+
+		if ltype == 'BOD':
+			self.set_var_format(ltype, 'Average Reading (mg/L)', float, 'numeric')
+			self.set_var_format(ltype, 'Standard Deviation (mg/L)', float, 'numeric')
 
 		if ltype == 'PH':
 			self.set_var_format(ltype, 'Reading', float, 'numeric')
@@ -306,6 +319,10 @@ class labrun:
 
 		# Melt the data frame
 		df_long = pd.melt(self.ldata, id_vars = id_vars, value_vars = value_vars)
+		# Add Type to "variable" variable if BOD (OD days, specifically)
+		if ltype == 'BOD':
+			df_long.reset_index(inplace = True)
+			df_long['variable'] = df_long['Type'] + ': ' + df_long['variable']
 		# Reorder columns
 		col_order = ['Date_Time','Stage','variable','units','obs_id','value']
 		varnames = ['Date_Time','Stage','Type','units','obs_id','Value']
@@ -324,10 +341,15 @@ class labrun:
 
 			if ltype == 'COD':
 				self.clean_dataset(ltype,['Date','Stage','Type'])
+			elif ltype == 'BOD':
+				self.clean_dataset(ltype,['Date','Stage','Average Reading (mg/L)','Standard Deviation (mg/L)','N. Days'])
 			elif ltype == 'GasComp':
 				self.clean_dataset(ltype,['Date','Helium pressure (psi) +/- 50 psi'])
 			else:
 				self.clean_dataset(ltype,['Date','Stage'])
+
+			# ID variables for reshaping data
+			id_vars = ['Date_Time','Stage','obs_id','units']
 
 			# ======================================= pH ======================================= #
 			if ltype == 'PH':
@@ -363,9 +385,14 @@ class labrun:
 
 			if ltype == 'BOD':
 
-				self.ldata['Type'] = 'BOD' + self.ldata['N. Days']
-				self.ldata['Value'] = self.ldata['Reading (mg/L)']
+				self.ldata['Type'] = 'BOD ' + self.ldata['N. Days']
+				self.ldata['Value'] = self.ldata['Average Reading (mg/L)']
+				self.ldata['Min Value'] = self.ldata['Value'] - 1.96*self.ldata['Standard Deviation (mg/L)']
+				self.ldata['Max Value'] = self.ldata['Value'] + 1.96*self.ldata['Standard Deviation (mg/L)']
 				self.ldata['units'] = 'mg/L'
+
+				id_vars = ['Date_Time','Stage','obs_id','Type','units']
+				value_vars = ['Value','Min Value','Max Value']
 
 			# ======================================= TSS/VSS ======================================= #
 			if ltype == 'TSS_VSS':
@@ -443,15 +470,11 @@ class labrun:
 				self.ldata = self.ldata.merge(ldata_dt, on = 'Date')
 
 			# Convert to long format
-			id_vars = ['Date_Time','Stage','obs_id','units']
 			if ltype in ['PH','ALKALINITY','Ammonia','TKN','Sulfate']:
 				value_vars = [ltype]
-			# BOD data are already in long format, so don't convert (just remove date variable)
-			if ltype == 'BOD':
-				ldata_long = self.ldata[['Date_Time','Stage','Type','units','obs_id','Value']]
-			# Otherwise, convert to long format
-			else:
-				ldata_long = self.wide_to_long(ltype, id_vars, value_vars)
+
+			# Convert to long format 
+			ldata_long = self.wide_to_long(ltype, id_vars, value_vars)
 
 			# Create key unique by Date_Time, Stage, Type, and obs_id
 			ldata_long.loc[:,'Dkey'] = \
@@ -465,9 +488,6 @@ class labrun:
 			colNTypeStr = 'Date_Time INT, Stage TEXT, Type TEXT, units TEXT, obs_id INT, Value REAL'
 			colNStr = ','.join(ldata_long.columns.values)
 			colIns = ','.join(['?']*len(ldata_long.columns))
-			# Load BOD and COD to same table
-			if ltype in ['COD','BOD']:
-				ltype = 'OD'
 
 			create_str = """
 				CREATE TABLE IF NOT EXISTS {0} (DKey INT PRIMARY KEY, {1})
@@ -511,7 +531,7 @@ class labrun:
 		self,
 		start_dt_str,
 		end_dt_str,
-		mplot_list,
+		lplot_list,
 		wrap_var,
 		stage_sub = None,
 		type_sub = None,
@@ -535,8 +555,8 @@ class labrun:
 		else:
 			opfile_suff = ''
 
-		# Clean case of mplot_list and wrap var inputs
-		mplot_list = [element.upper() for element in mplot_list]
+		# Clean case of lplot_list and wrap var inputs
+		lplot_list = [element.upper() for element in lplot_list]
 		wrap_var = wrap_var[0].upper() + wrap_var[1:].lower()
 
 		# Order of treatment stages in plots
@@ -554,16 +574,19 @@ class labrun:
 		# Manage dates given by user
 		start_dt, end_dt = self.manage_chart_dates(start_dt_str, end_dt_str)
 
-		# Get all of the lab data requested
-		ldata_all = get_data(mplot_list, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
-
 		# Loop through the lab data types
-		for ltype in mplot_list:
+		for ltype in lplot_list:
 
 			if ltype.find('TSS') >= 0 or ltype.find('VSS') >= 0:
 				ltype = 'TSS_VSS'
 
-			ldata_long = ldata_all[ltype]
+			if ltype == 'OD':
+				ldata_cod = get_data(['COD'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)['COD']
+				ldata_bod = get_data(['BOD'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)['BOD']
+				ldata_long = ldata_cod.append(ldata_bod)
+			else:
+				ldata_long = get_data([ltype], start_dt_str = start_dt_str, end_dt_str = end_dt_str)[ltype]
+
 			# ID variables for grouping by day 
 			# (for monitoring types that might have multiple observations in a day)
 			id_vars_chrt = ['Date_Time','Stage','Type']
@@ -574,7 +597,25 @@ class labrun:
 				type_list = ['Total','Soluble','Particulate']
 				share_yax = False
 
+			if ltype == 'BOD':
+				# Set plotting variables
+				ylabel = 'BOD (mg/L)'
+				share_yax = False	
+
+				# If BOD, convert to wide
+				ldata_long.loc[:,'Range'] = np.array([string.split(': ')[1] for string in ldata_long['Type'].values])
+				ldata_long.loc[:,'Type']  = np.array([string.split(': ')[0] for string in ldata_long['Type'].values])
+				ldata_long = ldata_long[['Date_Time','Stage','Type','Range','Value']]
+				ldata_long.set_index(['Date_Time','Stage','Type','Range'], inplace = True)
+				ldata_long = ldata_long.unstack('Range')
+				# Get the error bar (symmetric)
+				ldata_long['yerr'] = (ldata_long['Value']['Max Value'] - ldata_long['Value']['Min Value'])/2
+				ldata_long.reset_index(inplace = True)
+				ldata_long.columns = ['Date_Time','Stage','Type','Mean','Min','Max','yerr']
+				type_list = ldata_long['Type'].unique()		
+
 			if ltype == 'OD':
+
 				# Set plotting variables
 				ylabel = 'OD Reading (mg/L)'
 				# Type list can be arbitrary in this case
@@ -689,7 +730,7 @@ class labrun:
 			ldata_chart.reset_index(inplace = True)
 
 			# Set plot facetting and layout
-			mplot = sns.FacetGrid(
+			lplot = sns.FacetGrid(
 				ldata_chart,
 				col = wrap_var,
 				col_order = wrap_list,
@@ -704,7 +745,7 @@ class labrun:
 			# Set tickmarks for days of the month
 			dlocator = dates.DayLocator(bymonthday = [1,15])		
 			# Format the axes in the plot panel
-			for ax in mplot.axes.flatten():
+			for ax in lplot.axes.flatten():
 			    ax.xaxis.set_major_locator(dlocator)
 			    ax.xaxis.set_major_formatter(dfmt)
 			    # Different format for PH vs other y-axes
@@ -716,18 +757,23 @@ class labrun:
 				    )
 
 			# Plot values and set axis labels/formatting
-			mplot.map(plt.plot,'Date_Time','Value', linestyle = '-', marker = "o", ms = 4)
-			mplot.set_titles('{col_name}')
-			mplot.set_ylabels(ylabel)
-			mplot.set_xlabels('')
-			mplot.set_xticklabels(rotation = 45)
+			if ltype == 'BOD':
+				lplot.map(plt.scatter,'Date_Time','Mean', marker = 'o').add_legend()
+				lplot.map(plt.errorbar,'Date_Time','Mean', 'yerr', capsize = 2)
+			else:
+				pts = lplot.map(plt.plot,'Date_Time','Value', linestyle = '-', marker = "o", ms = 4)
+
+			lplot.set_titles('{col_name}')
+			lplot.set_ylabels(ylabel)
+			lplot.set_xlabels('')
+			lplot.set_xticklabels(rotation = 45)
 
 			# Output plot to given directory
 			plot_filename = "{0}{1}.png"
 			os.chdir(outdir)
 
 			# Add and position the legend
-			if ltype in ['PH','ALKALINITY'] and wrap_var == 'Stage':
+			if ltype in ['PH','ALKALINITY'] and wrap_var == 'Stage' or ltype == 'BOD':
 				plt.savefig(
 					plot_filename.format(ltype, opfile_suff), 
 					bbox_inches = 'tight',
@@ -737,7 +783,7 @@ class labrun:
 				plt.close()
 			else:
 				handles, labels = ax.get_legend_handles_labels()
-				lgd = ax.legend(handles, labels, loc='upper left', bbox_to_anchor = (1,0.75))
+				lgd = ax.legend(handles = handles, labels = labels, loc = 'upper left', bbox_to_anchor = (1,0.75))
 				plt.savefig(
 					plot_filename.format(ltype, opfile_suff), 
 					bbox_extra_artists = (lgd,),
