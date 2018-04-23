@@ -272,8 +272,8 @@ class hmi_data_agg:
 
 		# Get minute-level dataframe of timesteps for the time period requested
 		ts_array = np.arange(
-			self.start_dt,
-			self.end_dt + datetime.timedelta(days = 1),
+			self.start_dt - datetime.timedelta(days = 1),
+			self.end_dt + datetime.timedelta(days = 2),
 			np.timedelta64(1,'m')
 		)
 		empty_df = pd.DataFrame(ts_array, columns = ['Time'])
@@ -282,6 +282,7 @@ class hmi_data_agg:
 		hmi_data_all = self.hmi_data.merge(empty_df, on = 'Time', how = 'outer')
 		# Sort the dataset by Time (important for TimeEL below)
 		hmi_data_all.sort_values('Time', inplace = True)
+
 		# ... need to set Time as an index to do this
 		hmi_data_all.set_index('Time')
 		hmi_data_all['Value'] = hmi_data_all['Value'].interpolate()
@@ -307,7 +308,6 @@ class hmi_data_agg:
 		tots_res = hmi_data_all.groupby('TimeCat').sum()
 		tots_res.reset_index(inplace = True)
 
-
 		# Retrieve the timestep from the TimeCat Variable
 		tots_res['TimeCat'] = pd.to_timedelta(tots_res['TimeCat']*tperiod, ttype_d)
 		tots_res['Time'] = self.start_dt + tots_res['TimeCat']
@@ -331,7 +331,8 @@ class hmi_data_agg:
 		elids,
 		stypes,
 		output_csv = False,
-		output_sql = True
+		output_sql = True,
+		outdir = None
 	):
 
 		# Retrieve sql table directory
@@ -397,7 +398,9 @@ class hmi_data_agg:
 					conn.close()
 
 			if output_csv:
-				os.chdir(self.hmi_dir)
+				if not outdir:
+					outdir = askdirectory()
+				os.chdir(outdir)
 				tots_res.to_csv('{0}_{1}{2}_AVERAGES.csv'.format(elid, tperiod, ttype), index = False, encoding = 'utf-8')
 
 
