@@ -24,7 +24,7 @@ def get_dirs():
 	mondir = None
 	for dirpath, dirname, filename in os.walk(expanduser('~')):
 		if dirpath.find(targetdir) > 0:
-			mondir = os.path.join(dirpath,'MonitoringProcedures')
+			mondir = os.path.join(dirpath,'Monitoring Data and Procedures')
 			break
 			
 	# Alert user if Box Sync folder not found on machine
@@ -32,7 +32,7 @@ def get_dirs():
 		if os.path.isdir('D:/'):
 			for dirpath, dirname, filename in os.walk('D:/'):
 				if dirpath.find(targetdir) > 0:
-					mondir = os.path.join(dirpath,'MonitoringProcedures')
+					mondir = os.path.join(dirpath,'Monitoring Data and Procedures')
 					break
 		if not mondir:
 			print("Could not find Codiga Center's Operations folder in Box Sync")
@@ -40,7 +40,7 @@ def get_dirs():
 			sys.exit()
 
 	pydir = os.path.join(mondir, 'Python')
-	data_dir = os.path.join(mondir,'Data')
+	data_dir = os.path.join(mondir,os.path.join('Data','SQL'))
 
 	return data_dir, pydir
 
