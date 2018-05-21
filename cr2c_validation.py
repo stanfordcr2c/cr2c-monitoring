@@ -5,6 +5,7 @@
 
 from __future__ import print_function
 import matplotlib
+import matplotlib.gridspec as gridspec
 matplotlib.use("TkAgg",force=True) 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
@@ -25,6 +26,8 @@ import functools
 from tkinter.filedialog import askopenfilename
 from tkinter.filedialog import asksaveasfilename
 from tkinter.filedialog import askdirectory
+from scipy import stats 
+
 import cr2c_labdata as pld
 import cr2c_hmidata as hmi
 import cr2c_fielddata as fld
@@ -61,6 +64,12 @@ class cr2c_validation:
 
 	def adj_Hcp(self, Hcp_gas, deriv_gas, temp):
 		return Hcp_gas*math.exp(deriv_gas*(1/(273 + temp) - (1/298)))
+
+
+	def clean_varname(self, varname):
+		varname_cln = fld.rmChars('-:?[]()<>.,','',varname)
+		varname_cln = fld.rmChars(' ','_',varname_cln)
+		return varname_cln
 
 
 	def est_diss_ch4(self, temp, percCH4):
@@ -394,8 +403,8 @@ class cr2c_validation:
 		)
 
 		cod_bal_dat['Dissolved CH4'] = np.array(list(cod_diss_conc))*cod_bal_dat['Flow Out']/1E6
-		# COD from sulfate reduction (1.5g COD per g SO4)
-		cod_bal_dat['Sulfate Reduction'] = cod_bal_dat['SO4 MS']*cod_bal_dat['Flow In']/1.5/1E6
+		# COD from sulfate reduction (1.5g COD per g SO4, units are in mg/L S)
+		cod_bal_dat['Sulfate Reduction'] = cod_bal_dat['SO4 MS']*cod_bal_dat['Flow In']/1.5/1E6*48/16
 		#========================================> COD Balance <=======================================	
 
 		# Convert to weekly data
@@ -433,7 +442,7 @@ class cr2c_validation:
 			)
 			plt.ylabel('kg of COD Equivalents',fontweight = 'bold')
 			plt.xlabel('Week Start Date', fontweight = 'bold')
-			# plt.tight_layout()
+
 			plt.savefig(
 				os.path.join(self.outdir, 'COD Balance.png'),
 				bbox_extra_artists=(lgd,title,),
@@ -538,80 +547,184 @@ class cr2c_validation:
 	Plot the merged data to show results.
 	'''
 	def instr_val(
-		valtype,
+		self,
+		valtypes,
 		start_dt_str,
 		end_dt_str,
 		hmi_elids,
-		fld_ids,
-		run_report = False,
+		fld_varnames = None,
+		ltypes = None,
+		lstages = None,
+		run_hmi_report = False,
 		hmi_path = None
 	):
 
-	    # Get field pressure measurements
-	    #            AFBR  RAFMBR DAFMBR
-	    reactors = ['R300','R301','R302']
-	    fielddata = fld.get_data()
-	    pdat_fld = fieldvals_df[['TimeStamp'] + ['Manometer_Pressure_' + reactor for reactor in reactors]]
-	    pdat_fld['TS_mins'] = pdat_field['TimeStamp'].values.astype('datetime64[m]')
 
-	    # First subset hmi data to dates for which field measurements are available
-	    first_lts = pdat_field['TimeStamp'][0]
-	    last_lts = pdat_field['TimeStamp'][len(pdat_field) - 1]
-	    first_lts_str = dt.strftime(first_lts, format = '%m-%d-%y')
-	    last_lts_str = dt.strftime(last_lts, format = '%m-%d-%y')
+		# Validation data are from field measurements (daily log sheet)
+		if fld_varnames:
 
-	    # Get HMI pressure data
-	    # Create time and sensor type variables
-	    tperiods = [1]*len(pr_elids)
-	    ttypes = ['MINUTE']*len(pr_elids)
-	    stypes = ['PRESSURE']*len(pr_elids)
+			query_varnames = []
+			for varname in fld_varnames:
+				# Sometimes the user needs to specify a PAIR of variables (eg pressure upstream AND downstream of pump)
+				if type(varname) == tuple:
+					query_varnames.append(varname[0])
+					query_varnames.append(varname[1])
+				# Otherwise just single variable name
+				else:
+					query_varnames.append(varname)
 
-	    # load reactor pressures from hmi csv file to sql database if path is provided
-	    if run_report:
-	    	get_hmi = hmi_run(start_dt_str, end_dt_str, hmi_path = hmi_path)
-	    	get_hmi.run_report(
-				tperiods, # Number of hours you want to average over
-				ttypes, # Type of time period (can be "hour" or "minute")
-				pr_elids, # Sensor ids that you want summary data for (have to be in HMI data file obviously)
-				stypes # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
-			)	
+			# Clean the query variables
+			query_varnames = [self.clean_varname(varname) for varname in query_varnames]
+			# Query the field data (using clean variable names)
+			valdat = fld.get_data()[['Timestamp'] + query_varnames]
+			# Create time variable with minute resolution from field data Timestamp variable
+			valdat['Time'] = pd.to_datetime(valdat['Timestamp']).values.astype('datetime64[m]')
+			
+			# Loop through field variables to convert to numeric and calculate differences (if necessary)
+			for varInd,varname in enumerate(fld_varnames):
+				if type(varname) == tuple:
+					valdat[hmi_elids[varInd] + 'VAL'] = \
+						pd.to_numeric(valdat[self.clean_varname(varname[1])], errors = 'coerce') - \
+						pd.to_numeric(valdat[self.clean_varname(varname[0])], errors = 'coerce')
+				else:
+					valdat[hmi_elids[varInd] + 'VAL'] = pd.to_numeric(valdat[self.clean_varname(varname)], errors = 'coerce')
 
-	    # get reactor pressures from sql database
-	    pdat_hmi = hmi.get_data(pr_elids, tperiods, ttypes, 2017)
+			valdat = valdat[['Time'] + [elid + 'VAL' for elid in hmi_elids]]
+		
+		# Validation data are from lab measurements
+		elif ltypes or lstages:
 
-	    for tperiod, ttypes, pr_elid in zip(tperiods, ttypes, pr_elids):
-	        # Create keys of pressure sensor with specified time period. e.g. 'PIT700_1HOUR_AVERAGES'
-	        pr_elid_hmi = pr_elid + '_' + str(tperiod) + 'HOUR' + '_AVERAGES'
-	        # Create columns of gauge pressure for the sensor
-	        pr_head = pr_elid + ' Gauge Pr. (in)'
+			valdatLong = pd.concat([pld.get_data([ltype])[ltype] for ltype in ltypes], axis = 0)
+			valdatLong = valdatLong.loc[valdatLong['Stage'].isin(lstages),:]
+			# Convert to wide format
+			# Calculate mean by obsid to account for possibility of multiple PH measurements taken for single sample
+			valdatLong = valdatLong.groupby(['Date_Time','Stage','Type','obs_id']).mean()
+			valdatWide = valdatLong.unstack(['Type','Stage'])
+			valdatWide.reset_index(inplace = True)
+			# valdat = valdatWide['Date_Time']
+			valdat = pd.DataFrame(valdatWide['Date_Time'].values, columns = ['Time'])
+			valdatColnames = [hmi_elids[lind] + 'VAL' for lind,ltype in enumerate(ltypes)]
+			for lind,ltype in enumerate(ltypes):
+				valdat[valdatColnames[lind]] = valdatWide['Value'][ltype][lstages[lind]]
+			valdat = valdat[['Time'] + valdatColnames]
 
-	        # Convert pressure readings to inches of head (comparable to field measurements)
-	        pdat_hmi[pr_elid_hmi][pr_head] = pdat_hmi[pr_elid_hmi]['Value'].apply(lambda x: (x - 14.7) * 27.7076)
+		# Get hmi data for the element ids whose measurements are being validated
+		nelids = len(hmi_elids)
+		# Run hmi report if requested (minute level)
+		if run_hmi_report:
 
-	        # Merge the two datasets only hmi data observations in the field measurement data (minute timescale here)
-	        pr_head_hmi = pdat_hmi[pr_elid_hmi][['Time', pr_head]]
-	        if 'merged_pr' not in locals():
-	            merged_pr = pd.merge_asof(pdat_field, pr_head_hmi, left_on = 'TS_mins', right_on = 'Time')
-	        else:
-	            merged_pr = pd.merge_asof(merged_pr, pr_head_hmi, left_on = 'TS_mins', right_on = 'Time')
+			hmi_run = hmi.hmi_data_agg(start_dt_str, end_dt_str, hmi_path = hmi_path)
+			hmi_run.run_report(
+				[1]*nelids, # Number of minutes you want to average over
+				['MINUTE']*nelids, # Type of time period (can be "hour" or "minute")
+				hmi_elids, # Sensor ids that you want summary data for (have to be in HMI data file obviously)
+				valtypes # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
+			)
 
-	        # Delete additional Time column
-	        merged_pr = merged_pr.drop('Time', 1)
+		# Retrieve data from SQL file
+		hmidat = hmi.get_data(
+			hmi_elids,
+			[1]*nelids,
+			['MINUTE']*nelids,
+			valtypes,
+			start_dt_str = start_dt_str,
+			end_dt_str = end_dt_str
+		)
 
-	    # Plot manometer pressures vs HMI sensor gauge pressure
-	    nrows = 3
-	    fig, axes = plt.subplots(nrows, sharex = True)
-	    fig.set_size_inches(8, 20)
-	    ids_hmi = ['PIT700', 'PIT702', 'PIT704']
-	    ids_gsheet = ['R300', 'R301', 'R302']
-	    for ax_idx, (id_hmi, id_gsheet) in enumerate(zip(ids_hmi, ids_gsheet)):
-	        axes[ax_idx].plot(merged_pr['TS_mins'], merged_pr[id_hmi + ' Gauge Pr. (in)'])
-	        axes[ax_idx].plot(merged_pr['TS_mins'], pd.to_numeric(merged_pr['Manometer Pressure: ' + id_gsheet], 'coerce'))
-	        axes[ax_idx].legend()
+		# If instrument is measuring absolute pressure, replace with inches of head (to compare to field measurements)
+		for valtype,ind in enumerate(valtypes):
+			if valtype == 'PRESSURE':
+				elid = hmi_elids[ind]
+				# Ideally would have a barometer logging data, this is a huge source of validation error
+				hmidat.loc[:,elid] = (hmidat[elid] - 14.7)*27.7076
 
-	    # Display only months and days on the x axis
-	    date_fmt = dates.DateFormatter('%m/%d')
-	    axes[ax_idx].xaxis.set_major_formatter(date_fmt)
-	    plt.show()
+		# Merge the hmi data with the validation data
+		valdatMerged = hmidat.merge(valdat, on = 'Time', how = 'inner')
+
+		# Loop through each instrument to compute error and output plots 
+		# IF evidence of a significant difference between validated vs hmi or if instrument drift over time
+		for elid in hmi_elids:
+
+			# Compute the percentage error (HMI measurement vs validation)
+			valdatMerged.loc[:,'error'] = (valdatMerged[elid] - valdatMerged[elid + 'VAL'])/valdatMerged[elid + 'VAL']
+			
+			# Subset to the element of interest
+			valdatSub = valdatMerged.loc[:,['Time', elid, elid + 'VAL','error']]
+			valdatSub.replace([np.inf, -np.inf], np.nan, inplace = True)
+			valdatSub.dropna(inplace = True)
+
+			# Only continue if there are observations (sometimes there arent...)
+			if valdatSub.size > 0:
+				# Convert time to numeric variable
+				valX = pd.to_numeric(valdatSub.loc[:,'Time'])/(10**9*3600*24)
+				# Perform 2-sample t-test for difference in means
+				tStatMeans, pvalMeans = stats.ttest_ind(valdatSub[elid].values,valdatSub[elid + 'VAL'].values)
+				# Regress error on time (to test for drift), divide by 10**9*3600*24 so coefficients are in terms of days
+				slope, intercept, Rsq, pValTrend, stdErr = stats.linregress(valX, valdatSub['error'].values)
+				
+				# If drift is significant at the 10% level, or if means are significantly different, produce a plot with a warning
+				if pValTrend  or pvalMeans:
+					fig, ax = plt.subplots(1,1)
+					gs1 = gridspec.GridSpec(1, 1)
+					fig.subplots_adjust(top = 0.90, right = 0.7)
+					title = fig.suptitle(
+						'Instrument Validation: {0}'.format(elid),
+						fontweight = 'bold',
+						fontsize = 12,
+						y = 0.99
+					)
+					dates = [pd.to_datetime(date) for date in valdatSub['Time'].dt.date.values]
+					measure = ax.scatter(dates,valdatSub[elid], marker = 'o')
+					validated = ax.scatter(dates,valdatSub[elid + 'VAL'], color = 'r', marker = 'o')
+					ax.text(
+						0.8,0.15, 
+						'p-Value (Trend): {0}'.format(round(pValTrend,3)), 
+						bbox=dict(facecolor='black', alpha = 0.1),
+						transform = ax.transAxes
+					)
+					ax.text(
+						0.8,0.05, 
+						'p-Value (Diff.): {0}'.format(round(pvalMeans,3)),
+						bbox=dict(facecolor='black', alpha = 0.1),
+						transform = ax.transAxes
+					)
+					plt.xlim(min(dates) - timedelta(days = 1),max(dates) + timedelta(days = 1))
+					plt.xticks(rotation = 45)
+					lgd = ax.legend(('HMI Value','Validated Measure'))
+					plt.tight_layout()
+
+					# Output plot to directory of choice
+					plot_filename  = "InstrumentValidation_{0}.png".format(elid)
+					fig = matplotlib.pyplot.gcf()
+					fig.set_size_inches(10, 5)
+					plt.savefig(
+						os.path.join(self.outdir, plot_filename),
+						bbox_extra_artists=(lgd,title)
+					)
+					plt.close()
+
+		return
+
+
+# val = cr2c_validation(outdir = '/Users/josebolorinos/Google Drive/Codiga Center/Miscellany')
+# # val.instr_val(
+# # 	valtypes = ['PH','PH'],
+# # 	start_dt_str = '4-15-18',
+# # 	end_dt_str = '5-15-18',
+# # 	hmi_elids = ['AT203','AT305'],
+# # 	# ltypes = ['PH','PH'],
+# # 	# lstages = ['Microscreen','AFBR']
+# # 	# run_hmi_report = True,
+# # 	# hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/HMI Data/Reactor Feeding - Raw_20180516121705.csv'
+# # )
+# val.instr_val(
+# 	valtypes = ['DPI','DPI','PRESSURE','PRESSURE'],
+# 	start_dt_str = '4-15-18',
+# 	end_dt_str = '5-15-18',
+# 	hmi_elids = ['DPIT300','DPIT301','PIT700','PIT704'],
+# 	fld_varnames = [('Before Pump: R300','After Pump: R300'),('Before Pump: R301','After Pump: R301'),'Manometer Pressure: R300','Manometer Pressure: R301']
+# 	# run_hmi_report = True,
+# 	# hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/HMI Data/Reactor Feeding - Raw_20180516121705.csv'
+# )
 
 
