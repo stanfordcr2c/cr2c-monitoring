@@ -632,8 +632,11 @@ class cr2c_validation:
 		)
 
 		# If instrument is measuring absolute pressure, replace with inches of head (to compare to field measurements)
-		for valtype,ind in enumerate(valtypes):
+		
+		for ind, valtype in enumerate(valtypes):
+
 			if valtype == 'PRESSURE':
+
 				elid = hmi_elids[ind]
 				# Ideally would have a barometer logging data, this is a huge source of validation error
 				hmidat.loc[:,elid] = (hmidat[elid] - 14.7)*27.7076
@@ -707,22 +710,22 @@ class cr2c_validation:
 
 
 # val = cr2c_validation(outdir = '/Users/josebolorinos/Google Drive/Codiga Center/Miscellany')
-# # val.instr_val(
-# # 	valtypes = ['PH','PH'],
-# # 	start_dt_str = '4-15-18',
-# # 	end_dt_str = '5-15-18',
-# # 	hmi_elids = ['AT203','AT305'],
-# # 	# ltypes = ['PH','PH'],
-# # 	# lstages = ['Microscreen','AFBR']
-# # 	# run_hmi_report = True,
-# # 	# hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/HMI Data/Reactor Feeding - Raw_20180516121705.csv'
-# # )
+# val.instr_val(
+# 	valtypes = ['PH','PH'],
+# 	start_dt_str = '4-15-18',
+# 	end_dt_str = '5-15-18',
+# 	hmi_elids = ['AT203','AT305'],
+# 	ltypes = ['PH','PH'],
+# 	lstages = ['Microscreen','AFBR']
+# 	# run_hmi_report = True,
+# 	# hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/HMI Data/Reactor Feeding - Raw_20180516121705.csv'
+# )
 # val.instr_val(
 # 	valtypes = ['DPI','DPI','PRESSURE','PRESSURE'],
 # 	start_dt_str = '4-15-18',
 # 	end_dt_str = '5-15-18',
 # 	hmi_elids = ['DPIT300','DPIT301','PIT700','PIT704'],
-# 	fld_varnames = [('Before Pump: R300','After Pump: R300'),('Before Pump: R301','After Pump: R301'),'Manometer Pressure: R300','Manometer Pressure: R301']
+# 	fld_varnames = [('Before Pump: R300','After Pump: R300'),('Before Pump: R301','After Pump: R301'),'Manometer Pressure: R300','Manometer Pressure: R301'],
 # 	# run_hmi_report = True,
 # 	# hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/HMI Data/Reactor Feeding - Raw_20180516121705.csv'
 # )
