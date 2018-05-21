@@ -123,7 +123,10 @@ def get_data(
 
 	# Output csv if desired
 	if output_csv:
-		op_fname = '{0}.csv'.format(','.join(varNames))
+		if varNames:
+			op_fname = '{0}.csv'.format(','.join(varNames))
+		else:
+			op_fname = 'cr2c-fieldData.csv'
 		os.chdir(outdir)
 		fielddata.to_csv(op_fname, index = False, encoding = 'utf-8')
 
