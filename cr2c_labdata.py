@@ -10,6 +10,7 @@ matplotlib.use("TkAgg",force=True)
 
 import numpy as np
 import pandas as pd
+import functools
 import sqlite3
 from datetime import datetime as dt
 from datetime import timedelta
@@ -109,12 +110,14 @@ class labrun:
 			self.ldata['Stage'] == 'RAW',
 			self.ldata['Stage'] == 'GRIT',
 			self.ldata['Stage'] == 'MS',
-			self.ldata['Stage'] == 'LW'
+			self.ldata['Stage'] == 'LW',
+			self.ldata['Stage'] == 'BLANK',
+			self.ldata['Stage'] == 'STD',
 		]
 		choices = [
 			'Duty AFMBR Effluent','Duty AFMBR MLSS',
 			'Research AFMBR Effluent','Research AFMBR MLSS',
-			'Raw Influent','Grit Tank','Microscreen','Lake Water'
+			'Raw Influent','Grit Tank','Microscreen','Lake Water','Blank','Standard'
 		]
 		self.ldata['Stage'] = np.select(conditions, choices, default = self.ldata['Stage'])
 
@@ -189,6 +192,8 @@ class labrun:
 	# Cleans a processed dataset, converting it to long format for plotting, output, etc
 	def clean_dataset(self, ltype, id_vars):
 
+		# First sort the data frame by its id variables
+		self.ldata.sort_values(id_vars, inplace = True)
 		self.set_var_format(ltype, 'Date', None, "m-d-yy")
 		# Eliminate missing date variables
 		self.ldata.dropna(subset = ['Date'], inplace = True)
@@ -214,10 +219,10 @@ class labrun:
 
 			# Check that the stage variable has been entered correctly
 			# Number of composite samplers on site
-			CSNos = [str(el + 1) for el in list(range(10))]
+			CSNos = [str(el + 1) for el in list(range(24))]
 			# Correct stage abbreviations
 			correct_stages = \
-				['LW','RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF'] 
+				['BLANK','STD','LW','RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF'] 
 			# Add stages particular to a composite sampler
 			correct_stages_all = \
 				correct_stages +\
@@ -266,8 +271,9 @@ class labrun:
 			self.set_var_format(ltype, 'Reading (mg/L)', float, 'numeric')
 
 		if ltype == 'BOD':
-			self.set_var_format(ltype, 'Average Reading (mg/L)', float, 'numeric')
-			self.set_var_format(ltype, 'Standard Deviation (mg/L)', float, 'numeric')
+			self.set_var_format(ltype, 'Sample Volume (mL)', float, 'numeric')
+			self.set_var_format(ltype, 'Initial DO (mg/L)'	, float, 'numeric')
+			self.set_var_format(ltype, 'Day 5 DO (mg/L)', float, 'numeric')
 
 		if ltype == 'PH':
 			self.set_var_format(ltype, 'Reading', float, 'numeric')
@@ -331,6 +337,10 @@ class labrun:
 
 		return df_long
 
+	def count_multichars(self,string):
+		chars = list(set([char for char in string if string.count(char) > 1]))
+		return ''.join(chars)
+
 	# Inputs lab testing results data and computes water quality parameters
 	def process_data(self):
 		
@@ -342,7 +352,7 @@ class labrun:
 			if ltype == 'COD':
 				self.clean_dataset(ltype,['Date','Stage','Type'])
 			elif ltype == 'BOD':
-				self.clean_dataset(ltype,['Date','Stage','Average Reading (mg/L)','Standard Deviation (mg/L)','N. Days'])
+				self.clean_dataset(ltype,['Date','Stage'])
 			elif ltype == 'GasComp':
 				self.clean_dataset(ltype,['Date','Helium pressure (psi) +/- 50 psi'])
 			else:
@@ -373,9 +383,9 @@ class labrun:
 				self.ldata.set_index(['Date','Stage','obs_id','Type'], inplace = True)
 				ldata_wide = self.ldata.unstack('Type')
 				# Create "Total" and "Soluble" variables and compute "Particulate Variable"
-				ldata_wide['Total'] = ldata_wide['act_reading']['TOTAL']
-				ldata_wide['Soluble'] = ldata_wide['act_reading']['SOLUBLE']
-				ldata_wide['Particulate'] = ldata_wide['Total'] - ldata_wide['Soluble']
+				ldata_wide.loc[:,'Total'] = ldata_wide['act_reading']['TOTAL']
+				ldata_wide.loc[:,'Soluble'] = ldata_wide['act_reading']['SOLUBLE']
+				ldata_wide.loc[:,'Particulate'] = ldata_wide['Total'] - ldata_wide['Soluble']
 				# Subset to value variables and convert index to data
 				value_vars = ['Soluble','Total','Particulate']
 				self.ldata = ldata_wide[value_vars]
@@ -385,14 +395,86 @@ class labrun:
 
 			if ltype == 'BOD':
 
-				self.ldata['Type'] = 'BOD ' + self.ldata['N. Days']
-				self.ldata['Value'] = self.ldata['Average Reading (mg/L)']
-				self.ldata['Min Value'] = self.ldata['Value'] - 1.96*self.ldata['Standard Deviation (mg/L)']
-				self.ldata['Max Value'] = self.ldata['Value'] + 1.96*self.ldata['Standard Deviation (mg/L)']
+				self.ldata.drop_duplicates(subset = ['Date','Stage','obs_id'], inplace = True)
+				self.ldata.set_index(['Date','Stage','obs_id'], inplace = True)
+
+				# Get the blank Oxygen Demand used for the given day
+				ldata_wide = self.ldata.unstack('Stage')
+				ldata_wide.loc[:,'Blank OD'] = \
+					ldata_wide['Initial DO (mg/L)']['Blank'] - \
+					ldata_wide['Day 5 DO (mg/L)']['Blank']
+				ldata_wide.reset_index(inplace = True)
+				blank_od = pd.DataFrame(
+					{
+						'Date': ldata_wide['Date'].values,
+						'obs_id': ldata_wide['obs_id'].values,
+						'Blank OD': ldata_wide['Blank OD'].values
+					}
+				)
+				blank_od.dropna(inplace = True)
+
+				# Remove outlying blank OD values
+				blank_od_exp = blank_od.merge(blank_od, on = 'Date', how = 'outer')
+				blank_od_exp = blank_od_exp.loc[blank_od_exp['obs_id_x'] != blank_od_exp['obs_id_y'],:]
+				blank_od_exp.sort_index(axis = 1, ascending = True, inplace = True)
+				# Set the threshold beyond which the -log of the ratio of two OD readings is considered abnormal
+				diffLim = abs(np.log(1/2))
+				blank_od_exp.loc[:,'diff'] = abs(np.log(blank_od_exp['Blank OD_x']/blank_od_exp['Blank OD_y']))
+				# Filter to ids that have a pairwise difference greater than the threshold
+				diff_ids = blank_od_exp.loc[blank_od_exp['diff'] > diffLim,['Date','obs_id_x']]
+				# Retrieve the ids associated with the outlier
+				diff_ids_udate = \
+					diff_ids.groupby('Date').apply(lambda group: ''.join([str(row) for row in group['obs_id_x'].values]))
+				# Get the ID that is the common culprit
+				outlying_ids = \
+					diff_ids_udate.apply(lambda row: self.count_multichars(row))
+				# Create data frame of culprit IDs and their corresponding dates (convoluted, but pandas is too complicated...)
+				outlying_ids = pd.DataFrame({'Date': diff_ids_udate.index.values, 'outlying_id': outlying_ids.values})
+				# Merge back onto the original data
+				blank_od = blank_od.merge(outlying_ids, on = 'Date', how = 'outer')
+				# Filter out outlying values!
+				blank_od['keep'] = blank_od.apply(lambda row: str(row['obs_id']) not in str(row['outlying_id']), axis = 1)
+				blank_od_means = blank_od.loc[blank_od['keep'],['Date','Blank OD']].groupby('Date').mean()
+				blank_od_means.columns = ['Blank OD']
+				blank_od_means.reset_index(inplace = True)
+
+				# Calculate BOD values by comparing to blank
+				self.ldata.reset_index(inplace = True)
+				self.ldata = self.ldata.merge(blank_od_means, on = 'Date', how = 'outer')
+				self.ldata = self.ldata.loc[self.ldata['Stage'] != 'Blank',:]
+				
+				self.ldata.loc[:,'Adjustment Factor'] = 1 - self.ldata['Sample Volume (mL)']/300
+				self.ldata.loc[:,'BOD 5'] = \
+					(
+						(self.ldata['Initial DO (mg/L)'] - self.ldata['Day 5 DO (mg/L)']) -\
+						self.ldata['Blank OD']*self.ldata['Adjustment Factor']
+					)/\
+					(self.ldata['Sample Volume (mL)']/300)
+				self.ldata.loc[:,'BOD U'] = self.ldata['BOD 5']/(1 - np.exp(-0.23*5))
+
+				BODMeans = \
+					self.ldata.groupby(['Date','Stage']).mean()[['BOD 5','BOD U']]
+				BODSDs = \
+					self.ldata.groupby(['Date','Stage']).std()[['BOD 5','BOD U']]
+
+				BODMeans.reset_index(inplace = True)
+				BODSDs.reset_index(inplace = True)
+				BODSDs = pd.melt(BODSDs, id_vars = ['Date','Stage'], value_vars = ['BOD 5','BOD U'])
+
+				self.ldata = pd.melt(BODMeans, id_vars = ['Date','Stage'], value_vars = ['BOD 5','BOD U'])
+				self.ldata = self.ldata.merge(BODSDs, on = ['Date','Stage','variable'], how = 'outer')
+
+
+				self.ldata['Type'] = self.ldata['variable']
+				self.ldata['Value'] = self.ldata['value_x']
+				self.ldata['Min Value'] = self.ldata['Value'] - 1.96*self.ldata['value_y']
+				self.ldata['Max Value'] = self.ldata['Value'] + 1.96*self.ldata['value_y']
 				self.ldata['units'] = 'mg/L'
+				self.ldata = self.ldata.loc[:,['Date','Stage','Type','Value','Min Value','Max Value','units']]
 
 				id_vars = ['Date_Time','Stage','obs_id','Type','units']
 				value_vars = ['Value','Min Value','Max Value']
+
 
 			# ======================================= TSS/VSS ======================================= #
 			if ltype == 'TSS_VSS':
@@ -455,7 +537,7 @@ class labrun:
 			if ltype == 'Sulfate':
 				# Compute Sulfate concentration
 				self.ldata['Sulfate'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
-				self.ldata['units'] = 'mg/L'
+				self.ldata['units'] = 'mg/L S'
 
 			# ======================================= GasComp ============================================ #
 			if ltype == 'GasComp':
@@ -606,6 +688,7 @@ class labrun:
 				ldata_long.loc[:,'Range'] = np.array([string.split(': ')[1] for string in ldata_long['Type'].values])
 				ldata_long.loc[:,'Type']  = np.array([string.split(': ')[0] for string in ldata_long['Type'].values])
 				ldata_long = ldata_long[['Date_Time','Stage','Type','Range','Value']]
+				ldata_long.drop_duplicates(['Date_Time','Stage','Type','Range'], inplace = True)
 				ldata_long.set_index(['Date_Time','Stage','Type','Range'], inplace = True)
 				ldata_long = ldata_long.unstack('Range')
 				# Get the error bar (symmetric)
@@ -931,4 +1014,5 @@ class labrun:
 		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
 		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
 		SO4trunc.to_csv('Sulfate_table' + end_dt_str + opfile_suff + '.csv')
+
 
