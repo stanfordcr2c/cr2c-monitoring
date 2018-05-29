@@ -76,7 +76,7 @@ def get_data(
 		# (concatenate datasets)
 		hmi_data = pd.DataFrame()
 		for year in years:
-		
+
 			conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
 			hmi_data_yr = pd.read_sql(
 				sql_str,
@@ -210,6 +210,9 @@ class hmi_data_agg:
 		elif stype == 'TMP':
 			hi_limit = 20
 			lo_limit = -20
+		elif stype == 'DPI':
+			hi_limit = 40
+			lo_limit = -40
 
 		# Load variables and set output variable names
 		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
@@ -245,7 +248,7 @@ class hmi_data_agg:
 		self.hmi_data.reset_index(inplace = True)
 
 		# Get the first and last time
-		self.first_ts = self.hmi_data['Time'][0]
+		self.first_ts = self.hmi_data.loc[0,'Time']
 		self.last_ts  = self.hmi_data['Time'][len(self.hmi_data) - 1]
 
 		# Check to make sure that the totals/averages do not include the first
@@ -371,6 +374,7 @@ class hmi_data_agg:
 					VALUES (?,?,?,?)
 				""".format(elid, tperiod, ttype)
 
+
 				# Output data to sql database pertaining to its year
 				for year in years:
 
@@ -387,6 +391,7 @@ class hmi_data_agg:
 					# Load data to SQL
 					# Create the table if it doesn't exist
 					conn.execute(create_str)
+
 					# Insert aggregated values for the elid and time period
 					conn.executemany(
 						ins_str,
