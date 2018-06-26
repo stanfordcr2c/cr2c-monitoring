@@ -563,7 +563,7 @@ class cr2c_validation:
 		# Validation data are from field measurements (daily log sheet)
 		if fld_varnames:
 
-			query_varnames = []
+			query_varnames = ['Barometer Pressure (mmHg)']
 			for varname in fld_varnames:
 				# Sometimes the user needs to specify a PAIR of variables (eg pressure upstream AND downstream of pump)
 				if type(varname) == tuple:
@@ -579,6 +579,9 @@ class cr2c_validation:
 			valdat = fld.get_data()[['Timestamp'] + query_varnames]
 			# Create time variable with minute resolution from field data Timestamp variable
 			valdat['Time'] = pd.to_datetime(valdat['Timestamp']).values.astype('datetime64[m]')
+			# Replace missing barometric pressure readings with the mean psi at sea level
+			valdat.loc[:,'Barometer_Pressure_mmHg'] = pd.to_numeric(valdat['Barometer_Pressure_mmHg'], errors = 'coerce')
+			valdat.loc[np.isnan(valdat['Barometer_Pressure_mmHg']),'Barometer_Pressure_mmHg'] = 760
 			
 			# Loop through field variables to convert to numeric and calculate differences (if necessary)
 			for varInd,varname in enumerate(fld_varnames):
@@ -589,7 +592,7 @@ class cr2c_validation:
 				else:
 					valdat[hmi_elids[varInd] + 'VAL'] = pd.to_numeric(valdat[self.clean_varname(varname)], errors = 'coerce')
 
-			valdat = valdat[['Time'] + [elid + 'VAL' for elid in hmi_elids]]
+			valdat = valdat[['Time','Barometer_Pressure_mmHg'] + [elid + 'VAL' for elid in hmi_elids]]
 		
 		# Validation data are from lab measurements
 		elif ltypes or lstages:
@@ -607,6 +610,16 @@ class cr2c_validation:
 			for lind,ltype in enumerate(ltypes):
 				valdat[valdatColnames[lind]] = valdatWide['Value'][ltype][lstages[lind]]
 			valdat = valdat[['Time'] + valdatColnames]
+
+
+		# Expand valdat to get copies of each logged value for each of:
+		# 10 minutes before and 10 minutes after it was entered into the google form
+		valdatList = []
+		for minDiff in range(-10,11):
+			valdatDiff = valdat.copy()
+			valdatDiff['Time']  = valdatDiff['Time'] + timedelta(seconds = minDiff*60)
+			valdatList.append(valdatDiff)
+		valdatAll = pd.concat(valdatList, axis = 0)
 
 		# Get hmi data for the element ids whose measurements are being validated
 		nelids = len(hmi_elids)
@@ -631,42 +644,43 @@ class cr2c_validation:
 			end_dt_str = end_dt_str
 		)
 
-		# If instrument is measuring absolute pressure, replace with inches of head (to compare to field measurements)
-		
-		for ind, valtype in enumerate(valtypes):
-
-			if valtype == 'PRESSURE':
-
-				elid = hmi_elids[ind]
-				# Ideally would have a barometer logging data, this is a huge source of validation error
-				hmidat.loc[:,elid] = (hmidat[elid] - 14.7)*27.7076
-
 		# Merge the hmi data with the validation data
-		valdatMerged = hmidat.merge(valdat, on = 'Time', how = 'inner')
+		valdatMerged = hmidat.merge(valdatAll, on = 'Time', how = 'inner')
+		# Merge all values on a day (since we are validating on a -10 to +10 minute window)
+		valdatMerged.loc[:,'Date'] = valdatMerged['Time'].dt.date
+		# Take average of time Window
+		valdatMerged = valdatMerged.groupby('Date').mean()
+		valdatMerged.reset_index(inplace = True)
+		valdatMerged.loc[:,'Date'] = pd.to_datetime(valdatMerged['Date'])
 
 		# Loop through each instrument to compute error and output plots 
 		# IF evidence of a significant difference between validated vs hmi or if instrument drift over time
-		for elid in hmi_elids:
+		for elInd, elid in enumerate(hmi_elids):
+			if valtypes[elInd] == 'PRESSURE':
+				# Convert barometric pressure readings to psi
+				valdatMerged.loc[:,'Barometer_Pressure_mmHg'] = valdatMerged['Barometer_Pressure_mmHg']*0.0193368
+				# Convert pressure to inches of head
+				valdatMerged.loc[:,elid] = (valdatMerged[elid] - valdatMerged['Barometer_Pressure_mmHg'])*27.7076
 
 			# Compute the percentage error (HMI measurement vs validation)
 			valdatMerged.loc[:,'error'] = (valdatMerged[elid] - valdatMerged[elid + 'VAL'])/valdatMerged[elid + 'VAL']
 			
 			# Subset to the element of interest
-			valdatSub = valdatMerged.loc[:,['Time', elid, elid + 'VAL','error']]
+			valdatSub = valdatMerged.loc[:,['Date', elid, elid + 'VAL','error']]
 			valdatSub.replace([np.inf, -np.inf], np.nan, inplace = True)
 			valdatSub.dropna(inplace = True)
 
 			# Only continue if there are observations (sometimes there arent...)
 			if valdatSub.size > 0:
 				# Convert time to numeric variable
-				valX = pd.to_numeric(valdatSub.loc[:,'Time'])/(10**9*3600*24)
+				valX = pd.to_numeric(valdatSub.loc[:,'Date'])/(10**9*3600*24)
 				# Perform 2-sample t-test for difference in means
 				tStatMeans, pvalMeans = stats.ttest_ind(valdatSub[elid].values,valdatSub[elid + 'VAL'].values)
 				# Regress error on time (to test for drift), divide by 10**9*3600*24 so coefficients are in terms of days
 				slope, intercept, Rsq, pValTrend, stdErr = stats.linregress(valX, valdatSub['error'].values)
 				
 				# If drift is significant at the 10% level, or if means are significantly different, produce a plot with a warning
-				if pValTrend  or pvalMeans:
+				if pValTrend < 0.1  or pvalMeans < 0.1:
 					fig, ax = plt.subplots(1,1)
 					gs1 = gridspec.GridSpec(1, 1)
 					fig.subplots_adjust(top = 0.90, right = 0.7)
@@ -676,7 +690,7 @@ class cr2c_validation:
 						fontsize = 12,
 						y = 0.99
 					)
-					dates = [pd.to_datetime(date) for date in valdatSub['Time'].dt.date.values]
+					dates = [pd.to_datetime(date) for date in valdatSub['Date'].dt.date.values]
 					measure = ax.scatter(dates,valdatSub[elid], marker = 'o')
 					validated = ax.scatter(dates,valdatSub[elid + 'VAL'], color = 'r', marker = 'o')
 					ax.text(
@@ -693,7 +707,12 @@ class cr2c_validation:
 					)
 					plt.xlim(min(dates) - timedelta(days = 1),max(dates) + timedelta(days = 1))
 					plt.xticks(rotation = 45)
-					lgd = ax.legend(('HMI Value','Validated Measure'))
+					lgd = ax.legend(
+						('HMI Value','Validated Measure'),
+						loc= 'center left',
+						bbox_to_anchor = (0.75, 0.90), 
+						fancybox=True
+					)
 					plt.tight_layout()
 
 					# Output plot to directory of choice
@@ -720,14 +739,15 @@ class cr2c_validation:
 # 	# run_hmi_report = True,
 # 	# hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/HMI Data/Reactor Feeding - Raw_20180516121705.csv'
 # )
-# val.instr_val(
-# 	valtypes = ['DPI','DPI','PRESSURE','PRESSURE'],
-# 	start_dt_str = '4-15-18',
-# 	end_dt_str = '5-15-18',
-# 	hmi_elids = ['DPIT300','DPIT301','PIT700','PIT704'],
-# 	fld_varnames = [('Before Pump: R300','After Pump: R300'),('Before Pump: R301','After Pump: R301'),'Manometer Pressure: R300','Manometer Pressure: R301'],
-# 	# run_hmi_report = True,
-# 	# hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/HMI Data/Reactor Feeding - Raw_20180516121705.csv'
-# )
+# # val.instr_val(
+# # 	valtypes = ['DPI','DPI','PRESSURE','PRESSURE'],
+# # 	start_dt_str = '4-15-18',
+# # 	end_dt_str = '5-15-18',
+# # 	hmi_elids = ['DPIT300','DPIT301','PIT700','PIT704'],
+# # 	fld_varnames = [('Before Pump: R300','After Pump: R300'),('Before Pump: R301','After Pump: R301'),'Manometer Pressure: R300','Manometer Pressure: R301'],
+# # 	# run_hmi_report = True,
+# # 	# hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/HMI Data/Reactor Feeding - Raw_20180516121705.csv'
+# # )
+
 
 
