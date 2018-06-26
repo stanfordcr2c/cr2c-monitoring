@@ -222,7 +222,7 @@ class labrun:
 			CSNos = [str(el + 1) for el in list(range(24))]
 			# Correct stage abbreviations
 			correct_stages = \
-				['BLANK','STD','LW','RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF'] 
+				['BLANK','STD','LW','RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF','MESH'] 
 			# Add stages particular to a composite sampler
 			correct_stages_all = \
 				correct_stages +\
