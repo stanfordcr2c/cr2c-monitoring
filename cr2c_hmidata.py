@@ -7,7 +7,6 @@
 
 from __future__ import print_function
 import matplotlib
-matplotlib.use("TkAgg",force=True)
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
 import matplotlib.dates as dates
@@ -24,8 +23,6 @@ import cr2c_utils as cut
 import os
 from os.path import expanduser
 import sys
-from tkinter.filedialog import askopenfilename
-from tkinter.filedialog import askdirectory
 
 
 def get_data(
@@ -184,7 +181,7 @@ class hmi_data_agg:
 			hmi_path = askopenfilename(title = tkTitle)
 			self.hmi_dir = os.path.dirname(hmi_path)
 		try:
-			self.hmi_data_all = pd.read_csv(hmi_path)
+			self.hmi_data_all = pd.read_csv(hmi_path, low_memory = False)
 		except FileNotFoundError:
 			print('Please choose an existing input file with the HMI data')
 			sys.exit()
@@ -197,7 +194,7 @@ class hmi_data_agg:
 			lo_limit = 0.2
 		elif stype == 'GAS':
 			hi_limit = 10
-			lo_limit = 0.005
+			lo_limit = 0.005	
 		elif stype == 'PH':
 			hi_limit = 10
 			lo_limit = 4
@@ -213,6 +210,9 @@ class hmi_data_agg:
 		elif stype == 'DPI':
 			hi_limit = 40
 			lo_limit = -40
+		elif stype == 'LEVEL':
+			hi_limit = 100
+			lo_limit = 0
 
 		# Load variables and set output variable names
 		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
@@ -223,10 +223,11 @@ class hmi_data_agg:
 		self.hmi_data['Value'] = \
 			self.hmi_data[varname.format(elid,'Value', qtype)]
 		# Set low/negative values to 0 (if a flow, otherwise remove) and remove unreasonably high values
-		if stype in ['GAS','WATER']:
+		if stype in ['GAS','WATER','LEVEL']:
 			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = 0
 		else:
 			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = np.NaN
+
 		self.hmi_data.loc[self.hmi_data['Value'] > hi_limit, 'Value'] = np.NaN
 
 		# Rename and format corresponding timestamp variable
@@ -265,9 +266,12 @@ class hmi_data_agg:
 			self.start_dt = start_dt_warn
 			self.end_dt = end_dt_warn
 
+		return self.hmi_data
+
 
 	def get_tot_var(
 		self,
+		hmi_data,
 		tperiod,
 		ttype,
 		elid
@@ -279,10 +283,10 @@ class hmi_data_agg:
 			self.end_dt + datetime.timedelta(days = 2),
 			np.timedelta64(1,'m')
 		)
-		empty_df = pd.DataFrame(ts_array, columns = ['Time'])
+		empty_df = pd.dataFrame(ts_array, columns = ['Time'])
 
 		# Merge this with the HMI data and fill in NaNs by interpolating
-		hmi_data_all = self.hmi_data.merge(empty_df, on = 'Time', how = 'outer')
+		hmi_data_all = hmi_data.merge(empty_df, on = 'Time', how = 'outer')
 		# Sort the dataset by Time (important for TimeEL below)
 		hmi_data_all.sort_values('Time', inplace = True)
 
@@ -352,7 +356,7 @@ class hmi_data_agg:
 			# Get prepped data
 			self.prep_data(elid, stype)
 			# Get totalized values
-			tots_res = self.get_tot_var(tperiod, ttype, elid)
+			tots_res = self.get_tot_var(self.hmi_data, tperiod, ttype, elid)
 			# Get month integer allows data partitioning
 			tots_res['Month'] = tots_res['Time'].dt.month
 			# Get years for which report is run 
