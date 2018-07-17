@@ -6,12 +6,15 @@
 '''
 
 from __future__ import print_function
+
+# Plotting
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
 import matplotlib.dates as dates
 import seaborn as sns
-import pylab as pl
+
+# Data Prep
 import numpy as np
 import pandas as pd
 import datetime as datetime
@@ -19,10 +22,16 @@ from datetime import datetime as dt
 from datetime import timedelta
 from pandas import read_excel
 import sqlite3
-import cr2c_utils as cut
+
+# Utilities
 import os
 from os.path import expanduser
 import sys
+import traceback as tb
+import warnings as wn
+
+# CR2C
+import cr2c_utils as cut
 
 
 def get_data(
@@ -119,7 +128,7 @@ def get_data(
 	return hmi_data_all
 
 # Function to eliminate misaligned time readings from dataset (can happen from bugs in pandas + timedelta)
-def clean_data(elids, tperiods, ttypes, year):
+def clean_sql_data(elids, tperiods, ttypes, year):
 
 	# Clean user inputs
 	ttypes = [ttype.upper() for ttype in ttypes]
@@ -166,28 +175,28 @@ def clean_data(elids, tperiods, ttypes, year):
 # Primary HMI data aggregation class
 class hmi_data_agg:
 
-	def __init__(self, start_dt_str, end_dt_str, hmi_path = None):
+	def __init__(self, start_dt_str, end_dt_str, hmi_path):
 
 		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
-		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
+		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y') + timedelta(days = 1)
 		self.data_dir = cut.get_dirs()[0]
+		self.hmi_path = hmi_path
 
-		# Select input data file and load data for run
-		if hmi_path:
-			self.hmi_dir = os.path.dirname(hmi_path)
-		else:
-			tkTitle = 'Select HMI data input file...'
-			print(tkTitle)
-			hmi_path = askopenfilename(title = tkTitle)
-			self.hmi_dir = os.path.dirname(hmi_path)
+
+	def prep_hmi_data(self, elid, stype):
+
+		# This is the type of query (unlikely to change)
+		qtype = 'RAW'
+
+		# Read in raw HMI data
 		try:
-			self.hmi_data_all = pd.read_csv(hmi_path, low_memory = False)
-		except FileNotFoundError:
-			print('Please choose an existing input file with the HMI data')
+			self.hmi_data = pd.read_csv(self.hmi_path, low_memory = False)
+		except Exception as e:
+			print('\nThere was an error reading in the HMI data:\n')
+			tb.print_exc(file = sys.stdout)
+			tb.print_exc(limit = 1, file = sys.stdout)
 			sys.exit()
-
-	def prep_data(self, elid, stype):
-
+		
 		# Set high and low limits for sensors based on type (water, gas, ph, conductivity, temp)
 		if stype == 'WATER':
 			hi_limit = 200
@@ -213,15 +222,13 @@ class hmi_data_agg:
 		elif stype == 'LEVEL':
 			hi_limit = 100
 			lo_limit = 0
-
+			
 		# Load variables and set output variable names
 		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
-
-		# Rename variable
-		qtype = 'RAW'
-		self.hmi_data = self.hmi_data_all
-		self.hmi_data['Value'] = \
+		# Rename value variable
+		self.hmi_data.loc[:,'Value'] = \
 			self.hmi_data[varname.format(elid,'Value', qtype)]
+
 		# Set low/negative values to 0 (if a flow, otherwise remove) and remove unreasonably high values
 		if stype in ['GAS','WATER','LEVEL']:
 			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = 0
@@ -231,45 +238,45 @@ class hmi_data_agg:
 		self.hmi_data.loc[self.hmi_data['Value'] > hi_limit, 'Value'] = np.NaN
 
 		# Rename and format corresponding timestamp variable
-		self.hmi_data['Time' ] = \
+		self.hmi_data.loc[:,'Time' ] = \
 			self.hmi_data[varname.format(elid, 'Time', qtype)]
-		# Set as datetime variable at second resolution (uses less memory than nanosecond!)
-		self.hmi_data['Time' ] = \
-			pd.to_datetime(self.hmi_data['Time']).values.astype('datetime64[s]')
-
-		# Filter dataset to clean values, time period and variable selected
-		self.hmi_data = self.hmi_data.loc[
-			(self.hmi_data['Time'] >= self.start_dt - datetime.timedelta(days = 1)) &
-			(self.hmi_data['Time'] < self.end_dt + datetime.timedelta(days = 2))
-			,
-			['Time', 'Value']
-		]
+		# Subset to "Time" and "Value" variables
+		self.hmi_data = self.hmi_data.loc[:,['Time','Value']]
 		# Eliminate missing values and reset index
 		self.hmi_data.dropna(axis = 0, how = 'any', inplace = True)
-		self.hmi_data.reset_index(inplace = True)
 
-		# Get the first and last time
-		self.first_ts = self.hmi_data.loc[0,'Time']
-		self.last_ts  = self.hmi_data['Time'][len(self.hmi_data) - 1]
+		# Set Time as datetime variable at second resolution (uses less memory than nanosecond!)
+		self.hmi_data.loc[:,'Time' ] = \
+			pd.to_datetime(self.hmi_data['Time']).values.astype('datetime64[s]')
+		# Create datetime index
+		self.hmi_data.set_index(pd.DatetimeIndex(self.hmi_data['Time']), inplace = True)
+		# Remove Time variable from dataset
+		self.hmi_data.drop('Time', axis = 1, inplace = True)
+		# Get first and last available time stamps in index
+		self.first_ts, self.last_ts = self.hmi_data.index[0], self.hmi_data.index[-1]
 
 		# Check to make sure that the totals/averages do not include the first
 		# and last days for which data are available (just to ensure accuracy)
 		if self.first_ts >= self.start_dt or self.last_ts <= self.end_dt:
-			start_dt_warn = self.first_ts + np.timedelta64(1,'D')
-			end_dt_warn   =  self.last_ts - np.timedelta64(1,'D')
-			start_dt_warn_str = dt.strftime(start_dt_warn, '%m-%d-%y')
-			end_dt_warn_str = dt.strftime(end_dt_warn, '%m-%d-%y')
-			warn_msg = \
+
+			# Set dates for warning message (set to 0:00 of the given day)
+			self.start_dt_warn = self.first_ts + timedelta(days = 1)
+			self.start_dt_warn = datetime.datetime(self.start_dt_warn.year, self.start_dt_warn.month, self.start_dt_warn.day)
+			self.end_dt_warn   = self.last_ts - timedelta(days = 1)
+
+			# Issue warning
+			msg = \
 				'Given the range of data available for {0}, accurate aggregate values can only be obtained for: {1} to {2}'
-			print(warn_msg.format(elid, start_dt_warn_str, end_dt_warn_str))
+			wn.warn(msg.format(elid, dt.strftime(self.start_dt_warn, '%m-%d-%y'), dt.strftime(self.end_dt_warn, '%m-%d-%y')))
 			# Change start_dt and end_dt of system to avoid overwriting sql file with empty data
-			self.start_dt = start_dt_warn
-			self.end_dt = end_dt_warn
+			self.start_dt = datetime.datetime(self.first_ts.year, self.first_ts.month, self.first_ts.day) + timedelta(days = 1)
+			# Need to set the self.end_dt to midnight of the NEXT day
+			self.end_dt = datetime.datetime(self.last_ts.year, self.last_ts.month, self.last_ts.day) 
 
 		return self.hmi_data
 
 
-	def get_tot_var(
+	def get_average(
 		self,
 		hmi_data,
 		tperiod,
@@ -279,56 +286,47 @@ class hmi_data_agg:
 
 		# Get minute-level dataframe of timesteps for the time period requested
 		ts_array = np.arange(
-			self.start_dt - datetime.timedelta(days = 1),
-			self.end_dt + datetime.timedelta(days = 2),
+			self.start_dt,
+			self.end_dt,
 			np.timedelta64(1,'m')
 		)
-		empty_df = pd.dataFrame(ts_array, columns = ['Time'])
-
+		empty_df = pd.DataFrame(ts_array, columns = ['Time'])
+		empty_df.set_index(pd.DatetimeIndex(ts_array), inplace = True)
 		# Merge this with the HMI data and fill in NaNs by interpolating
-		hmi_data_all = hmi_data.merge(empty_df, on = 'Time', how = 'outer')
-		# Sort the dataset by Time (important for TimeEL below)
-		hmi_data_all.sort_values('Time', inplace = True)
-
-		# ... need to set Time as an index to do this
-		hmi_data_all.set_index('Time')
-		hmi_data_all['Value'] = hmi_data_all['Value'].interpolate()
-		# ... reset index so we can work with Time in a normal way again
-		hmi_data_all.reset_index(inplace = True)
-
-		# Get the time elapsed between adjacent Values (dividing by np.timedelta64 converts to floating number)
+		hmi_data_all = hmi_data.merge(empty_df, how = 'outer', left_index = True, right_index = True)
+		hmi_data_all.loc[:,'Value'] = hmi_data_all['Value'].interpolate()	
+		# Create time variable from index values
+		hmi_data_all.loc[:,'Time'] = hmi_data_all.index.values
+		# Get the time elapsed between adjacent Values (in minutes, dividing by np.timedelta64 converts to floating number)
 		hmi_data_all['TimeEl'] = (hmi_data_all['Time'].shift(-1) - hmi_data_all['Time'])/np.timedelta64(1,'m')
-		# Compute the area under the curve for each timestep (relative to the next time step)
-		hmi_data_all['TotValue'] = hmi_data_all['Value']*hmi_data_all['TimeEl']
+		# Subset to the time period desired (AFTER interpolating and computing the TimeEl variable)
+		hmi_data_all = hmi_data_all.loc[self.start_dt:self.end_dt]
 
 		# Get the timedelta/datetime64 string from the ttype input argument (either 'h' or 'm')
 		ttype_d = ttype[0].lower()
-
 		# Calculate the "Time Category" variable which indicates the time range for the observation
 		hmi_data_all['TimeCat'] = \
 			np.floor(
 				(hmi_data_all['Time'] - self.start_dt)/\
 				np.timedelta64(tperiod, ttype_d)
 			)
-
-		# Group by time range and sum the TotValue variable!
-		tots_res = hmi_data_all.groupby('TimeCat').sum()
+		# Group by time range and compute a weighted average with "TimeEl" as the weight
+		tots_res = \
+			hmi_data_all.groupby('TimeCat').\
+			apply(lambda x: np.average(x.Value, weights = x.TimeEl))
+		tots_res = pd.DataFrame(tots_res, columns = ['Value'])
 		tots_res.reset_index(inplace = True)
 
 		# Retrieve the timestep from the TimeCat Variable
 		tots_res['TimeCat'] = pd.to_timedelta(tots_res['TimeCat']*tperiod, ttype_d)
 		tots_res['Time'] = self.start_dt + tots_res['TimeCat']
-		# Get average value for the time period (want to correct for whether the tperiod is 1 minute vs 1 hour (i.e. 60 minutes))
-		tperiod_hrs = tperiod
-		if ttype == 'MINUTE':
-			tperiod_hrs = tperiod/60
-		tots_res['Value'] = tots_res['TotValue']/(tperiod_hrs*60)
-
 		# Set data to minute-level resolution (bug in datetime or pandas can offset start_dt + TimeCat by a couple seconds)
 		tots_res['Time'] = tots_res['Time'].values.astype('datetime64[m]')
+		# Subset to Time, Value and time range for which reliable aggregated values can be obtained
+		tots_res = tots_res.loc[:,['Time','Value']]
 
 		# Output
-		return tots_res[['Time','Value']]
+		return tots_res
 
 
 	def run_report(
@@ -346,25 +344,22 @@ class hmi_data_agg:
 		os.chdir(self.data_dir)
 
 		# Clean inputs
-		ttypes = [ttype.upper() for ttype in ttypes]
-		stypes = [stype.upper() for stype in stypes]
+		ttypes, stypes = [ttype.upper() for ttype in ttypes], [stype.upper() for stype in stypes]
 
 		for tperiod, ttype, elid, stype in zip(tperiods, ttypes, elids, stypes):
 
 			print('Getting aggregated data for {0} ({1}{2})...'.format(elid, tperiod, ttype))
 
 			# Get prepped data
-			self.prep_data(elid, stype)
+			self.prep_hmi_data(elid, stype)
 			# Get totalized values
-			tots_res = self.get_tot_var(self.hmi_data, tperiod, ttype, elid)
+			tots_res = self.get_average(self.hmi_data, tperiod, ttype, elid)
 			# Get month integer allows data partitioning
-			tots_res['Month'] = tots_res['Time'].dt.month
-			# Get years for which report is run 
-			# (only matters if the time period is spread over more than one calendar year)
-			years = np.unique(tots_res['Time'].dt.year.values)
-
+			tots_res.loc[:,'Month'] = tots_res['Time'].dt.month
+			# Create key from "Time" variable to use when updating/inserting entry into sql table
+			tots_res.loc[:,'Tkey'] = tots_res['Time']
 			# Reorder columns
-			tots_res = tots_res[['Time','Month','Value']]
+			tots_res = tots_res[['Tkey','Time','Month','Value']]
 
 			# Output data as desired
 			if output_sql:
@@ -377,34 +372,19 @@ class hmi_data_agg:
 					INSERT OR REPLACE INTO {0}_{1}{2}_AVERAGES (Tkey, Time, Month, Value)
 					VALUES (?,?,?,?)
 				""".format(elid, tperiod, ttype)
-
-
-				# Output data to sql database pertaining to its year
-				for year in years:
-
-					# Set connection to SQL database (pertaining to given year)
-					conn = sqlite3.connect('cr2c_hmi_agg_data_{0}.db'.format(year))
-
-					# Subset the data to its year
-					tots_res_yr = tots_res.loc[tots_res['Time'].dt.year == year,:]
-
-					# Create key from "Time" variable to use when updating/inserting entry into sql table
-					tots_res_yr['Tkey'] = tots_res_yr['Time']
-					tots_res_yr = tots_res_yr[['Tkey','Time','Month','Value']]
-
-					# Load data to SQL
-					# Create the table if it doesn't exist
-					conn.execute(create_str)
-
-					# Insert aggregated values for the elid and time period
-					conn.executemany(
-						ins_str,
-						tots_res_yr.to_records(index = False).tolist()
-					)
-					conn.commit()
-
-					# Close Connection
-					conn.close()
+				# Set connection to SQL database (pertaining to given year)
+				conn = sqlite3.connect('cr2c_hmi_agg_data.db')
+				# Load data to SQL
+				# Create the table if it doesn't exist
+				conn.execute(create_str)
+				# Insert aggregated values for the elid and time period
+				conn.executemany(
+					ins_str,
+					tots_res_yr.to_records(index = False).tolist()
+				)
+				conn.commit()
+				# Close Connection
+				conn.close()
 
 			if output_csv:
 				if not outdir:
@@ -759,6 +739,3 @@ class hmi_data_agg:
 			height = 80
 		)
 		plt.close()
-
-
-
