@@ -359,7 +359,7 @@ class hmi_data_agg:
 			# Create key from "Time" variable to use when updating/inserting entry into sql table
 			tots_res.loc[:,'Tkey'] = tots_res['Time']
 			# Reorder columns
-			tots_res = tots_res[['Tkey','Time','Month','Value']]
+			tots_res = tots_res[['Tkey','Time','Month','Value']].copy()
 
 			# Output data as desired
 			if output_sql:
@@ -380,7 +380,7 @@ class hmi_data_agg:
 				# Insert aggregated values for the elid and time period
 				conn.executemany(
 					ins_str,
-					tots_res_yr.to_records(index = False).tolist()
+					tots_res.to_records(index = False).tolist()
 				)
 				conn.commit()
 				# Close Connection
