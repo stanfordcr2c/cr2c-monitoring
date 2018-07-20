@@ -4,12 +4,15 @@
 '''
 
 from __future__ import print_function
+
+# Plotting
 import matplotlib
 import matplotlib.gridspec as gridspec
-matplotlib.use("TkAgg",force=True) 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
 import matplotlib.dates as dates
+
+# Data Prep
 import pylab as pl
 import numpy as np
 import scipy as sp
@@ -19,15 +22,15 @@ import datetime as datetime
 from datetime import timedelta
 from datetime import datetime as dt
 from pandas import read_excel
+from scipy import stats 
+import math
+
+# Utilities
 import os
 import sys
-import math
 import functools
-from tkinter.filedialog import askopenfilename
-from tkinter.filedialog import asksaveasfilename
-from tkinter.filedialog import askdirectory
-from scipy import stats 
 
+# CR2C
 import cr2c_labdata as pld
 import cr2c_hmidata as hmi
 import cr2c_fielddata as fld
