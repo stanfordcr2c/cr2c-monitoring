@@ -3,20 +3,23 @@
 '''
 
 from __future__ import print_function
+
+# Data Prep
 import numpy as np
 import pandas as pd
 import sqlite3
 from datetime import datetime as dt
 from datetime import timedelta
 
+# Utilities
 import warnings
 import os
 from os.path import expanduser
 import sys
 import re
-import cr2c_utils as cut
 
-from tkinter.filedialog import askdirectory
+# CR2C
+import cr2c_utils as cut
 
 def rmChars(targChars,replCar,string):
 	for char in targChars:

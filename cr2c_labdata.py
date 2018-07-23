@@ -5,28 +5,32 @@
 '''
 
 from __future__ import print_function
-import matplotlib
-matplotlib.use("TkAgg",force=True) 
 
+# Plotting
+import matplotlib
+import seaborn as sns
+import matplotlib.pyplot as plt
+import matplotlib.ticker as tkr
+import matplotlib.dates as dates
+
+# Data Prep
 import numpy as np
 import pandas as pd
-import functools
 import sqlite3
 from datetime import datetime as dt
 from datetime import timedelta
 
+# Utilities
+import functools
 import warnings
 import os
 from os.path import expanduser
 import sys
+
+# CR2C
 import cr2c_utils as cut
 
 
-import seaborn as sns
-from tkinter.filedialog import askdirectory
-import matplotlib.pyplot as plt
-import matplotlib.ticker as tkr
-import matplotlib.dates as dates
 
 # Queries Lab Data SQL File 
 def get_data(ltypes, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None):
