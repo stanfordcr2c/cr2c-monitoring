@@ -4,7 +4,7 @@
 	and loads the data to an SQL database (no inputs required)
 '''
 
-from __future__ import print_function
+# from __future__ import print_function
 
 # Plotting
 import matplotlib
@@ -29,8 +29,6 @@ import sys
 
 # CR2C
 import cr2c_utils as cut
-
-
 
 # Queries Lab Data SQL File 
 def get_data(ltypes, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None):
@@ -67,7 +65,7 @@ def get_data(ltypes, start_dt_str = None, end_dt_str = None, output_csv = False,
 		# Dedupe data (some issue with duplicates)
 		ldata_long.drop_duplicates(inplace = True)
 		# Convert Date_Time variable to a pd datetime and eliminate missing values
-		ldata_long['Date_Time'] = pd.to_datetime(ldata_long['Date_Time'])
+		ldata_long.loc[:,'Date_Time'] = pd.to_datetime(ldata_long['Date_Time'])
 		ldata_long.dropna(subset = ['Date_Time'], inplace = True)
 		# Filter to desired dates
 		ldata_long.drop('DKey', axis = 1, inplace = True)
@@ -152,7 +150,7 @@ class labrun:
 		self.ldata.reset_index(drop = True, inplace = True)
 		
 		# Sort the dataset
-		self.ldata.sort_values(id_vars)
+		self.ldata.sort_values(id_vars, inplace = True)
 
 		# Create a list of observation ids (counting from 0)
 		obs_ids = [0]
@@ -182,9 +180,9 @@ class labrun:
 		)
 		try:
 			if variable == 'Date':
-				self.ldata['Date'] = pd.to_datetime(self.ldata['Date'], format = '%m-%d-%y')
+				self.ldata.loc[:,'Date'] = pd.to_datetime(self.ldata['Date'], format = '%m-%d-%y')
 			else:
-				self.ldata[variable] = self.ldata[variable].astype(format)
+				self.ldata.loc[:,variable] = self.ldata[variable].astype(format)
 		except TypeError:
 			print(var_typ_warn.format(variable, ltype, format_prt))
 			sys.exit()
@@ -217,9 +215,9 @@ class labrun:
 		# Format and clean stage variable
 		if ltype != 'GasComp':
 
-			self.ldata['Stage'] = self.ldata['Stage'].astype(str)
-			self.ldata['Stage'] = self.ldata['Stage'].str.upper()
-			self.ldata['Stage'] = self.ldata['Stage'].str.strip()
+			self.ldata.loc[:,'Stage'] = self.ldata['Stage'].astype(str)
+			self.ldata.loc[:,'Stage'] = self.ldata['Stage'].str.upper()
+			self.ldata.loc[:,'Stage'] = self.ldata['Stage'].str.strip()
 
 			# Check that the stage variable has been entered correctly
 			# Number of composite samplers on site
@@ -251,16 +249,16 @@ class labrun:
 		# Format and clean other variables
 		if ltype == 'COD':
 
-			self.ldata['Type'] = self.ldata['Type'].astype(str)
-			self.ldata['Type'] = self.ldata['Type'].str.upper()
-			self.ldata['Type'] = self.ldata['Type'].str.strip()
+			self.ldata.loc[:,'Type'] = self.ldata['Type'].astype(str)
+			self.ldata.loc[:,'Type'] = self.ldata['Type'].str.upper()
+			self.ldata.loc[:,'Type'] = self.ldata['Type'].str.strip()
 			# Check that the type variable has been entered correctly
 			correct_types = ['TOTAL','SOLUBLE']
 			type_warning = \
 				'Check "Type" entry {0} for {1} on dates: {2}. \n' +\
 				'"Type" should be written as on of the following: \n {3}'
-			ldata_mod = self.ldata.reset_index(inplace = False)
-			type_errors = ldata_mod[ ~ ldata_mod['Type'].isin(correct_types)]
+			ldata_mod = self.ldata.reset_index(inplace = False).copy()
+			type_errors = ldata_mod.loc[ ~ ldata_mod['Type'].isin(correct_types),:]
 			if len(type_errors) > 0:
 				date_err_prt = \
 				[dt.strftime(type_error,'%m-%d-%y') for type_error in type_errors.Date]
@@ -332,7 +330,7 @@ class labrun:
 		# Add Type to "variable" variable if BOD (OD days, specifically)
 		if ltype == 'BOD':
 			df_long.reset_index(inplace = True)
-			df_long['variable'] = df_long['Type'] + ': ' + df_long['variable']
+			df_long.loc[:,'variable'] = df_long['Type'] + ': ' + df_long['variable']
 		# Reorder columns
 		col_order = ['Date_Time','Stage','variable','units','obs_id','value']
 		varnames = ['Date_Time','Stage','Type','units','obs_id','Value']
@@ -369,18 +367,18 @@ class labrun:
 			if ltype == 'PH':
 				self.ldata[ltype] = self.ldata['Reading']
 				# Get time of sample collection from PH dataset and add to date variable to get single Date + Time variable
-				self.ldata['Date_str'] = self.ldata['Date'].dt.strftime('%m-%d-%y')
-				self.ldata['Date-Time_str'] = self.ldata.Date_str.str.cat(self.ldata['Time'], sep = ' ')
-				self.ldata['Date_Time'] = pd.to_datetime(self.ldata['Date-Time_str'])
-				self.ldata['units'] = '-'
-				ldata_dt = self.ldata[['Date','Date_Time']]
+				self.ldata.loc[:,'Date_str'] = self.ldata['Date'].dt.strftime('%m-%d-%y')
+				self.ldata.loc[:,'Date-Time_str'] = self.ldata.Date_str.str.cat(self.ldata['Time'], sep = ' ')
+				self.ldata.loc[:,'Date_Time'] = pd.to_datetime(self.ldata['Date-Time_str'])
+				self.ldata.loc[:,'units'] = '-'
+				ldata_dt = self.ldata.loc[:,['Date','Date_Time']].copy()
 				ldata_dt.drop_duplicates(inplace = True)
 
 			# ======================================= COD ======================================= #
 			if ltype == 'COD':
 
 				# Get actual cod measurement (after correcting for dilution factor)
-				self.ldata['act_reading'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
+				self.ldata.loc[:,'act_reading'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
 				# Recast data
 				# Need to dedupe again due to what seems like a bug in pandas code
 				self.ldata.drop_duplicates(subset = ['Date','Stage','obs_id','Type'], inplace = True)
@@ -394,8 +392,8 @@ class labrun:
 				value_vars = ['Soluble','Total','Particulate']
 				self.ldata = ldata_wide[value_vars]
 				self.ldata.reset_index(inplace = True)
-				self.ldata['units'] = 'mg/L'	
-				self.ldata.columns = ['Date','Stage','obs_id'] + value_vars + ['units']
+				self.ldata.loc[:,'units'] = 'mg/L'	
+				self.ldata = self.ldata.loc[:,['Date','Stage','obs_id'] + value_vars + ['units']].copy()
 
 			if ltype == 'BOD':
 
@@ -437,7 +435,7 @@ class labrun:
 				# Merge back onto the original data
 				blank_od = blank_od.merge(outlying_ids, on = 'Date', how = 'outer')
 				# Filter out outlying values!
-				blank_od['keep'] = blank_od.apply(lambda row: str(row['obs_id']) not in str(row['outlying_id']), axis = 1)
+				blank_od.loc[:,'keep'] = blank_od.apply(lambda row: str(row['obs_id']) not in str(row['outlying_id']), axis = 1)
 				blank_od_means = blank_od.loc[blank_od['keep'],['Date','Blank OD']].groupby('Date').mean()
 				blank_od_means.columns = ['Blank OD']
 				blank_od_means.reset_index(inplace = True)
@@ -469,12 +467,12 @@ class labrun:
 				self.ldata = self.ldata.merge(BODSDs, on = ['Date','Stage','variable'], how = 'outer')
 
 
-				self.ldata['Type'] = self.ldata['variable']
-				self.ldata['Value'] = self.ldata['value_x']
-				self.ldata['Min Value'] = self.ldata['Value'] - 1.96*self.ldata['value_y']
-				self.ldata['Max Value'] = self.ldata['Value'] + 1.96*self.ldata['value_y']
-				self.ldata['units'] = 'mg/L'
-				self.ldata = self.ldata.loc[:,['Date','Stage','Type','Value','Min Value','Max Value','units']]
+				self.ldata.loc[:,'Type'] = self.ldata['variable']
+				self.ldata.loc[:,'Value'] = self.ldata['value_x']
+				self.ldata.loc[:,'Min Value'] = self.ldata['Value'] - 1.96*self.ldata['value_y']
+				self.ldata.loc[:,'Max Value'] = self.ldata['Value'] + 1.96*self.ldata['value_y']
+				self.ldata.loc[:,'units'] = 'mg/L'
+				self.ldata = self.ldata[['Date','Stage','Type','Value','Min Value','Max Value','units']]
 
 				id_vars = ['Date_Time','Stage','obs_id','Type','units']
 				value_vars = ['Value','Min Value','Max Value']
@@ -483,71 +481,71 @@ class labrun:
 			# ======================================= TSS/VSS ======================================= #
 			if ltype == 'TSS_VSS':
 				# Create TSS and VSS variables
-				self.ldata['TSS'] = \
+				self.ldata.loc[:,'TSS'] = \
 					(self.ldata['Temp105 (g)'] - self.ldata['Original (g)'])/\
 					self.ldata['Volume (ml)']*1E6
-				self.ldata['VSS'] = \
+				self.ldata.loc[:,'VSS'] = \
 					self.ldata['TSS'] - \
 					(self.ldata['Temp550 (g)'] - self.ldata['Original (g)'])/\
 					self.ldata['Volume (ml)']*1E6
-				self.ldata['units'] = 'mg/L'
+				self.ldata.loc[:,'units'] = 'mg/L'
 				# Set id and value vars for melting
 				value_vars = ['TSS','VSS']
 
 			# ======================================= ALKALINITY ======================================= #
 			if ltype == 'ALKALINITY':
 				# Compute alkalinity
-				self.ldata['ALKALINITY'] = \
-				self.ldata['Acid Volume (mL, to pH 4.3)']*self.ldata['Acid Normality (N)']/\
-				self.ldata['Sample Volume (mL)']*self.ldata['Dilution Factor']*50*1000
-				self.ldata['units'] = 'mg/L as CaCO3'
+				self.ldata.loc[:,'ALKALINITY'] = \
+				self.ldata.loc[:,'Acid Volume (mL, to pH 4.3)']*self.ldata['Acid Normality (N)']/\
+				self.ldata.loc[:,'Sample Volume (mL)']*self.ldata['Dilution Factor']*50*1000
+				self.ldata.loc[:,'units'] = 'mg/L as CaCO3'
 
 			# ======================================= VFA =============================================== #
 			if ltype == 'VFA':
 				# Compute VFA concentrations
-				self.ldata['Acetate'] = self.ldata['Acetate (mgCOD/L)']*self.ldata['Dilution Factor']
-				self.ldata['Propionate'] = self.ldata['Propionate (mgCOD/L)']*self.ldata['Dilution Factor']
-				self.ldata['units'] = 'mgCOD/L'
+				self.ldata.loc[:,'Acetate'] = self.ldata['Acetate (mgCOD/L)']*self.ldata['Dilution Factor']
+				self.ldata.loc[:,'Propionate'] = self.ldata['Propionate (mgCOD/L)']*self.ldata['Dilution Factor']
+				self.ldata.loc[:,'units'] = 'mgCOD/L'
 				# Set value vars for melting
 				value_vars = ['Acetate','Propionate']
 
 			# ======================================= Ammonia =============================================== #
 			if ltype == 'Ammonia':
 				# Compute Ammonia concentration
-				self.ldata['Ammonia'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
-				self.ldata['units'] = 'mg/L'
+				self.ldata.loc[:,'Ammonia'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
+				self.ldata.loc[:,'units'] = 'mg/L'
 
 			if ltype == 'TKN':
 				# Compute distillation recovery
-				self.ldata['Dist Recovery (%)'] = \
+				self.ldata.loc[:,'Dist Recovery (%)'] = \
 					((self.ldata['NH4Cl Volume (mL)'] - self.ldata['Blank Volume (mL)'])*\
 					14.007*self.ldata['Acid Concentration (N)']*1000)/\
 					(self.ldata['NH4Cl Concentration (mg/L)']*self.ldata['NH4Cl Sample Volume (mL)'])
 				# Compute digestion efficiency
-				self.ldata['Digest Eff (%)'] = \
+				self.ldata.loc[:,'Digest Eff (%)'] = \
 					((self.ldata['Tryptophan Volume (mL)'] - self.ldata['Blank Volume (mL)'])*\
 					14.007*self.ldata['Acid Concentration (N)']*1000)/\
 					(self.ldata['Tryptophan Concentration (mg/L)']*self.ldata['Tryptophan Sample Volume (mL)'])	
 				# Compute corrected TKN value (corrected for distillation recovery and digestion efficiency)
-				self.ldata['TKN'] = \
+				self.ldata.loc[:,'TKN'] = \
 					(((self.ldata['Volume (mL)'] - self.ldata['Blank Volume (mL)'])*\
 					14.007*self.ldata['Acid Concentration (N)']*1000)/\
 					(self.ldata['Sample Volume (mL)']))/\
 					(self.ldata['Dist Recovery (%)']*self.ldata['Digest Eff (%)'])	
 				# Set value vars for melting
-				self.ldata['units'] = 'mgTKN/L'
+				self.ldata.loc[:,'units'] = 'mgTKN/L'
 
 			# ======================================= Sulfate =============================================== #
 			if ltype == 'Sulfate':
 				# Compute Sulfate concentration
-				self.ldata['Sulfate'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
-				self.ldata['units'] = 'mg/L S'
+				self.ldata.loc[:,'Sulfate'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
+				self.ldata.loc[:,'units'] = 'mg/L S'
 
 			# ======================================= GasComp ============================================ #
 			if ltype == 'GasComp':
-				self.ldata['Hel_Pressure'] = self.ldata['Helium pressure (psi) +/- 50 psi']
-				self.ldata['Stage'] = 'NA'
-				self.ldata['units'] = '(see Type)'
+				self.ldata.loc[:,'Hel_Pressure'] = self.ldata['Helium pressure (psi) +/- 50 psi']
+				self.ldata.loc[:,'Stage'] = 'NA'
+				self.ldata.loc[:,'units'] = '(see Type)'
 				# Set value vars for melting
 				value_vars = ['Hel_Pressure (psi)','Nitrogen (%)','Oxygen (%)','Methane (%)','Carbon Dioxide (%)']
 
@@ -596,6 +594,7 @@ class labrun:
 			conn.commit()
 			# Close Connection
 			conn.close()
+
 
 		# Sets the start and end dates for the charts, depending on user input
 	def manage_chart_dates(self, start_dt_str, end_dt_str):
