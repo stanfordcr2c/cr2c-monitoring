@@ -1,20 +1,18 @@
+
+# Data Prep
+import pandas as pd
+
+# Utilities
 import os
 from os.path import expanduser
 import sys
-import pandas as pd
 
+# Google sheets API and dependencies
 import httplib2
 from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
-
-try:
-    import argparse
-    # flags = argparse.ArgumentParser(parents = [tools.argparser]).parse_args()
-except ImportError:
-    flags = None
-
 
 # Manages output directories
 def get_dirs():
@@ -72,6 +70,7 @@ def get_credentials():
 	spreadsheetId = open('spreadsheetId.txt').read()
 
 	if not credentials or credentials.invalid:	
+		flags = 'An unknown error occurred'
 		flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
 		flow.user_agent = APPLICATION_NAME
 		credentials = tools.run_flow(flow, store, flags)

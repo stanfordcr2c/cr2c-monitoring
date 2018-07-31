@@ -4,8 +4,6 @@
 	and loads the data to an SQL database (no inputs required)
 '''
 
-from __future__ import print_function
-
 # Plotting
 import matplotlib
 import seaborn as sns
@@ -82,7 +80,7 @@ def get_data(
 		# Dedupe data (some issue with duplicates)
 		ldata_long.drop_duplicates(inplace = True)
 		# Convert Date_Time variable to a pd datetime and eliminate missing values
-		ldata_long['Date_Time'] = pd.to_datetime(ldata_long['Date_Time'])
+		ldata_long.loc[:,'Date_Time'] = pd.to_datetime(ldata_long['Date_Time'])
 		ldata_long.dropna(subset = ['Date_Time'], inplace = True)
 		# Filter to desired dates
 		ldata_long.drop('DKey', axis = 1, inplace = True)
@@ -100,6 +98,7 @@ def get_data(
 		ldata_all[ltype] = ldata_long
 
 	return ldata_all
+
 
 def get_lab_plots(
 	start_dt_str,
@@ -423,7 +422,7 @@ class labrun:
 		self.ldata.reset_index(drop = True, inplace = True)
 		
 		# Sort the dataset
-		self.ldata.sort_values(id_vars)
+		self.ldata.sort_values(id_vars, inplace = True)
 
 		# Create a list of observation ids (counting from 0)
 		obs_ids = [0]
@@ -530,8 +529,8 @@ class labrun:
 			type_warning = \
 				'Check "Type" entry {0} for {1} on dates: {2}. \n' +\
 				'"Type" should be written as on of the following: \n {3}'
-			ldata_mod = self.ldata.reset_index(inplace = False)
-			type_errors = ldata_mod[ ~ ldata_mod['Type'].isin(correct_types)]
+			ldata_mod = self.ldata.reset_index(inplace = False).copy()
+			type_errors = ldata_mod.loc[ ~ ldata_mod['Type'].isin(correct_types),:]
 			if len(type_errors) > 0:
 				date_err_prt = \
 				[dt.strftime(type_error,'%m-%d-%y') for type_error in type_errors.Date]
@@ -603,7 +602,7 @@ class labrun:
 		# Add Type to "variable" variable if BOD (OD days, specifically)
 		if ltype == 'BOD':
 			df_long.reset_index(inplace = True)
-			df_long['variable'] = df_long['Type'] + ': ' + df_long['variable']
+			df_long.loc[:,'variable'] = df_long['Type'] + ': ' + df_long['variable']
 		# Reorder columns
 		col_order = ['Date_Time','Stage','variable','units','obs_id','value']
 		varnames = ['Date_Time','Stage','Type','units','obs_id','Value']
@@ -644,7 +643,11 @@ class labrun:
 				self.ldata.loc[:,'Date-Time_str'] = self.ldata.Date_str.str.cat(self.ldata['Time'], sep = ' ')
 				self.ldata.loc[:,'Date_Time'] = pd.to_datetime(self.ldata['Date-Time_str'])
 				self.ldata.loc[:,'units'] = '-'
+<<<<<<< HEAD
 				ldata_dt = self.ldata[['Date','Date_Time']].copy()
+=======
+				ldata_dt = self.ldata.loc[:,['Date','Date_Time']].copy()
+>>>>>>> fc23c0d523a9d3f8999f763a9e8bb1d8d53f5f83
 				ldata_dt.drop_duplicates(inplace = True)
 
 			# ======================================= COD ======================================= #
@@ -666,7 +669,11 @@ class labrun:
 				self.ldata = ldata_wide[value_vars].copy()
 				self.ldata.reset_index(inplace = True)
 				self.ldata.loc[:,'units'] = 'mg/L'	
+<<<<<<< HEAD
 				self.ldata.columns = ['Date','Stage','obs_id'] + value_vars + ['units']
+=======
+				self.ldata = self.ldata.loc[:,['Date','Stage','obs_id'] + value_vars + ['units']].copy()
+>>>>>>> fc23c0d523a9d3f8999f763a9e8bb1d8d53f5f83
 
 			if ltype == 'BOD':
 
@@ -745,7 +752,11 @@ class labrun:
 				self.ldata.loc[:,'Min Value'] = self.ldata['Value'] - 1.96*self.ldata['value_y']
 				self.ldata.loc[:,'Max Value'] = self.ldata['Value'] + 1.96*self.ldata['value_y']
 				self.ldata.loc[:,'units'] = 'mg/L'
+<<<<<<< HEAD
 				self.ldata = self.ldata.loc[:,['Date','Stage','Type','Value','Min Value','Max Value','units']].copy()
+=======
+				self.ldata = self.ldata[['Date','Stage','Type','Value','Min Value','Max Value','units']]
+>>>>>>> fc23c0d523a9d3f8999f763a9e8bb1d8d53f5f83
 
 				id_vars = ['Date_Time','Stage','obs_id','Type','units']
 				value_vars = ['Value','Min Value','Max Value']
@@ -769,8 +780,13 @@ class labrun:
 			if ltype == 'ALKALINITY':
 				# Compute alkalinity
 				self.ldata.loc[:,'ALKALINITY'] = \
+<<<<<<< HEAD
 					self.ldata['Acid Volume (mL, to pH 4.3)']*self.ldata['Acid Normality (N)']/\
 					self.ldata['Sample Volume (mL)']*self.ldata['Dilution Factor']*50*1000
+=======
+				self.ldata.loc[:,'Acid Volume (mL, to pH 4.3)']*self.ldata['Acid Normality (N)']/\
+				self.ldata.loc[:,'Sample Volume (mL)']*self.ldata['Dilution Factor']*50*1000
+>>>>>>> fc23c0d523a9d3f8999f763a9e8bb1d8d53f5f83
 				self.ldata.loc[:,'units'] = 'mg/L as CaCO3'
 
 			# ======================================= VFA =============================================== #
@@ -812,7 +828,11 @@ class labrun:
 			if ltype == 'Sulfate':
 				# Compute Sulfate concentration
 				self.ldata.loc[:,'Sulfate'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
+<<<<<<< HEAD
 				self.ldata['units'] = 'mg/L S'
+=======
+				self.ldata.loc[:,'units'] = 'mg/L S'
+>>>>>>> fc23c0d523a9d3f8999f763a9e8bb1d8d53f5f83
 
 			# ======================================= GasComp ============================================ #
 			if ltype == 'GasComp':
@@ -868,6 +888,293 @@ class labrun:
 			# Close Connection
 			conn.close()
 
+<<<<<<< HEAD
+=======
+
+		# Sets the start and end dates for the charts, depending on user input
+	def manage_chart_dates(self, start_dt_str, end_dt_str):
+
+		if start_dt_str == None:
+			start_dt = self.min_feas_dt	
+		else:
+			start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
+		
+		if end_dt_str == None:
+			end_dt = self.file_dt
+		else:
+			end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+
+		return start_dt, end_dt
+	
+
+	def get_lab_plots(
+		self,
+		start_dt_str,
+		end_dt_str,
+		lplot_list,
+		wrap_var,
+		stage_sub = None,
+		type_sub = None,
+		outdir = None,
+		opfile_suff = None
+	):
+
+		if not outdir:
+			# Request tables and charts output directory from user
+			tkTitle = 'Directory to output charts to...'
+			print(tkTitle)
+			outdir = askdirectory(title = tkTitle)
+		try:
+			os.chdir(outdir)
+		except OSError:
+			print('Please choose a valid directory to output the charts to')
+			sys.exit()
+
+		if opfile_suff:
+			opfile_suff = '_' + opfile_suff
+		else:
+			opfile_suff = ''
+
+		# Clean case of lplot_list and wrap var inputs
+		lplot_list = [element.upper() for element in lplot_list]
+		wrap_var = wrap_var[0].upper() + wrap_var[1:].lower()
+
+		# Order of treatment stages in plots
+		stage_order = [
+			'Raw Influent',
+			'Grit Tank',
+			'Microscreen',
+			'AFBR',
+			'Duty AFMBR MLSS',
+			'Duty AFMBR Effluent',
+			'Research AFMBR MLSS',
+			'Research AFMBR Effluent'
+		]	
+
+		# Manage dates given by user
+		start_dt, end_dt = self.manage_chart_dates(start_dt_str, end_dt_str)
+
+		# Loop through the lab data types
+		for ltype in lplot_list:
+
+			if ltype.find('TSS') >= 0 or ltype.find('VSS') >= 0:
+				ltype = 'TSS_VSS'
+
+			if ltype == 'OD':
+				ldata_cod = get_data(['COD'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)['COD']
+				ldata_bod = get_data(['BOD'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)['BOD']
+				ldata_long = ldata_cod.append(ldata_bod)
+			else:
+				ldata_long = get_data([ltype], start_dt_str = start_dt_str, end_dt_str = end_dt_str)[ltype]
+
+			# ID variables for grouping by day 
+			# (for monitoring types that might have multiple observations in a day)
+			id_vars_chrt = ['Date_Time','Stage','Type']
+
+			if ltype == 'COD':
+				# Set plotting variables
+				ylabel = 'COD Reading (mg/L)'
+				type_list = ['Total','Soluble','Particulate']
+				share_yax = False
+
+			if ltype == 'BOD':
+				# Set plotting variables
+				ylabel = 'BOD (mg/L)'
+				share_yax = False	
+
+				# If BOD, convert to wide
+				ldata_long.loc[:,'Range'] = np.array([string.split(': ')[1] for string in ldata_long['Type'].values])
+				ldata_long.loc[:,'Type']  = np.array([string.split(': ')[0] for string in ldata_long['Type'].values])
+				ldata_long = ldata_long[['Date_Time','Stage','Type','Range','Value']]
+				ldata_long.drop_duplicates(['Date_Time','Stage','Type','Range'], inplace = True)
+				ldata_long.set_index(['Date_Time','Stage','Type','Range'], inplace = True)
+				ldata_long = ldata_long.unstack('Range')
+				# Get the error bar (symmetric)
+				ldata_long['yerr'] = (ldata_long['Value']['Max Value'] - ldata_long['Value']['Min Value'])/2
+				ldata_long.reset_index(inplace = True)
+				ldata_long.columns = ['Date_Time','Stage','Type','Mean','Min','Max','yerr']
+				type_list = ldata_long['Type'].unique()		
+
+			if ltype == 'OD':
+
+				# Set plotting variables
+				ylabel = 'OD Reading (mg/L)'
+				# Type list can be arbitrary in this case
+				type_list = ldata_long['Type'].unique()
+				# Make sure type_sub types are in the dataset!
+				if type_sub:
+					type_list = [type_el for type_el in type_list if type_el in type_sub]
+				else:
+					type_list = \
+						['Total','Soluble','Particulate'] + \
+						sorted(
+							list(
+								filter(
+									lambda x: x not in ['Total','Soluble','Particulate'], 
+									type_list
+								)
+							)
+						) 
+				share_yax = False
+
+			if ltype == 'TSS_VSS':
+
+				# Set plotting variables
+				ylabel = 'Suspended Solids (mg/L)'
+				type_list = ['TSS','VSS']
+				share_yax = True
+
+			if ltype == 'PH':
+
+				# Set plotting variables
+				ylabel = 'pH'
+				ldata_long['Type'] = 'pH'
+				type_list = ['pH']
+				share_yax = True
+
+			if ltype == 'ALKALINITY':
+
+				# Set plotting variables
+				ylabel = 'Alkalinity (mg/L as ' + r'$CaCO_3$)'
+				ldata_long['Type'] = 'Alkalinity'
+				type_list = ['Alkalinity']
+				share_yax = True
+
+			if ltype == 'VFA':
+
+				# Set plotting variables
+				ylabel = 'VFAs as mgCOD/L'
+				type_list = ['Acetate','Propionate']
+				share_yax = False
+
+			if ltype == 'AMMONIA':
+
+				#Set plotting variables
+				ylabel = r'$NH_3$' + ' (mg/L as N)'
+				ldata_long['Type'] = 'Ammonia'
+				type_list = ['Ammonia']
+				share_yax = True
+
+			if ltype == 'TKN':
+				# Set plotting variables
+				ylabel = 'mgTKN/L'
+				ldata_long['Type'] = 'TKN'
+				type_list = ['TKN']
+				share_yax = True
+
+			if ltype == 'SULFATE':
+
+				# Set plotting variables
+				ylabel = 'mg/L ' + r'$SO_4$'
+				ldata_long['Type'] = 'Sulfate'
+				type_list = ['Sulfate']
+				share_yax = True
+
+			# Filter to the dates desired for the plots
+			ldata_chart = ldata_long.loc[
+				(ldata_long.Date_Time >= start_dt) &
+				(ldata_long.Date_Time < end_dt + timedelta(days = 1)) 
+			]
+
+			# Filter to stages and types being subset to
+			if stage_sub:
+				ldata_chart = ldata_chart.loc[ldata_chart.Stage.isin(stage_sub)]
+			if type_sub:
+				ldata_chart = ldata_chart.loc[ldata_chart.Type.isin(type_sub)]
+
+			# Get the stages for which there are data
+			act_stages = ldata_chart.Stage.values
+			# Reproduce stage order according to data availability
+			stage_list = [stage for stage in stage_order if stage in act_stages]
+
+			if wrap_var == 'Stage':
+				wrap_list = stage_list
+				hue_list  = type_list
+				hue_var = 'Type'
+			elif wrap_var == 'Type':
+				wrap_list = type_list
+				hue_list  = stage_list
+				hue_var = 'Stage'
+			else:
+				print('wrap_var can only be "Stage" or "Type"')
+				sys.exit()
+
+			# Set plot width and length according to the wrapping variable	
+			plot_wid = 5*min(3,len(wrap_list))
+			wrap_wid = min(3,len(wrap_list))
+			plot_len = 6*np.ceil(len(wrap_list)/3) + 5
+
+			# Average all observations (by type and stage) taken on a day
+			ldata_chart = ldata_chart.groupby(id_vars_chrt).mean()
+
+			# Remove index!
+			ldata_chart.reset_index(inplace = True)
+
+			# Set plot facetting and layout
+			lplot = sns.FacetGrid(
+				ldata_chart,
+				col = wrap_var,
+				col_order = wrap_list,
+				col_wrap = wrap_wid,
+				hue = hue_var,
+				hue_order = hue_list,
+				sharey = share_yax
+			)
+
+			# Set date format
+			dfmt = dates.DateFormatter('%m/%d/%y')
+			# Set tickmarks for days of the month
+			dlocator = dates.DayLocator(bymonthday = [1,15])		
+			# Format the axes in the plot panel
+			for ax in lplot.axes.flatten():
+			    ax.xaxis.set_major_locator(dlocator)
+			    ax.xaxis.set_major_formatter(dfmt)
+			    # Different format for PH vs other y-axes
+			    if ltype == 'PH':
+			    	tkr.FormatStrFormatter('%0.2f')
+			    else:
+				    ax.yaxis.set_major_formatter(
+				    	tkr.FuncFormatter(lambda x, p: format(int(x), ','))
+				    )
+
+			# Plot values and set axis labels/formatting
+			if ltype == 'BOD':
+				lplot.map(plt.scatter,'Date_Time','Mean', marker = 'o').add_legend()
+				lplot.map(plt.errorbar,'Date_Time','Mean', 'yerr', capsize = 2)
+			else:
+				pts = lplot.map(plt.plot,'Date_Time','Value', linestyle = '-', marker = "o", ms = 4)
+
+			lplot.set_titles('{col_name}')
+			lplot.set_ylabels(ylabel)
+			lplot.set_xlabels('')
+			lplot.set_xticklabels(rotation = 45)
+
+			# Output plot to given directory
+			plot_filename = "{0}{1}.png"
+			os.chdir(outdir)
+
+			# Add and position the legend
+			if ltype in ['PH','ALKALINITY'] and wrap_var == 'Stage' or ltype == 'BOD':
+				plt.savefig(
+					plot_filename.format(ltype, opfile_suff), 
+					bbox_inches = 'tight',
+					width = plot_wid, 
+					height = plot_len
+				)
+				plt.close()
+			else:
+				handles, labels = ax.get_legend_handles_labels()
+				lgd = ax.legend(handles = handles, labels = labels, loc = 'upper left', bbox_to_anchor = (1,0.75))
+				plt.savefig(
+					plot_filename.format(ltype, opfile_suff), 
+					bbox_extra_artists = (lgd,),
+					bbox_inches = 'tight',
+					width = plot_wid, 
+					height = plot_len
+				)
+				plt.close()
+
+>>>>>>> fc23c0d523a9d3f8999f763a9e8bb1d8d53f5f83
 
 	def long_to_wide(self, df, id_vars):
 
