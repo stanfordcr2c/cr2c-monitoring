@@ -172,6 +172,19 @@ def clean_sql_data(elids, tperiods, ttypes, year):
 	return
 
 
+def	get_table_names():
+
+	# Create connection to SQL database
+	data_dir = cut.get_dirs()[0]
+	os.chdir(data_dir)
+	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(2017))
+	cursor = conn.cursor()
+	# Execute
+	cursor.execute(""" SELECT name FROM sqlite_master WHERE type ='table'""")
+
+	return [names[0] for names in cursor.fetchall()]
+
+
 # Primary HMI data aggregation class
 class hmi_data_agg:
 
