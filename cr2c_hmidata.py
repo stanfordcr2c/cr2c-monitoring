@@ -36,9 +36,10 @@ import cr2c_utils as cut
 
 def get_data(
 	elids, 
+	stypes,
 	tperiods, 
 	ttypes,
-	year = None, 
+	year_sub = None, 
 	month_sub = None, 
 	start_dt_str = None, 
 	end_dt_str = None, 
@@ -46,8 +47,6 @@ def get_data(
 	outdir = None
 ):
 
-	# Clean user inputs
-	ttypes = [ttype.upper() for ttype in ttypes]
 
 	# Convert date string inputs to dt variables
 	start_dt = dt.strptime('5-10-17','%m-%d-%y')
@@ -64,7 +63,7 @@ def get_data(
 	os.chdir(data_dir)
 	hmi_data_all = pd.DataFrame()
 
-	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
+	for elid, stype, tperiod, ttype in zip(elids, stypes, tperiods, ttypes):
 
 		# month_sub insert
 		if month_sub:
@@ -73,23 +72,17 @@ def get_data(
 			msub_ins = ''
 
 		sql_str = """
-			SELECT distinct * FROM {0}_{1}{2}_AVERAGES
-			{3}
+			SELECT distinct * FROM {0}_{1}_{2}_{3}_AVERAGES
 			order by Time 
-		""".format(elid, tperiod, ttype, msub_ins)
+		""".format(stype, elid, tperiod, ttype)
 
-		# Loop through years for which data are desired
-		# (concatenate datasets)
-		hmi_data = pd.DataFrame()
-		for year in years:
-
-			conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(year))
-			hmi_data_yr = pd.read_sql(
-				sql_str,
-				conn,
-				coerce_float = True
-			)
-			hmi_data = pd.concat([hmi_data, hmi_data_yr], axis = 0)
+		# Open connection and read to pandas dataframe
+		conn = sqlite3.connect('cr2c_hmi_agg_data.db')
+		hmi_data = pd.read_sql(
+			sql_str,
+			conn,
+			coerce_float = True
+		)
 
 		# Format the time variable
 		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
@@ -124,65 +117,47 @@ def get_data(
 		op_fname = '_'.join(elids + [str(tperiod) for tperiod in tperiods]) + '.csv'
 		hmi_data_all.to_csv(op_fname, index = False, encoding = 'utf-8')
 
-
 	return hmi_data_all
 
-# Function to eliminate misaligned time readings from dataset (can happen from bugs in pandas + timedelta)
-def clean_sql_data(elids, tperiods, ttypes, year):
 
-	# Clean user inputs
-	ttypes = [ttype.upper() for ttype in ttypes]
-
-	# Read in all the data that will be cleaned
-	hmi_data_all = get_data(elids, tperiods, ttypes, year)
-
-	for elid, tperiod, ttype in zip(elids, tperiods, ttypes):
-
-		# First read in the data
-		hmi_data = hmi_data_all[['Tkey','Time','Month',elid]]
-		hmi_data.rename(columns = {elid: 'Value'}, inplace = True)
-		# Eliminate timesteps that are out of sync and dedupe
-		hmi_data['Time'] = hmi_data['Time'].values.astype('datetime64[m]')
-		# Leaving out Tkey because otherwise duplicate entries will still be unique
-		hmi_data.drop_duplicates(['Time','Month','Value'], inplace = True)
- 
- 		# Delete time periods that are out of sync (such as 20:05:00 when its an hourly dataset)
-		del_str = """
-			DELETE FROM {0}_{1}{2}_AVERAGES
-			WHERE Tkey % 1e+10 > 0
-		""".format(elid, tperiod, ttype)
-		ins_str = """
-			INSERT OR REPLACE INTO {0}_{1}{2}_AVERAGES (Tkey, Time, Month, Value)
-			VALUES (?,?,?,?)
-		""".format(elid, tperiod, ttype)
-
-		# Create connection to SQL database
-		conn = sqlite3.connect('cr2c_hmi_agg_data_{0}.db'.format(year))
-		# Execute the delete statement
-		conn.execute(del_str)
-		# Load cleaned data back to the database
-		conn.executemany(
-			ins_str,
-			hmi_data.to_records(index = False).tolist()
-		)
-		conn.commit()
-		# Close connection to sql file
-		conn.close()
-
-	return
-
-
+# Returns a list of the tables in the HMI SQL database
 def	get_table_names():
 
 	# Create connection to SQL database
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
-	conn = sqlite3.connect('cr2c_hmi_agg_data_{}.db'.format(2017))
+	conn = sqlite3.connect('cr2c_hmi_agg_data.db')
 	cursor = conn.cursor()
 	# Execute
 	cursor.execute(""" SELECT name FROM sqlite_master WHERE type ='table'""")
 
 	return [names[0] for names in cursor.fetchall()]
+
+
+# Takes a list of file paths and concatenates all of the files
+def cat_dfs(ip_paths, idx_var = None, output = False, output_dsn = None):
+	
+	concat_dlist = []
+	for ip_path in ip_paths:
+		concat_dlist.append(pd.read_csv(ip_path, low_memory = False))
+	concat_data = pd.concat([df for df in concat_dlist], ignore_index = True)
+	# Remove duplicates (may be some overlap)
+	concat_data.drop_duplicates(keep = 'first', inplace = True)
+	
+	# Sort by index (if given)
+	if idx_var:
+		concat_data.sort_values(idx_var, inplace = True)
+
+	if output:
+
+		ip_dir = os.path.dirname(ip_paths[0])
+		concat_data.to_csv(
+			os.path.join(ip_dir, output_dsn), 
+			index = False, 
+			encoding = 'utf-8'
+		)
+	
+	return concat_data
 
 
 # Primary HMI data aggregation class
@@ -353,7 +328,7 @@ class hmi_data_agg:
 		outdir = None
 	):
 
-		# Retrieve sql table directory
+		# Get sql table directory
 		os.chdir(self.data_dir)
 
 		# Clean inputs
@@ -367,24 +342,23 @@ class hmi_data_agg:
 			self.prep_hmi_data(elid, stype)
 			# Get totalized values
 			tots_res = self.get_average(self.hmi_data, tperiod, ttype, elid)
-			# Get month integer allows data partitioning
+			# Get year and month (for partitioning purposes)
+			tots_res.loc[:,'Year'] = tots_res['Time'].dt.year
 			tots_res.loc[:,'Month'] = tots_res['Time'].dt.month
-			# Create key from "Time" variable to use when updating/inserting entry into sql table
-			tots_res.loc[:,'Tkey'] = tots_res['Time']
 			# Reorder columns
-			tots_res = tots_res[['Tkey','Time','Month','Value']].copy()
+			tots_res = tots_res[['Time','Year','Month','Value']].copy()
 
 			# Output data as desired
 			if output_sql:
 
 				# SQL command strings for sqlite3
 				create_str = """
-					CREATE TABLE IF NOT EXISTS {0}_{1}{2}_AVERAGES (Tkey INT PRIMARY KEY, Time , Month, Value)
-				""".format(elid, tperiod, ttype)
+					CREATE TABLE IF NOT EXISTS {0}_{1}_{2}_{3}_AVERAGES (Time INT PRIMARY KEY, Year , Month, Value)
+				""".format(stype, elid, tperiod, ttype)
 				ins_str = """
-					INSERT OR REPLACE INTO {0}_{1}{2}_AVERAGES (Tkey, Time, Month, Value)
+					INSERT OR REPLACE INTO {0}_{1}_{2}_{3}_AVERAGES (Time, Year, Month, Value)
 					VALUES (?,?,?,?)
-				""".format(elid, tperiod, ttype)
+				""".format(stype, elid, tperiod, ttype)
 				# Set connection to SQL database (pertaining to given year)
 				conn = sqlite3.connect('cr2c_hmi_agg_data.db')
 				# Load data to SQL
@@ -403,7 +377,8 @@ class hmi_data_agg:
 				if not outdir:
 					outdir = askdirectory()
 				os.chdir(outdir)
-				tots_res.to_csv('{0}_{1}{2}_AVERAGES.csv'.format(elid, tperiod, ttype), index = False, encoding = 'utf-8')
+				tots_res.to_csv('{0}_{1}_{2}_{3}_AVERAGES.csv'.\
+					format(stype, elid, tperiod, ttype), index = False, encoding = 'utf-8')
 
 
 	def get_tmp_plots(
