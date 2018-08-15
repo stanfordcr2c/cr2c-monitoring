@@ -184,6 +184,7 @@ class cr2c_validation:
 		# Read in the data
 		gasprod_dat = hmi.get_data(
 			gas_elids,
+			['GAS']*2,
 			[perLen]*len(gas_elids),
 			[tperiod]*len(gas_elids), 
 			start_dt_str = start_dt_str, 
@@ -192,6 +193,7 @@ class cr2c_validation:
 		# Do the same for feeding and temperature
 		feeding_dat = hmi.get_data(
 			[inf_elid, eff_elid],
+			['WATER']*2,
 			[perLen]*2, 
 			[tperiod]*2, 
 			start_dt_str = start_dt_str,
@@ -199,6 +201,7 @@ class cr2c_validation:
 		)
 		temp_dat = hmi.get_data(
 			temp_elids,
+			['TEMP']*2,
 			[perLen]*len(temp_elids), 
 			[tperiod]*len(temp_elids), 
 			start_dt_str = start_dt_str,
@@ -638,6 +641,7 @@ class cr2c_validation:
 		# Retrieve data from SQL file
 		hmidat = hmi.get_data(
 			hmi_elids,
+			valtypes,
 			[1]*nelids,
 			['MINUTE']*nelids,
 			valtypes,

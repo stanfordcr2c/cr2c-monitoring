@@ -403,12 +403,12 @@ class hmi_data_agg:
 			opfile_suff = ''
 
 		# Get feeding data
-		feeding_dat_zm = get_data(['FT305'],[5],['minute'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
-		feeding_dat = get_data(['FT305'],[1],['hour'], start_dt.year, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		feeding_dat_zm = get_data(['FT305'],['WATER'],[1],['MINUTE'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		feeding_dat = get_data(['FT305'],['WATER'],[1],['HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Get tmp data
-		tmp_dat_zm = get_data(['AIT302'],[5],['minute'], start_dt.year)
-		tmp_dat = get_data(['AIT302'],[1],['hour'], start_dt.year)
+		tmp_dat_zm = get_data(['AIT302'],['TMP'],[1],['MINUTE'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		tmp_dat = get_data(['AIT302'],['TMP'],[1],['HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Merge the two files
 		tmp_feed_dat = feeding_dat.merge(tmp_dat, on = 'Time')
@@ -553,7 +553,7 @@ class hmi_data_agg:
 			print(tkTitle)
 			outdir = askdirectory(title = tkTitle)
 
-		feeding_dat = get_data(elids, [1,1],['hour','hour'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		feeding_dat = get_data(elids,[stype]*2, [1,1],['HOUR','HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Retrieve element ids from aggregated data
 		all_elids = '_'.join(elids)
@@ -608,7 +608,7 @@ class hmi_data_agg:
 			nobs  = len(agg_sumst.index.values)
 			nlims = nobs
 			if sum_period == 'DAY':
-				nlims = 12
+				nlims = 10
 			# Get the indices of the x-axis values according to these tick labels
 			lim_len  = int(np.floor(nobs/nlims))
 			tic_idxs = [lim*lim_len for lim in range(nlims)]
@@ -672,7 +672,7 @@ class hmi_data_agg:
 			opfile_suff = ''
 
 		# Get temperature data
-		temp_dat = get_data(elids,[1,1],['hour','hour'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		temp_dat = get_data(elids,['TEMP']*2,[1,1],['HOUR','HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 		temp_dat.loc[:,'Date'] = temp_dat['Time'].dt.date
 		
 		# Daily average for the last 6 months
