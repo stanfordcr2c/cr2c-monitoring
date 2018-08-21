@@ -601,6 +601,7 @@ class labrun:
 
 		# Melt the data frame
 		df_long = pd.melt(self.ldata, id_vars = id_vars, value_vars = value_vars)
+
 		# Add Type to "variable" variable if BOD (OD days, specifically)
 		if ltype == 'BOD':
 			df_long.reset_index(inplace = True)
@@ -667,7 +668,9 @@ class labrun:
 				self.ldata = ldata_wide[value_vars].copy()
 				self.ldata.reset_index(inplace = True)
 				self.ldata.loc[:,'units'] = 'mg/L'	
-				self.ldata = self.ldata.loc[:,['Date','Stage','obs_id'] + value_vars + ['units']].copy()
+				self.ldata = self.ldata[['Date','Stage','obs_id'] + value_vars + ['units']].copy()
+				# Rename columns
+				self.ldata.columns = ['Date','Stage','obs_id'] + value_vars + ['units']
 
 			if ltype == 'BOD':
 
@@ -853,7 +856,7 @@ class labrun:
 			ins_str = """
 				INSERT OR REPLACE INTO {0} ({1})
 				VALUES ({2})
-			""".format(ltype,colNStr,colIns)
+			""".format(ltype, colNStr, colIns)
 			# Set connection to SQL database (pertaining to given year)
 			os.chdir(self.data_dir)
 			conn = sqlite3.connect('cr2c_lab_data.db')
@@ -948,10 +951,10 @@ class labrun:
 
 		# Set column order (again, exception is for Ammonia with no type variable)
 		if value_vars == ['Value']:
-			df_trunc = df_trunc.reindex_axis(act_st_ord, axis = 1, level = None)
+			df_trunc = df_trunc.reindex(act_st_ord, axis = 1, level = None)
 		else:
-			df_trunc = df_trunc.reindex_axis(act_st_ord, axis = 1, level = 'Stage')
-			df_trunc = df_trunc.reindex_axis(value_vars, axis = 1, level = 'Type')
+			df_trunc = df_trunc.reindex(act_st_ord, axis = 1, level = 'Stage')
+			df_trunc = df_trunc.reindex(value_vars, axis = 1, level = 'Type')
 
 		# Create days since seed variable and insert as the first column
 		if add_time_el == 1:
@@ -1016,5 +1019,7 @@ class labrun:
 		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
 		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
 		SO4trunc.to_csv('Sulfate_table' + end_dt_str + opfile_suff + '.csv')
+
+
 
 
