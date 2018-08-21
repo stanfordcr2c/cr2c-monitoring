@@ -381,7 +381,7 @@ class cr2c_validation:
 		# Put dates into weekly bins (relative to end date), denoted by beginning of week
 		cod_bal_dat['Weeks Back'] = \
 			pd.to_timedelta(np.floor((cod_bal_dat['Date'] - end_dt)/np.timedelta64(7,'D'))*7, unit = 'D')
-		cod_bal_dat['Week Start'] = end_dt + cod_bal_dat['Weeks Back']
+		cod_bal_dat['Week Start'] = pd.to_datetime(end_dt) + cod_bal_dat['Weeks Back']
 		cod_bal_dat = cod_bal_dat.loc[
 			(cod_bal_dat['Date'] >= start_dt) & (cod_bal_dat['Date'] <= end_dt),
 			:
@@ -465,6 +465,7 @@ class cr2c_validation:
 				index = False,
 				encoding = 'utf-8'				
 			)
+
 
 	# Calculate basic biotechnology parameters to monitor biology in reactors
 	def get_biotech_params(
@@ -732,27 +733,9 @@ class cr2c_validation:
 
 		return
 
-
-# val = cr2c_validation(outdir = '/Users/josebolorinos/Google Drive/Codiga Center/Miscellany')
-# val.instr_val(
-# 	valtypes = ['PH','PH'],
-# 	start_dt_str = '4-15-18',
-# 	end_dt_str = '5-15-18',
-# 	hmi_elids = ['AT203','AT305'],
-# 	ltypes = ['PH','PH'],
-# 	lstages = ['Microscreen','AFBR']
-# 	# run_hmi_report = True,
-# 	# hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/HMI Data/Reactor Feeding - Raw_20180516121705.csv'
-# )
-# # val.instr_val(
-# # 	valtypes = ['DPI','DPI','PRESSURE','PRESSURE'],
-# # 	start_dt_str = '4-15-18',
-# # 	end_dt_str = '5-15-18',
-# # 	hmi_elids = ['DPIT300','DPIT301','PIT700','PIT704'],
-# # 	fld_varnames = [('Before Pump: R300','After Pump: R300'),('Before Pump: R301','After Pump: R301'),'Manometer Pressure: R300','Manometer Pressure: R301'],
-# # 	# run_hmi_report = True,
-# # 	# hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/HMI Data/Reactor Feeding - Raw_20180516121705.csv'
-# # )
-
+# Initialize validation class
+cr2c_vl = cr2c_validation(outdir = '/Users/josebolorinos/Google Drive/Codiga Center/Charts and Data/Monitoring Reports/Monitoring Report 8-17-18/Validation')
+# Get COD balance and biotech parameters (with plots)
+cr2c_vl.get_cod_bal('8-17-18', 8, plot = True)
 
 
