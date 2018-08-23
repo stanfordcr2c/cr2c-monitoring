@@ -9,6 +9,7 @@ from __future__ import print_function
 
 # Plotting
 import matplotlib
+matplotlib.use("TkAgg",force=True)
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
 import matplotlib.dates as dates
@@ -29,6 +30,7 @@ from os.path import expanduser
 import sys
 import traceback as tb
 import warnings as wn
+from tkinter.filedialog import askdirectory
 
 # CR2C
 import cr2c_utils as cut
@@ -108,10 +110,6 @@ def get_data(
 			hmi_data_all = hmi_data_all.merge(hmi_data[['Time', elid]], on = 'Time', how = 'outer')
 
 	if output_csv:
-
-		if not outdir:
-			print('Directory to output HMI data to...')
-			outdir = askdirectory(title = 'Directory to output HMI data to...')
 
 		os.chdir(outdir)
 		op_fname = '_'.join(elids + [str(tperiod) for tperiod in tperiods]) + '.csv'

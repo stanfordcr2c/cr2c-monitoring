@@ -6,6 +6,7 @@
 
 # Plotting
 import matplotlib
+matplotlib.use("TkAgg",force=True)
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
@@ -24,6 +25,7 @@ import warnings
 import os
 from os.path import expanduser
 import sys
+from tkinter.filedialog import askdirectory
 
 # CR2C
 import cr2c_utils as cut
