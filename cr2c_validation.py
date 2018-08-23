@@ -733,9 +733,5 @@ class cr2c_validation:
 
 		return
 
-# Initialize validation class
-cr2c_vl = cr2c_validation(outdir = '/Users/josebolorinos/Google Drive/Codiga Center/Charts and Data/Monitoring Reports/Monitoring Report 8-17-18/Validation')
-# Get COD balance and biotech parameters (with plots)
-cr2c_vl.get_cod_bal('8-17-18', 8, plot = True)
 
 
