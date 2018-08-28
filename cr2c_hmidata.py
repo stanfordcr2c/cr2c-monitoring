@@ -442,7 +442,7 @@ class hmi_data_agg:
 
 		# Get data for last week
 		tmp_feed_day = tmp_feed_dat_zm.loc[
-			tmp_feed_dat_zm['Time'].dt.date - end_dt.date() > \
+			tmp_feed_dat_zm['Time'].dt.date - end_dt.date() == \
 			np.timedelta64(-1,'D'),
 		]
 
@@ -724,4 +724,5 @@ class hmi_data_agg:
 			width = 20,
 			height = 80
 		)
-		plt.close()
+		plt.close() 
+
