@@ -6,7 +6,6 @@
 
 # Plotting
 import matplotlib
-matplotlib.use("TkAgg",force=True)
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
@@ -25,7 +24,6 @@ import warnings
 import os
 from os.path import expanduser
 import sys
-from tkinter.filedialog import askdirectory
 
 # CR2C
 import cr2c_utils as cut
@@ -366,8 +364,8 @@ class labrun:
 	
 	def __init__(self, verbose = False):
 		
-		self.ltype_list = \
-			['PH','COD','TSS_VSS','ALKALINITY','VFA','GasComp','Ammonia','Sulfate','TKN','BOD']
+		self.ltype_list = 
+			['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCCOMP','AMMONIA','SULFATE','TKN','BOD']
 		self.min_feas_dt = dt.strptime('6-1-16', '%m-%d-%y')
 		self.file_dt = dt.now()
 		self.file_dt_str = dt.strftime(self.file_dt,'%m-%d-%y')
@@ -545,7 +543,7 @@ class labrun:
 				)
 				sys.exit()
 
-		if ltype in ['COD','Ammonia','Sulfate']:
+		if ltype in ['COD','AMMONIA','SULFATE']:
 			self.set_var_format(ltype, 'Reading (mg/L)', float, 'numeric')
 
 		if ltype == 'BOD':
@@ -561,7 +559,7 @@ class labrun:
 			self.set_var_format(ltype,'Acid Volume (mL, to pH 4.3)', float, 'numeric')
 			self.set_var_format(ltype,'Acid Normality (N)', float, 'numeric')
 
-		if ltype in ['COD','ALKALINITY','VFA','Ammonia','Sulfate']:
+		if ltype in ['COD','ALKALINITY','VFA','AMMONIA','SULFATE']:
 			self.set_var_format(ltype,'Dilution Factor', float, 'numeric')
 		
 		if ltype == 'TSS_VSS':
@@ -788,8 +786,8 @@ class labrun:
 				# Set value vars for melting
 				value_vars = ['Acetate','Propionate']
 
-			# ======================================= Ammonia =============================================== #
-			if ltype == 'Ammonia':
+			# ======================================= AMMONIA =============================================== #
+			if ltype == 'AMMONIA':
 				# Compute Ammonia concentration
 				self.ldata.loc[:,'Ammonia'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
 				self.ldata.loc[:,'units'] = 'mg/L'
@@ -814,14 +812,14 @@ class labrun:
 				# Set value vars for melting
 				self.ldata.loc[:,'units'] = 'mgTKN/L'
 
-			# ======================================= Sulfate =============================================== #
-			if ltype == 'Sulfate':
+			# ======================================= SULFATE =============================================== #
+			if ltype == 'SULFATE':
 				# Compute Sulfate concentration
 				self.ldata.loc[:,'Sulfate'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
 				self.ldata.loc[:,'units'] = 'mg/L S'
 
-			# ======================================= GasComp ============================================ #
-			if ltype == 'GasComp':
+			# ======================================= GASCOMP ============================================ #
+			if ltype == 'GASCOMP':
 				self.ldata.loc[:,'Hel_Pressure'] = self.ldata['Helium pressure (psi) +/- 50 psi']
 				self.ldata.loc[:,'Stage'] = 'NA'
 				self.ldata.loc[:,'units'] = '(see Type)'
@@ -833,7 +831,7 @@ class labrun:
 				self.ldata = self.ldata.merge(ldata_dt, on = 'Date')
 
 			# Convert to long format
-			if ltype in ['PH','ALKALINITY','Ammonia','TKN','Sulfate']:
+			if ltype in ['PH','ALKALINITY','AMMONIA','TKN','SULFATE']:
 				value_vars = [ltype]
 
 			# Convert to long format 
@@ -991,8 +989,8 @@ class labrun:
 		ALK.loc[:,'Type'] = 'Alkalinity'
 		PH = ldata_all['PH'].copy()
 		PH.loc[:,'Type'] = 'pH'
-		NH3 = ldata_all['Ammonia'].copy()
-		SO4 = ldata_all['Sulfate'].copy()
+		NH3 = ldata_all['AMMONIA'].copy()
+		SO4 = ldata_all['SULFATE'].copy()
 
 		# Concatenate Alkaliity and pH and reset index
 		ALK_PH = pd.concat([PH,ALK], axis = 0, join = 'outer').reset_index(drop = True)
