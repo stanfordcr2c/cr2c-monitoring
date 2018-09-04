@@ -9,7 +9,6 @@ from __future__ import print_function
 
 # Plotting
 import matplotlib
-matplotlib.use("TkAgg",force=True)
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
 import matplotlib.dates as dates
@@ -41,6 +40,7 @@ def get_data(
 	stypes,
 	tperiods, 
 	ttypes,
+	combine_all = False,
 	year_sub = None, 
 	month_sub = None, 
 	start_dt_str = None, 
@@ -48,7 +48,6 @@ def get_data(
 	output_csv = False, 
 	outdir = None
 ):
-
 
 	# Convert date string inputs to dt variables
 	start_dt = dt.strptime('5-10-17','%m-%d-%y')
@@ -64,6 +63,8 @@ def get_data(
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
 	hmi_data_all = pd.DataFrame()
+
+	hmi_data_all = {}
 
 	for elid, stype, tperiod, ttype in zip(elids, stypes, tperiods, ttypes):
 
@@ -104,12 +105,19 @@ def get_data(
 		if end_dt_str:
 			hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
 
-		if not len(hmi_data_all):
-			hmi_data_all = hmi_data
-		else:
-			hmi_data_all = hmi_data_all.merge(hmi_data[['Time', elid]], on = 'Time', how = 'outer')
+		# If returning all as a single dataframe, merge the result in loop (or initialize dataframe)
+		if combine_all:
 
-	if output_csv:
+			if not len(hmi_data_all):
+				hmi_data_all = hmi_data
+			else:
+				hmi_data_all = hmi_data_all.merge(hmi_data[['Time', elid]], on = 'Time', how = 'outer')
+		
+		# Otherwise, load output to dictionary
+		else:
+			hmi_data_all['{0}_{1}_{2}_{3}_AVERAGES'.format(elid, stype, tperiod, ttype)] = hmi_data
+
+	if combine_all and output_csv:
 
 		os.chdir(outdir)
 		op_fname = '_'.join(elids + [str(tperiod) for tperiod in tperiods]) + '.csv'
@@ -401,12 +409,12 @@ class hmi_data_agg:
 			opfile_suff = ''
 
 		# Get feeding data
-		feeding_dat_zm = get_data(['FT305'],['WATER'],[1],['MINUTE'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
-		feeding_dat = get_data(['FT305'],['WATER'],[1],['HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		feeding_dat_zm = get_data(['FT305'],['WATER'],[1],['MINUTE'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		feeding_dat = get_data(['FT305'],['WATER'],[1],['HOUR'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Get tmp data
-		tmp_dat_zm = get_data(['AIT302'],['TMP'],[1],['MINUTE'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
-		tmp_dat = get_data(['AIT302'],['TMP'],[1],['HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		tmp_dat_zm = get_data(['AIT302'],['TMP'],[1],['MINUTE'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		tmp_dat = get_data(['AIT302'],['TMP'],[1],['HOUR'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Merge the two files
 		tmp_feed_dat = feeding_dat.merge(tmp_dat, on = 'Time')
@@ -551,7 +559,7 @@ class hmi_data_agg:
 			print(tkTitle)
 			outdir = askdirectory(title = tkTitle)
 
-		feeding_dat = get_data(elids,[stype]*2, [1,1],['HOUR','HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		feeding_dat = get_data(elids,[stype]*2, [1,1],['HOUR','HOUR'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Retrieve element ids from aggregated data
 		all_elids = '_'.join(elids)
@@ -670,7 +678,7 @@ class hmi_data_agg:
 			opfile_suff = ''
 
 		# Get temperature data
-		temp_dat = get_data(elids,['TEMP']*2,[1,1],['HOUR','HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		temp_dat = get_data(elids,['TEMP']*2,[1,1],['HOUR','HOUR'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 		temp_dat.loc[:,'Date'] = temp_dat['Time'].dt.date
 		
 		# Daily average for the last 6 months

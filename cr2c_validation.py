@@ -187,6 +187,7 @@ class cr2c_validation:
 			['GAS']*2,
 			[perLen]*len(gas_elids),
 			[tperiod]*len(gas_elids), 
+			combine_all = True,
 			start_dt_str = start_dt_str, 
 			end_dt_str = end_dt_str
 		)
@@ -196,6 +197,7 @@ class cr2c_validation:
 			['WATER']*2,
 			[perLen]*2, 
 			[tperiod]*2, 
+			combine_all = True,
 			start_dt_str = start_dt_str,
 			end_dt_str = end_dt_str
 		)
@@ -204,6 +206,7 @@ class cr2c_validation:
 			['TEMP']*2,
 			[perLen]*len(temp_elids), 
 			[tperiod]*len(temp_elids), 
+			combine_all = True,
 			start_dt_str = start_dt_str,
 			end_dt_str = end_dt_str
 		) 
@@ -646,6 +649,7 @@ class cr2c_validation:
 			[1]*nelids,
 			['MINUTE']*nelids,
 			valtypes,
+			combine_all = True,
 			start_dt_str = start_dt_str,
 			end_dt_str = end_dt_str
 		)
