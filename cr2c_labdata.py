@@ -364,8 +364,8 @@ class labrun:
 	
 	def __init__(self, verbose = False):
 		
-		self.ltype_list = 
-			['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCCOMP','AMMONIA','SULFATE','TKN','BOD']
+		self.ltype_list = \
+			['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
 		self.min_feas_dt = dt.strptime('6-1-16', '%m-%d-%y')
 		self.file_dt = dt.now()
 		self.file_dt_str = dt.strftime(self.file_dt,'%m-%d-%y')
@@ -487,7 +487,7 @@ class labrun:
 		].copy()
 
 		# Format and clean stage variable
-		if ltype != 'GasComp':
+		if ltype != 'GASCOMP':
 
 			self.ldata.loc[:,'Stage'] = self.ldata['Stage'].astype(str)
 			self.ldata.loc[:,'Stage'] = self.ldata['Stage'].str.upper()
@@ -572,7 +572,7 @@ class labrun:
 			self.set_var_format(ltype,'Acetate (mgCOD/L)', float, 'numeric')
 			self.set_var_format(ltype,'Propionate (mgCOD/L)', float, 'numeric')
 
-		if ltype == 'GasComp':
+		if ltype == 'GASCOMP':
 			self.set_var_format(ltype,'Helium pressure (psi) +/- 50 psi', float, 'numeric')
 			self.set_var_format(ltype,'Nitrogen (%)', float, 'numeric')
 			self.set_var_format(ltype,'Oxygen (%)', float, 'numeric')
@@ -630,7 +630,7 @@ class labrun:
 				self.clean_dataset(ltype,['Date','Stage','Type'])
 			elif ltype == 'BOD':
 				self.clean_dataset(ltype,['Date','Stage'])
-			elif ltype == 'GasComp':
+			elif ltype == 'GASCOMP':
 				self.clean_dataset(ltype,['Date','Helium pressure (psi) +/- 50 psi'])
 			else:
 				self.clean_dataset(ltype,['Date','Stage'])
@@ -979,7 +979,7 @@ class labrun:
 		seed_dt = dt.strptime('05-10-17','%m-%d-%y')
 
 		# Load data from SQL
-		ldata_all = get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA','Ammonia','Sulfate'])
+		ldata_all = get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA','AMMONIA','SULFATE'])
 
 		# Specify id variables (same for every type since combining Alkalinity and pH)
 		id_vars = ['Sample Date & Time','Stage','Type','obs_id']
@@ -1019,7 +1019,5 @@ class labrun:
 		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
 		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
 		SO4trunc.to_csv('Sulfate_table' + end_dt_str + opfile_suff + '.csv')
-
-
 
 

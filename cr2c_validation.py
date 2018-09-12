@@ -245,7 +245,7 @@ class cr2c_validation:
 
 		#=========================================> LAB DATA <=========================================
 		# Get lab data from file on box and filter to desired dates
-		labdat  = pld.get_data(['COD','TSS_VSS','Sulfate','GasComp'])
+		labdat  = pld.get_data(['COD','TSS_VSS','SULFATE','GASCOMP'])
 
 		# COD data
 		cod_dat = labdat['COD']
@@ -268,7 +268,7 @@ class cr2c_validation:
 		cod_dat_cln.columns = ['Date','CODt MS','CODt R','CODt Out']
 
 		# Gas Composition Data
-		gc_dat = labdat['GasComp']
+		gc_dat = labdat['GASCOMP']
 		gc_dat['Date'] = gc_dat['Date_Time'].dt.date
 		gc_dat = gc_dat.loc[(gc_dat['Type'].isin(['Methane (%)','Carbon Dioxide (%)']))]
 		gc_dat = gc_dat.groupby(['Date','Type']).mean()
@@ -309,9 +309,9 @@ class cr2c_validation:
 		waste_dat_cln = waste_dat[['Date','Wasted (L)']]
 
 		# Sulfate data
-		so4_dat = labdat['Sulfate']
+		so4_dat = labdat['SULFATE']
 		so4_dat['Date'] = so4_dat['Date_Time']
-		so4_dat.set_index(['Date','Stage'], inplace = True)
+		so4_dat = so4_dat.groupby(['Date','Stage']).mean()
 		so4_dat_wide = so4_dat.unstack(['Stage'])
 		so4_dat_wide['SO4 MS'] = so4_dat_wide['Value']['Microscreen']
 		so4_dat_wide.reset_index(inplace = True)
@@ -648,7 +648,6 @@ class cr2c_validation:
 			valtypes,
 			[1]*nelids,
 			['MINUTE']*nelids,
-			valtypes,
 			combine_all = True,
 			start_dt_str = start_dt_str,
 			end_dt_str = end_dt_str
@@ -736,6 +735,4 @@ class cr2c_validation:
 					plt.close()
 
 		return
-
-
 
