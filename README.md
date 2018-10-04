@@ -136,7 +136,7 @@ __Output:__
 
 ### cr2c-labdata
 
-<a name="lab.get_data"></a>
+<a id="labget_data"></a>
 #### get_data(*ltypes, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None*) 
 
 __Description:__ Wrapper for querying data from the cr2c_labdata.db data store
