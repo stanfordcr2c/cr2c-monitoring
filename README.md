@@ -105,7 +105,7 @@ Cleaned lab data are inserted/updated into their respective table on the cr2c_la
 
 __Laboratory Data Schematic:__
 
-![alt tag](https://github.com/stanfordcr2c/cr2c-monitoring/tree/master/src/cr2c-labdata-schematic.png)
+![](src/cr2c-labdata-schematic.png)
 
 ### Field Data
 
@@ -115,7 +115,7 @@ The __Field Data Schematic__ figure below shows structure of the field data as t
 
 __Field Data Schematic:__
 
-![alt tag](https://github.com/stanfordcr2c/cr2c-monitoring/tree/master/src/cr2c-fielddata-schematic.png)
+![](src/cr2c-fielddata-schematic.png)
 
 ### Operational Data
 
@@ -129,7 +129,7 @@ The __Operational Data Schematic__ below shows the structure of the operational 
 
 __Operational Data Schematic:__
 
-![alt tag](https://github.com/stanfordcr2c/cr2c-monitoring/tree/master/src/cr2c-opdata-schematic.png)
+![](src/cr2c-opdata-schematic.png)
 
 ## Documentation
 
