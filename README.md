@@ -97,15 +97,13 @@ Virtual environments can also be managed with Python 3's [venv](https://docs.pyt
 
 Raw laboratory data are entered manually into the “CR2CMonitoringData” google spreadsheet. The cr2c_labdata scripts read these data from the google spreadsheet using the Google Sheets API, verifies that dates, stages and values have been entered correctly and computes the resulting values (for example, raw COD data gives a dilution factor and a reading from the Hach spectrometer and the code computes the resulting COD value (in mg/L)). 
 
-Cleaned lab data are inserted/updated into their respective table on the cr2c_lab_data.db data store on Codiga’s Box folder. The __Laboratory Data Schematic__ figure below shows the structure of the laboratory data. The data store contains a table for each parameter type (eg. “COD_data” table is a table containing processed COD lab data). Each table has a column indicating:
+Cleaned lab data are inserted/updated into their respective table on the cr2c_lab_data.db data store on Codiga’s Box folder. The [__Laboratory Data Schematic__](#laboratorydataschematic) figure below shows the structure of the laboratory data. The data store contains a table for each parameter type (eg. “COD_data” table is a table containing processed COD lab data). Each table has a column indicating:
 * The date and time of sample collection (“Date_Time”)
 * The treatment stage of the collected sample (“Stage”, this refers to the location in the treatment plant from which the sample was collected), 
 * The parameter value type (“Type”, where appropriate, eg. COD, which can either be "Total", "Soluble", or "Particulate" vs PH which can only be PH...)
 * The value of the laboratory parameter (“Value”).  
 
-__Laboratory Data Schematic:__
-
-![](src/cr2c-labdata-schematic.png)
+![laboratorydataschematic](src/cr2c-labdata-schematic.png "Laboratory Data Schematic")
 
 ### Field Data
 
@@ -113,9 +111,7 @@ Data from monitoring forms that are filled out on site are synced to the “CR2C
 
 The __Field Data Schematic__ figure below shows structure of the field data as they are currently stored in the cr2c_fielddata.db store. Somewhat analogously to a spreadsheet, each tab is like a table in a data store that records the answers to a given google form. Each variable name in the table for a given google form is the name of the question in that form (such as the “CR2C Daily Operations Log” form) and each row is an answer to that question. The time stamp of each form submission is automatically stored by google forms. 
 
-__Field Data Schematic:__
-
-![](src/cr2c-fielddata-schematic.png)
+![fielddataschematic](src/cr2c-fielddata-schematic.png "Field Data Schematic")
 
 ### Operational Data
 
@@ -127,9 +123,7 @@ The __Operational Data Schematic__ below shows the structure of the operational 
 * The month of the time period in question ("Month")
 * The value read by the sensor (Value). Note, when querying these data, the "Value" variable name can be changed to the corresponding sensor id to permit easy merging of multiple sensor readings into a single wide table (see [Operational Data: get_data](#opgetdata) documentation below for more details)
 
-__Operational Data Schematic:__
-
-![](src/cr2c-opdata-schematic.png)
+![operationaldataschematic](src/cr2c-opdata-schematic.png "Operational Data Schematic")
 
 ## Documentation
 
