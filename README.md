@@ -14,17 +14,47 @@ Andrew Hyunwoo Kim (Operator)
 ## Table of Contents
 
 * [Prerequisites](#prerequisites)
-* [Data Systems and Structure](#data-systems-and-structure)
-  * [CR2C Data Systems](#cr2c-data-systems)
+* [Data Structures](#data-structures)
   * [Laboratory Data](#laboratory-data)
   * [Field Data](#field-data)
   * [Operational Data](#operational-data)
 * [Documentation](#documentation)
   * [cr2c-utils](#cr2c-utils)
+    * [get_gsheet_data](#get_gsheet_data)
+    * [get_dirs](#get_dirs)
+    * [get_credentials](#get_credentials)
   * [cr2c-labdata](#cr2c-labdata)
+    * [get_data](#labget_data)
+    * [labrun](#labrun)
+    * [labrun.get_stage_descs](#labrunget_stage_descs)
+    * [labrun.manage_dups](#labrun.manage_dups)
+    * [labrun.set_var_format](#labrunset_var_format)
+    * [labrun.clean_dataset](#labrunclean_dataset)
+    * [labrun.wide_to_long](#labrunwide_to_long)
+    * [labrun.long_to_wide](#labrunlong_to_wide)
+    * [labrun.count_multichars](#labruncount_multichars)
+    * [labrun.clean_wide_table](#labrunclean_wide_table)
+    * [labrun.summarize_tables](#labrunsummarize_tables)
+    * [labrun.process_data](#labrunprocess_data)
   * [cr2c-opdata](#cr2c-opdata)
+    * [get_data](#opget_data)
+    * [get_table_names](#get_table_names)
+    * [cat_dfs](#cat_dfs)
+    * [opdata_agg](#opdata_agg)
+    * [opdata_agg.prep_opdata](#opdata_aggprep_opdata)
+    * [opdata_agg.get_average](#opdata_aggget_average)
+    * [opdata_agg.run_agg](#opdata_aggrun_agg)
   * [cr2c-fielddata](#cr2c-fielddata)
+    * [get_data](#fldget_data)
+    * [rep_chars](#rep_chars)
+    * [process_data](#process_data)
   * [cr2c-validation](#cr2c-validation)
+    * [cr2c_validation](#cr2c_validationclass)
+    * [cr2c_validation.adj_Hcp](#cr2c_validationadj_Hcp)
+    * [cr2c_validation.est_diss_ch4](#cr2c_validationest_diss_ch4)
+    * [cr2c_validation.get_cod_bal](#cr2c_validationget_cod_bal)
+    * [cr2c_validation.get_biotech_params](#cr2c_validationget_biotech_params)
+    * [cr2c_validation.instr_val](#cr2c_validationinstr_val)
 
 ## Prerequisites
 
@@ -61,7 +91,7 @@ Alternatively, all dependencies can be installed with pip:
 
 Virtual environments can also be managed with Python 3's [venv](https://docs.python.org/3/library/venv.html) module
 
-## Data Systems Structures
+## Data Structures
 
 ### Laboratory Data
 
@@ -75,7 +105,7 @@ Cleaned lab data are inserted/updated into their respective table on the cr2c_la
 
 __Laboratory Data Schematic:__
 
-![alt text](https://github.com/stanfordcr2c/cr2c-monitoring/tree/master/src/cr2c-labdata-schematic.png)
+![alt tag](https://github.com/stanfordcr2c/cr2c-monitoring/tree/master/src/cr2c-labdata-schematic.png)
 
 ### Field Data
 
@@ -85,7 +115,7 @@ The __Field Data Schematic__ figure below shows structure of the field data as t
 
 __Field Data Schematic:__
 
-![alt text](https://github.com/stanfordcr2c/cr2c-monitoring/tree/master/src/cr2c-fielddata-schematic.png)
+![alt tag](https://github.com/stanfordcr2c/cr2c-monitoring/tree/master/src/cr2c-fielddata-schematic.png)
 
 ### Operational Data
 
@@ -99,7 +129,7 @@ The __Operational Data Schematic__ below shows the structure of the operational 
 
 __Operational Data Schematic:__
 
-![alt text](https://github.com/stanfordcr2c/cr2c-monitoring/tree/master/src/cr2c-opdata-schematic.png)
+![alt tag](https://github.com/stanfordcr2c/cr2c-monitoring/tree/master/src/cr2c-opdata-schematic.png)
 
 ## Documentation
 
@@ -107,6 +137,7 @@ __Operational Data Schematic:__
 
 __Description__: For now just a set of general-purpose methods that are useful to any of the cr2c-monitoring scripts 
 
+<a name="get_gsheet_data"></a>
 #### get_gsheet_data(*sheet_names*)
 
 __Description:__ Retrieves data of specified tabs in a gsheets file
@@ -117,6 +148,7 @@ __Arguments:__
 __Output:__
 * _df_: Pandas dataframe with raw lab data from specified gsheet name
 
+<a name="get_dirs"></a>
 #### get_dirs()
 
 __Description:__ Gets directories necessary for reading and outputting data in the local Box Sync folder
@@ -125,6 +157,7 @@ __Output:__
 * *data_dir*: Directory with all cr2c data stores
 * _pydir_: Directory with API key and client secret for google sheets API
 
+<a name="get_credentials"></a>
 #### get_credentials()
 
 __Description:__ Gets valid user credentials from storage. If nothing has been stored, or if the stored credentials are invalid, the OAuth2 flow is completed to obtain the new credentials.
@@ -136,7 +169,7 @@ __Output:__
 
 ### cr2c-labdata
 
-<a id="labget_data"></a>
+<a name="labget_data"></a>
 #### get_data(*ltypes, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None*) 
 
 __Description:__ Wrapper for querying data from the cr2c_labdata.db data store
@@ -161,16 +194,19 @@ __Arguments:__
 __Output:__
 * *ldata_all*: A dictionary with the resulting data. The keys are each of the *ltypes* specified above and the values are pandas dataframes with data for the given *ltype*
 
+<a name="labrun"></a>
 #### labrun
 
 __Description:__ A class for managing the cleaning and processing of laboratory data
 __Inputs:__ 
   * *verbose*: (Optional) Logical (default false) indicating whether to print more error messages to log while processing lab data
 
+<a name="labrunget_stage_descs"></a>
 #### labrun.get_stage_descs()
 
 __Description:__ Gets a more descriptive value for each of the treatment stages entered by operators into the lab data gsheet (as the variable "Stage").
 
+<a name="labrunmanage_dups"></a>
 #### labrun.manage_dups(*ltype, id_vars*)
 
 __Description:__ Manages duplicate observations by removing duplicates (with warnings) and gets observation id's for readings with duplicate Date-Stage values (if intentionally taking multiple readings)  
@@ -179,6 +215,7 @@ __Arguments:__
 * *ltype*: One of the ltypes specified in [get_data](#labget_data) above whose duplicates are being managed
 * *id_vars*: A list of the variables that should identify a unique reading, these are usually "Date_Time", "Stage", and "Type" (if appropriate)
 
+<a name="labrunset_var_format"></a>
 #### labrun.set_var_format(*ltype, variable, var_format*)
 
 __Description:__ Tries to format a raw input variable from gsheets data as a datetime or a floating number; outputs error message if the input data cannot be re-formatted
@@ -188,6 +225,7 @@ __Arguments:__
 * *variable*: The name of the variable being re-formatted, as it appears in the gsheet
 * *var_format*: The desired format of *variable*, in reality is either "None" (if the variable is "Date") or "float", but keeping additional flexibility in case it is needed in the future.
 
+<a name="labrunclean_dataset"></a>
 #### labrun.clean_dataset(*ltype, id_vars*)
 
 __Description:__ Cleans the raw gsheets lab data by reformatting variables and removing duplicates (or tagging intentional duplicates)
@@ -196,6 +234,7 @@ __Arguments:__
 * *ltype*: One of the ltypes specified in [get_data](#labget_data) above whose data are being cleaned
 * *id_vars*: As in [labrun.manage_dups](#labrun.manage_dups), a list of the variables that should identify a unique reading
 
+<a name="labrunwide_to_long"></a>
 #### labrun.wide_to_long(*ltype, id_vars, value_vars*)
 
 __Description:__ Performs a pandas melt procedure on the lab data with the right column ordering
@@ -205,6 +244,7 @@ __Arguments:__
 * *id_vars*: As in [labrun.manage_dups](#labrunmanage_dups), a list of the variables that should identify a unique reading
 * *value_vars*: A list of the variables that contain the values of lab measurements taken
 
+<a name="labrunlong_to_wide"></a>
 #### labrun.long_to_wide(*df, id_vars*)
 
 __Description:__ Performs sequential pandas unstack procedures to convert a long dataframe to a wide dataframe
@@ -216,6 +256,7 @@ __Arguments:__
 __Output:__
 * A wide pandas dataframe
 
+<a name="labruncount_multichars"></a>
 #### labrun.count_multichars(*string*)
 
 __Description:__ Counts the characters in a string that appear more than once and outputs a string of these characters
@@ -226,7 +267,8 @@ __Arguments:__
 __Output:__
 * A string of the characters that appear more than once in the input string
 
-#### clean_wide_table(*dfwide, value_vars, start_dt, end_dt, add_time_el*)
+<a name="labrunclean_wide_table"></a>
+#### labrun.clean_wide_table(*dfwide, value_vars, start_dt, end_dt, add_time_el*)
 
 __Description:__ Cleans the wide table of lab data results
 
@@ -240,6 +282,7 @@ __Arguments:__
 __Output:__
 * A clean, wide pandas dataframe
 
+<a name="labrunsummarize_tables"></a>
 #### labrun.summarize_tables(*end_dt_str, ndays, add_time_el = True, outdir = None, opfile_suff = None*)
 
 __Description:__ Combines and filters a set of wide tables and outputs the resulting table as a csv file
@@ -254,6 +297,7 @@ __Arguments:__
 __Output:__
 * A csv file with clean and combined wide tables
 
+<a name="labrunprocess_data"></a>
 #### labrun.process_data()
 
 __Description:__ The main caller that executes all methods to read data from Google Sheets, clean and reformat it. Performs necessary computations on laboratory results, converts all data to a long format, and outputs the result to the cr2c_labdata.db data store.
@@ -263,7 +307,7 @@ __Description:__ The main caller that executes all methods to read data from Goo
 <a name="opget_data"></a>
 #### get_data(*stypes, sids, tperiods, ttypes, combine_all = True, year_sub = None,  month_sub = None, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None*)
 
-__Description:__ Wrapper for querying aggregated data from the cr2c_opdata.db data store. Note that for the data to be available, [opdata_agg.run_agg](opdata_aggrun_agg) has to have already been run for the data point in question
+__Description:__ Wrapper for querying aggregated data from the cr2c_opdata.db data store. Note that for the data to be available, [opdata_agg.run_agg](#opdata_aggrun_agg) has to have already been run for the data point in question
 
 __Arguments:__
 * *stypes*: A list of sensor types corresponding to each sensor id given in *sid* below (in the same order!). These types can be any of:
@@ -289,11 +333,13 @@ __Arguments:__
 __Output:__
 * A single dataframe or dictionary of dataframes with keys equal to the table names in the SQL file. If a single dataframe is output, all dataframes will be merged on time and the value of each sensor id will be a variable with name "sid". If a dictionary of tables, the table name will be *"stype"_"sid"_"tperiod"_"ttype"_AVERAGES*, so for example, WATER_FT200_6_HOUR_AVERAGES for sid "FT200", which measures flows of "WATER" averaged over 6 hour periods)
 
+<a name="get_table_names"></a>
 #### get_table_names()
 
 __Description:__ Get a list of the table names in the cr2c_opdata.db data store
 __Output:__ A list of table names 
 
+<a name="cat_dfs"></a>
 #### cat_dfs(ip_paths, idx_var = None, output_csv = False, outdir = None, output_dsn = None)
 
 __Description:__ Concatenates a list of csv files in a directory to a single dataframe
@@ -307,6 +353,7 @@ __Arguments:__
 __Output:__
 * A Pandas stacked dataframe
 
+<a name="opdata_agg"></a>
 #### opdata_agg
 
 __Description:__ A class for managing the cleaning and aggregation of operational (sensor) data
@@ -315,6 +362,7 @@ __Inputs:__
   * *end_dt_str*: A string of format 'mm-dd-yy' giving the last date for which aggregated data are desired
   * *ip_path*: A string giving the directory containing the csv file with raw sensor data
 
+<a name="opdata_aggprep_opdata"></a>
 #### opdata_agg.prep_opdata(stype, sid)
 
 __Description:__ Reads in a csv of raw sensor data, cleans and re-formats variables, removes missing values.
@@ -323,6 +371,7 @@ __Arguments:__
   * *sid*: The id of the sensor whose operatioal data are being prepped (data for each sensor are processed separately)
 __Output:__
 
+<a name="opdata_aggget_average"></a>
 #### opdata_agg.get_average(opdata, tperiod, ttype)
 
 __Description:__ Uses linear interpolation to convert a dataframe of sensor readings with arbitrary time stamps into periodic averages
@@ -333,6 +382,7 @@ __Arguments:__
 __Output:__
 * A pandas dataframe with periodic interpolated average readings for a sensor
 
+<a name="opdata_aggrun_agg"></a>
 #### opdata_agg.run_agg(stype, sid, tperiods, ttypes, output_csv = False, output_sql = True, outdir = None)
 
 __Description:__ Runs a report to obtain aggregated data for a series of stypes, sids, tperiods and ttypes in series. Outputs the result to the cr2c_opdata.db data store, and, if requested, to a series of csv files
@@ -347,23 +397,7 @@ __Arguments:__
 
 ### cr2c-fielddata
 
-#### rep_chars(targChars, replChar, string)
-
-__Description:__ Replaces all target characters in a string with a replacement character
-__Arguments:__
-  * *targChars*: A string of characters that should be replaced
-  * *replChar*: A string giving the value to replace all instances of the target characters with
-  * *string*: The input string to be mutated
-
-__Output:__
-* The resulting mutated string
-
-#### process_data(tableName = 'DailyLogResponses')
-
-__Description:__ Processes responses from daily log form by reading data in from google sheet and cleaning variable values. Outputs result to the cr2c_fielddata.db data store
-__Arguments:__ 
-  * *tableName*: (Optional) A string giving the name of the table whose responses are to be processed. This corresponds to the sheetname of the google sheets file where the google form responses are stored and the name of the google form itself
-
+<a name="fldget_data"></a>
 #### def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None)
 
 __Description:__ Wrapper for querying aggregated data from the cr2c_fielddata.db data store. 
@@ -376,8 +410,28 @@ __Arguments:__
 __Output:__
 * A pandas dataframe with the form data
 
+<a name="rep_chars"></a>
+#### rep_chars(targChars, replChar, string)
+
+__Description:__ Replaces all target characters in a string with a replacement character
+__Arguments:__
+  * *targChars*: A string of characters that should be replaced
+  * *replChar*: A string giving the value to replace all instances of the target characters with
+  * *string*: The input string to be mutated
+
+__Output:__
+* The resulting mutated string
+
+<a name="process_data"></a>
+#### process_data(tableName = 'DailyLogResponses')
+
+__Description:__ Processes responses from daily log form by reading data in from google sheet and cleaning variable values. Outputs result to the cr2c_fielddata.db data store
+__Arguments:__ 
+  * *tableName*: (Optional) A string giving the name of the table whose responses are to be processed. This corresponds to the sheetname of the google sheets file where the google form responses are stored and the name of the google form itself
+
 ### cr2c-validation
 
+<a name="cr2c_validationclass"></a>
 #### cr2c_validation
 
 __Description:__ A class for managing the validation exercises performed on the integrated lab, field and operational sensor data
@@ -389,6 +443,7 @@ __Inputs:__
   * *run_agg_temp*: (Optional) Logical, if True will execute an opdata_agg.run_agg method on the sensors measuring temperature
   * *run_agg_press*: (Optional) Logical, if True will execute an opdata_agg.run_agg method on the sensors measuring reactor pressure
 
+<a name="cr2c_validationadj_Hcp"></a>
 #### cr2c_validation.adj_Hcp(Hcp_gas, deriv_gas, temp)
 
 __Description:__ Computes an adjusted Henry's constant (in concentration/pressure units) for a given gas and temperature
@@ -399,6 +454,7 @@ __Arguments:__
 __Output:__
 * Floating number giving the adjusted Henry's constant of the gas (in concentration/pressure units)
 
+<a name="cr2c_validationest_diss_ch4"></a>
 #### cr2c_validation.est_diss_ch4(temp, percCH4)
 
 __Description:__ Estimates the dissolved methane concentration for a given temperature and gas composition in a reactor (pressure of 1 atm)
@@ -407,7 +463,7 @@ __Arguments:__
   * *percCH4*: The percentage of gas in a reactor that is composed of methane
 __Output:__ A floating number giving the assumed liquid concentration of methane at a pressure of 1 atm
 
-
+<a name="cr2c_validationget_cod_bal"></a>
 #### cr2c_validation.get_cod_bal(end_dt_str, nweeks, plot = True, table = True)
 
 __Description:__ Computes a Chemical Oxygen Demand (COD) balance for the treatment plant on a weekly basis using flowrate data, COD concentrations, and biogas production. Outputs plots and csv files
@@ -418,6 +474,7 @@ __Arguments:__
   * *plot*: (Optional) Logical, if True will output a bar chart of the COD balance
   * *table*: (Optional) Logical, if True will output csv file with the COD balance data
 
+<a name="cr2c_validationget_biotech_params"></a>
 #### cr2c_validation.get_biotech_params(end_dt_str, nWeeks, plot = True, table = True)
 
 __Description:__ Computes key solids wasting and growth parameters to monitor biology in reactors on a weekly basis
@@ -427,12 +484,13 @@ __Arguments:__
   * *plot*: (Optional) Logical, if True will output a plot of solids wasting and growth parameters
   * *table*: (Optional) Logical, if True will output csv file with the solids wasting and growth parameters
 
+<a name="cr2c_validationinstr_val"></a>
 #### cr2c_validation.instr_val(valtypes, start_dt_str, end_dt_str, op_sids, fld_varnames = None, ltypes = None, lstages = None, run_op_report = False, ip_path = None)
 
 __Description:__ General purpose function for validating measurements from the facility's sensors with laboratory or field measurement data logged and stored in the cr2c_labdata.db and cr2c_fielddata.db data stores.
 
 __Arguments:__
-  * *valtypes*: A list of strings corresponding to the operational sensor data types outlined in [Operational Data: get_data](opget_data)
+  * *valtypes*: A list of strings corresponding to the operational sensor data types outlined in [Operational Data: get_data](#opget_data)
   * *op_sids*: List of strings the same length as *val_types* giving the ids of the sensors that are being validated
   * *start_dt_str*: String of format 'mm-dd-yy' giving the first date for which we want to validate sensors
   * *end_dt_str*: String of format 'mm-dd-yy' giving the last date for which we want to validate sensors
