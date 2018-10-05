@@ -29,24 +29,7 @@ import sys
 import cr2c_utils as cut
 
 
-# Sets the start and end dates for the charts, depending on user input
-def manage_chart_dates(start_dt_str, end_dt_str):
-
-	min_feas_dt = dt.strptime('6-1-16', '%m-%d-%y')
-	if start_dt_str == None:
-		start_dt = min_feas_dt	
-	else:
-		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
-	
-	if end_dt_str == None:
-		end_dt = file_dt
-	else:
-		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
-
-	return start_dt, end_dt
-
-
-# Queries Lab Data SQL File 
+# Wrapper for querying data from the cr2c_labdata.db data store
 def get_data(
 	ltypes, 
 	start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None
@@ -61,7 +44,7 @@ def get_data(
 	# Load data from SQL
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
-	conn = sqlite3.connect('cr2c_lab_data.db')
+	conn = sqlite3.connect('cr2c_labdata.db')
 
 	# Loop through types of lab data types (ltypes)
 	ldata_all = {}
@@ -98,6 +81,23 @@ def get_data(
 		ldata_all[ltype] = ldata_long
 
 	return ldata_all
+
+
+# Sets the start and end dates for the charts, depending on user input
+def manage_chart_dates(start_dt_str, end_dt_str):
+
+	min_feas_dt = dt.strptime('6-1-16', '%m-%d-%y')
+	if start_dt_str == None:
+		start_dt = min_feas_dt	
+	else:
+		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
+	
+	if end_dt_str == None:
+		end_dt = file_dt
+	else:
+		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+
+	return start_dt, end_dt
 
 
 def get_lab_plots(
@@ -279,7 +279,7 @@ def get_lab_plots(
 			hue_list  = stage_list
 			hue_var = 'Stage'
 		else:
-			print('wrap_var can only be "Stage" or "Type"')
+			print('cr2c_labdata: get_lab_plots: wrap_var can only be "Stage" or "Type"')
 			sys.exit()
 
 		# Set plot width and length according to the wrapping variable	
@@ -374,7 +374,7 @@ class labrun:
 		self.verbose = verbose
 
 
-	# Adds desriptive treatment stage variable to dataset for plotting
+	# Gets a more descriptive value for each of the treatment stages entered by operators into the lab data gsheet (as the variable "Stage").
 	def get_stage_descs(self):
 
 		conditions = [
@@ -398,8 +398,8 @@ class labrun:
 		self.ldata.loc[:,'Stage'] = np.select(conditions, choices, default = self.ldata['Stage'])
 
 
-	# Manages duplicate observations removes duplicates (with warnings)
-	# gets observation id's for intended duplicates 
+	# Manages duplicate observations by removing duplicates (with warnings)
+	# gets observation id's for readings with duplicate Date-Stage values (if intentionally taking multiple readings)  
 	def manage_dups(self, ltype, id_vars):
 
 		# Set duplicates warning
@@ -414,10 +414,10 @@ class labrun:
 
 	    # If found, remove, print warning and output csv of duplicates/empties
 		if self.verbose and len(repeat_entries) > 0:
-				os.chdir(self.log_dir)
-				dup_filename = ltype + 'duplicates' + self.file_dt_str
-				warnings.warn(dup_warning.format(ltype,dup_filename + '.csv'))
-				self.ldata.iloc[repeat_entries].to_csv(dup_filename + '.csv')
+			os.chdir(self.log_dir)
+			dup_filename = ltype + 'duplicates' + self.file_dt_str
+			warnings.warn(dup_warning.format(ltype,dup_filename + '.csv'))
+			self.ldata.iloc[repeat_entries].to_csv(dup_filename + '.csv')
 		
 		# Eliminate duplicate data entries and reset the index
 		self.ldata.drop_duplicates(keep = 'first', inplace = True)
@@ -443,11 +443,17 @@ class labrun:
 		self.ldata.loc[:,'obs_id'] = obs_ids
 
 
-	# Tries to format a variable and outputs error message if the input data are off
-	def set_var_format(self, ltype, variable, format, format_prt):
+	# Tries to format a raw input variable from gsheets data as a datetime or a floating number; 
+	# outputs error message if the input data cannot be re-formatted
+	def set_var_format(self, ltype, variable, var_format):
+
+		if variable == 'Date':
+			format_desc = 'm-d-yy'
+		else:
+			format_desc = 'numeric'
 
 		var_typ_warn = \
-			'Check {0} variable in {1}. An entry is incorrect, format should be {2}'
+			'cr2c_labdata: set_var_format: Check {0} variable in {1}. An entry is incorrect, format should be {2}'
 
 		self.ldata = self.ldata.apply(
 			lambda x: x.str.strip() if isinstance(x, str) else x).replace('', np.nan
@@ -456,26 +462,26 @@ class labrun:
 			if variable == 'Date':
 				self.ldata.loc[:,'Date'] = pd.to_datetime(self.ldata['Date'], format = '%m-%d-%y')
 			else:
-				self.ldata.loc[:,variable] = self.ldata[variable].astype(format)
+				self.ldata.loc[:,variable] = self.ldata[variable].astype(var_format)
 		except TypeError:
-			print(var_typ_warn.format(variable, ltype, format_prt))
+			print(var_typ_warn.format(variable, ltype, format_desc))
 			sys.exit()
 		except ValueError:
-			print(var_typ_warn.format(variable, ltype, format_prt))
+			print(var_typ_warn.format(variable, ltype, format_desc))
 			sys.exit()
 
 
-	# Cleans a processed dataset, converting it to long format for plotting, output, etc
+	# Cleans the raw gsheets lab data by reformatting variables and removing duplicates (or tagging intentional duplicates)
 	def clean_dataset(self, ltype, id_vars):
 
 		# First sort the data frame by its id variables
 		self.ldata.sort_values(id_vars, inplace = True)
-		self.set_var_format(ltype, 'Date', None, "m-d-yy")
+		self.set_var_format(ltype, 'Date', None)
 		# Eliminate missing date variables
 		self.ldata.dropna(subset = ['Date'], inplace = True)
 		# Make sure all date variables are within a reasonable range
 		date_rng_warn = \
-			'A Date variable in {0} has been entered incorrectly as {1} and removed'
+			'cr2c_labdata: clean_dataset: A Date variable in {0} has been entered incorrectly as {1} and removed'
 		if self.ldata.Date.min() < self.min_feas_dt:
 			print(date_rng_warn.format(ltype,self.ldata.Date.min()))
 		if self.ldata.Date.max() > self.file_dt:
@@ -505,7 +511,7 @@ class labrun:
 				[stage + ' CS' + CSNo for CSNo in CSNos for stage in correct_stages]
 			# Warning to print if an incorrect stage is found
 			stage_warning = \
-				'Check "Stage" entry {0} for {1} on dates: {2}. \n ' +\
+				'cr2c_labdata: clean_dataset: Check "Stage" entry {0} for {1} on dates: {2}. \n ' +\
 				'"Stage" should be written as one of the following: \n {3} (or "[STAGE]" + " CS[#]" if logging a sample from a specific composite sampler)'
 			stage_errors = self.ldata[ ~ self.ldata['Stage'].isin(correct_stages_all)]
 			if len(stage_errors) > 0:
@@ -529,7 +535,7 @@ class labrun:
 			# Check that the type variable has been entered correctly
 			correct_types = ['TOTAL','SOLUBLE']
 			type_warning = \
-				'Check "Type" entry {0} for {1} on dates: {2}. \n' +\
+				'cr2c_labdata: clean_dataset: Check "Type" entry {0} for {1} on dates: {2}. \n' +\
 				'"Type" should be written as on of the following: \n {3}'
 			ldata_mod = self.ldata.reset_index(inplace = False).copy()
 			type_errors = ldata_mod.loc[ ~ ldata_mod['Type'].isin(correct_types),:]
@@ -544,40 +550,40 @@ class labrun:
 				sys.exit()
 
 		if ltype in ['COD','AMMONIA','SULFATE']:
-			self.set_var_format(ltype, 'Reading (mg/L)', float, 'numeric')
+			self.set_var_format(ltype, 'Reading (mg/L)', float)
 
 		if ltype == 'BOD':
-			self.set_var_format(ltype, 'Sample Volume (mL)', float, 'numeric')
-			self.set_var_format(ltype, 'Initial DO (mg/L)'	, float, 'numeric')
-			self.set_var_format(ltype, 'Day 5 DO (mg/L)', float, 'numeric')
+			self.set_var_format(ltype, 'Sample Volume (mL)', float)
+			self.set_var_format(ltype, 'Initial DO (mg/L)'	, float)
+			self.set_var_format(ltype, 'Day 5 DO (mg/L)', float)
 
 		if ltype == 'PH':
-			self.set_var_format(ltype, 'Reading', float, 'numeric')
+			self.set_var_format(ltype, 'Reading', float)
 		
 		if ltype == 'ALKALINITY':
-			self.set_var_format(ltype,'Sample Volume (mL)', float, 'numeric')
-			self.set_var_format(ltype,'Acid Volume (mL, to pH 4.3)', float, 'numeric')
-			self.set_var_format(ltype,'Acid Normality (N)', float, 'numeric')
+			self.set_var_format(ltype,'Sample Volume (mL)', float)
+			self.set_var_format(ltype,'Acid Volume (mL, to pH 4.3)', float)
+			self.set_var_format(ltype,'Acid Normality (N)', float)
 
 		if ltype in ['COD','ALKALINITY','VFA','AMMONIA','SULFATE']:
-			self.set_var_format(ltype,'Dilution Factor', float, 'numeric')
+			self.set_var_format(ltype,'Dilution Factor', float)
 		
 		if ltype == 'TSS_VSS':
-			self.set_var_format(ltype,'Volume (ml)', float, 'numeric')
-			self.set_var_format(ltype,'Original (g)', float, 'numeric')
-			self.set_var_format(ltype,'Temp105 (g)', float, 'numeric')
-			self.set_var_format(ltype,'Temp550 (g)', float, 'numeric')
+			self.set_var_format(ltype,'Volume (ml)', float)
+			self.set_var_format(ltype,'Original (g)', float)
+			self.set_var_format(ltype,'Temp105 (g)', float)
+			self.set_var_format(ltype,'Temp550 (g)', float)
 
 		if ltype == 'VFA':
-			self.set_var_format(ltype,'Acetate (mgCOD/L)', float, 'numeric')
-			self.set_var_format(ltype,'Propionate (mgCOD/L)', float, 'numeric')
+			self.set_var_format(ltype,'Acetate (mgCOD/L)', float)
+			self.set_var_format(ltype,'Propionate (mgCOD/L)', float)
 
 		if ltype == 'GASCOMP':
-			self.set_var_format(ltype,'Helium pressure (psi) +/- 50 psi', float, 'numeric')
-			self.set_var_format(ltype,'Nitrogen (%)', float, 'numeric')
-			self.set_var_format(ltype,'Oxygen (%)', float, 'numeric')
-			self.set_var_format(ltype,'Methane (%)', float, 'numeric')
-			self.set_var_format(ltype,'Carbon Dioxide (%)', float, 'numeric')
+			self.set_var_format(ltype,'Helium pressure (psi) +/- 50 psi', float)
+			self.set_var_format(ltype,'Nitrogen (%)', float)
+			self.set_var_format(ltype,'Oxygen (%)', float)
+			self.set_var_format(ltype,'Methane (%)', float)
+			self.set_var_format(ltype,'Carbon Dioxide (%)', float)
 
 		if ltype == 'TKN':	
 			varnames = \
@@ -589,14 +595,14 @@ class labrun:
 				'Acid Concentration (N)','NH4Cl Concentration (mg/L)','Tryptophan Concentration (mg/L)'
 			]
 			for varname in varnames:
-				self.set_var_format(ltype, varname, float, 'numeric')		
+				self.set_var_format(ltype, varname, float)		
 			
 		# Get the obs_id variable (This step also removes duplicates and issues warnings)
 		self.manage_dups(ltype, id_vars)
 		self.ldata.reset_index(inplace = True)
 
 
-	# Converts dataset to long 
+	# Performs a pandas melt procedure on the lab data with the right column ordering
 	def wide_to_long(self, ltype, id_vars, value_vars):
 
 		# Melt the data frame
@@ -614,17 +620,151 @@ class labrun:
 
 		return df_long
 
+	# Performs sequential pandas unstack procedures to convert a long dataframe to a wide dataframe
+	def long_to_wide(self, df, id_vars):
+
+		# Create descriptive Date/Time Variable
+		df.rename(columns = {'Date_Time' : 'Sample Date & Time'}, inplace = True)
+		all_vars = id_vars + ['Value']
+		df = df[all_vars].copy()
+
+		# Create a multi-index
+		df.drop_duplicates(subset = id_vars, inplace = True)
+		df.set_index(id_vars, inplace = True)
+
+		# Convert to wide format
+		if len(id_vars) > 2:
+			dfwide = df.unstack(id_vars[1])
+			if len(id_vars) > 3:
+				dfwide = dfwide.unstack(id_vars[2])
+		elif len(id_vars) > 1:
+			dfwide = df.unstack(id_vars[1])
+		
+		# Convert index to pandas native datetimeindex to allow easy date slicing
+		dfwide.reset_index(inplace = True)
+		dfwide.set_index('Sample Date & Time', inplace = True)
+
+		index = pd.to_datetime(dfwide.index)
+		dfwide.sort_index(inplace = True)
+		
+		return dfwide
+
+	# Counts the characters in a string that appear more than once and outputs a string of these characters	
 	def count_multichars(self,string):
 		chars = list(set([char for char in string if string.count(char) > 1]))
 		return ''.join(chars)
 
-	# Inputs lab testing results data and computes water quality parameters
+
+	# Cleans the wide table of lab data results
+	def clean_wide_table(self, dfwide, value_vars, start_dt, end_dt, add_time_el):
+
+		stage_order = \
+			[
+				'Raw Influent',
+				'Grit Tank',
+				'Microscreen',
+				'MESH',
+				'AFBR',
+				'Duty AFMBR MLSS',
+				'Duty AFMBR Effluent',
+				'Research AFMBR MLSS',
+				'Research AFMBR Effluent'
+			]
+		
+
+		# First retrieve the stages for which there are data
+		act_stages = dfwide.columns.levels[1].values
+		# Reproduce stage order according to data availability
+		act_st_ord = [stage for stage in stage_order if stage in act_stages]
+
+		# Truncate (adding exception for Ammonia with no type variable)
+		if value_vars == ['Value']:
+			column_tuple = act_st_ord
+		else:
+			column_tuple = (act_st_ord, value_vars)
+
+		df_trunc = dfwide.Value.loc[start_dt:end_dt, column_tuple]
+
+		# Set column order (again, exception is for Ammonia with no type variable)
+		if value_vars == ['Value']:
+			df_trunc = df_trunc.reindex(act_st_ord, axis = 1, level = None)
+		else:
+			df_trunc = df_trunc.reindex(act_st_ord, axis = 1, level = 'Stage')
+			df_trunc = df_trunc.reindex(value_vars, axis = 1, level = 'Type')
+
+		# Create days since seed variable and insert as the first column
+		if add_time_el:
+			seed_dt = dt.strptime('5-11-17','%m-%d-%y')
+			days_since_seed = np.array((df_trunc.index - seed_dt).days)
+			df_trunc.insert(0, 'Days Since Seed', days_since_seed)
+
+		return df_trunc
+
+
+	# Combines and filters a set of wide tables and outputs the resulting table as a csv file
+	def summarize_tables(self, end_dt_str, ndays, add_time_el = True, outdir = None, opfile_suff = None):
+
+		if opfile_suff:
+			opfile_suff = '_' + opfile_suff
+		else:
+			opfile_suff = ''
+
+		# Get start and end dates
+		end_dt = dt.strptime(end_dt_str,'%m-%d-%y') + timedelta(days = 1)
+		start_dt = end_dt - timedelta(days = ndays)
+		seed_dt = dt.strptime('05-10-17','%m-%d-%y')
+
+		# Load data from SQL
+		ldata_all = get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA','AMMONIA','SULFATE'])
+
+		# Specify id variables (same for every type since combining Alkalinity and pH)
+		id_vars = ['Sample Date & Time','Stage','Type','obs_id']
+
+		# For Alkalinity, pH, NH3, and SO4, need to add Type variable back in
+		ALK = ldata_all['ALKALINITY'].copy()
+		ALK.loc[:,'Type'] = 'Alkalinity'
+		PH = ldata_all['PH'].copy()
+		PH.loc[:,'Type'] = 'pH'
+		NH3 = ldata_all['AMMONIA'].copy()
+		SO4 = ldata_all['SULFATE'].copy()
+
+		# Concatenate Alkaliity and pH and reset index
+		ALK_PH = pd.concat([PH,ALK], axis = 0, join = 'outer').reset_index(drop = True)
+
+		# Get wide data
+		CODwide = self.long_to_wide(ldata_all['COD'].copy(), id_vars)
+		VFAwide = self.long_to_wide(ldata_all['VFA'].copy(), id_vars)
+		TSS_VSSwide = self.long_to_wide(ldata_all['TSS_VSS'].copy(), id_vars)
+		ALK_PHwide = self.long_to_wide(ALK_PH, id_vars)
+		NH3wide = self.long_to_wide(NH3, ['Sample Date & Time','Stage'])
+		SO4wide = self.long_to_wide(SO4, ['Sample Date & Time','Stage'])
+		
+		# Truncate and set column order
+		CODtrunc = self.clean_wide_table(CODwide, ['Total','Soluble'], start_dt, end_dt, add_time_el)
+		VFAtrunc = self.clean_wide_table(VFAwide, ['Acetate','Propionate'], start_dt, end_dt, add_time_el)
+		TSS_VSStrunc = self.clean_wide_table(TSS_VSSwide,['TSS','VSS'], start_dt, end_dt, add_time_el)
+		ALK_PHtrunc = self.clean_wide_table(ALK_PHwide,['pH','Alkalinity'], start_dt, end_dt, add_time_el)
+		NH3trunc = self.clean_wide_table(NH3wide,['Value'], start_dt, end_dt, add_time_el)
+		SO4trunc = self.clean_wide_table(SO4wide,['Value'], start_dt, end_dt, add_time_el)
+		
+		# Save
+		os.chdir(outdir)
+		CODtrunc.to_csv('COD_table' + end_dt_str + opfile_suff + '.csv')
+		VFAtrunc.to_csv('VFA_table' + end_dt_str + opfile_suff + '.csv')
+		TSS_VSStrunc.to_csv('TSS_VSS_table' + end_dt_str + opfile_suff + '.csv')
+		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
+		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
+		SO4trunc.to_csv('Sulfate_table' + end_dt_str + opfile_suff + '.csv')
+
+
+	# The main caller that executes all methods to read data from Google Sheets, clean and reformat it. 
+	# Performs necessary computations on laboratory results, converts all data to a long format, and outputs the result to the cr2c_labdata.db data store.
 	def process_data(self):
 		
 		# Start loop through the gsheets
 		for ltype in self.ltype_list:
 
-			self.ldata = cut.get_gsheet_data([ltype])
+			self.ldata = cut.get_gsheet_data(ltype)
 
 			if ltype == 'COD':
 				self.clean_dataset(ltype,['Date','Stage','Type'])
@@ -859,11 +999,11 @@ class labrun:
 			""".format(ltype, colNStr, colIns)
 			# Set connection to SQL database (pertaining to given year)
 			os.chdir(self.data_dir)
-			conn = sqlite3.connect('cr2c_lab_data.db')
+			conn = sqlite3.connect('cr2c_labdata.db')
 			# Load data to SQL
 			# Create the table if it doesn't exist
 			conn.execute(create_str)
-			# Insert aggregated values for the elid and time period
+			# Insert aggregated values for the sid and time period
 			conn.executemany(
 				ins_str,
 				ldata_long.to_records(index = False).tolist()
@@ -871,153 +1011,5 @@ class labrun:
 			conn.commit()
 			# Close Connection
 			conn.close()
-
-
-	# Sets the start and end dates for the charts, depending on user input
-	def manage_chart_dates(self, start_dt_str, end_dt_str):
-
-		if start_dt_str == None:
-			start_dt = self.min_feas_dt	
-		else:
-			start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
 		
-		if end_dt_str == None:
-			end_dt = self.file_dt
-		else:
-			end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
-
-		return start_dt, end_dt
-	
-
-	# Convert long dataset to wide dataset
-	def long_to_wide(self, df, id_vars):
-
-		# Create descriptive Date/Time Variable
-		df.rename(columns = {'Date_Time' : 'Sample Date & Time'}, inplace = True)
-		all_vars = id_vars + ['Value']
-		df = df[all_vars].copy()
-
-		# Create a multi-index
-		df.drop_duplicates(subset = id_vars, inplace = True)
-		df.set_index(id_vars, inplace = True)
-
-		# Convert to wide format
-		if len(id_vars) > 2:
-			dfwide = df.unstack(id_vars[1])
-			if len(id_vars) > 3:
-				dfwide = dfwide.unstack(id_vars[2])
-		elif len(id_vars) > 1:
-			dfwide = df.unstack(id_vars[1])
-		
-		# Convert index to pandas native datetimeindex to allow easy date slicing
-		dfwide.reset_index(inplace = True)
-		dfwide.set_index('Sample Date & Time', inplace = True)
-
-		index = pd.to_datetime(dfwide.index)
-		dfwide.sort_index(inplace = True)
-		
-		return dfwide
-
-		
-	# Cleans wide dataset for output to tables
-	def clean_wide_table(self, dfwide, value_vars, start_dt, end_dt, add_time_el):
-
-		stage_order = \
-			[
-				'Raw Influent',
-				'Grit Tank',
-				'Microscreen',
-				'MESH',
-				'AFBR',
-				'Duty AFMBR MLSS',
-				'Duty AFMBR Effluent',
-				'Research AFMBR MLSS',
-				'Research AFMBR Effluent'
-			]
-		
-
-		# First retrieve the stages for which there are data
-		act_stages = dfwide.columns.levels[1].values
-		# Reproduce stage order according to data availability
-		act_st_ord = [stage for stage in stage_order if stage in act_stages]
-
-		# Truncate (adding exception for Ammonia with no type variable)
-		if value_vars == ['Value']:
-			column_tuple = act_st_ord
-		else:
-			column_tuple = (act_st_ord, value_vars)
-
-		df_trunc = dfwide.Value.loc[start_dt:end_dt, column_tuple]
-
-		# Set column order (again, exception is for Ammonia with no type variable)
-		if value_vars == ['Value']:
-			df_trunc = df_trunc.reindex(act_st_ord, axis = 1, level = None)
-		else:
-			df_trunc = df_trunc.reindex(act_st_ord, axis = 1, level = 'Stage')
-			df_trunc = df_trunc.reindex(value_vars, axis = 1, level = 'Type')
-
-		# Create days since seed variable and insert as the first column
-		if add_time_el == 1:
-			seed_dt = dt.strptime('5-11-17','%m-%d-%y')
-			days_since_seed = np.array((df_trunc.index - seed_dt).days)
-			df_trunc.insert(0, 'Days Since Seed', days_since_seed)
-
-		return df_trunc
-
-
-	# Gets wide dataset, cleans and formats and outputs to csv
-	def summarize_tables(self, end_dt_str, ndays, add_time_el = True, outdir = None, opfile_suff = None):
-
-		if opfile_suff:
-			opfile_suff = '_' + opfile_suff
-		else:
-			opfile_suff = ''
-
-		# Get start and end dates
-		end_dt = dt.strptime(end_dt_str,'%m-%d-%y') + timedelta(days = 1)
-		start_dt = end_dt - timedelta(days = ndays)
-		seed_dt = dt.strptime('05-10-17','%m-%d-%y')
-
-		# Load data from SQL
-		ldata_all = get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA','AMMONIA','SULFATE'])
-
-		# Specify id variables (same for every type since combining Alkalinity and pH)
-		id_vars = ['Sample Date & Time','Stage','Type','obs_id']
-
-		# For Alkalinity, pH, NH3, and SO4, need to add Type variable back in
-		ALK = ldata_all['ALKALINITY'].copy()
-		ALK.loc[:,'Type'] = 'Alkalinity'
-		PH = ldata_all['PH'].copy()
-		PH.loc[:,'Type'] = 'pH'
-		NH3 = ldata_all['AMMONIA'].copy()
-		SO4 = ldata_all['SULFATE'].copy()
-
-		# Concatenate Alkaliity and pH and reset index
-		ALK_PH = pd.concat([PH,ALK], axis = 0, join = 'outer').reset_index(drop = True)
-
-		# Get wide data
-		CODwide = self.long_to_wide(ldata_all['COD'].copy(), id_vars)
-		VFAwide = self.long_to_wide(ldata_all['VFA'].copy(), id_vars)
-		TSS_VSSwide = self.long_to_wide(ldata_all['TSS_VSS'].copy(), id_vars)
-		ALK_PHwide = self.long_to_wide(ALK_PH, id_vars)
-		NH3wide = self.long_to_wide(NH3, ['Sample Date & Time','Stage'])
-		SO4wide = self.long_to_wide(SO4, ['Sample Date & Time','Stage'])
-		
-		# Truncate and set column order
-		CODtrunc = self.clean_wide_table(CODwide, ['Total','Soluble'], start_dt, end_dt, add_time_el)
-		VFAtrunc = self.clean_wide_table(VFAwide, ['Acetate','Propionate'], start_dt, end_dt, add_time_el)
-		TSS_VSStrunc = self.clean_wide_table(TSS_VSSwide,['TSS','VSS'], start_dt, end_dt, add_time_el)
-		ALK_PHtrunc = self.clean_wide_table(ALK_PHwide,['pH','Alkalinity'], start_dt, end_dt, add_time_el)
-		NH3trunc = self.clean_wide_table(NH3wide,['Value'], start_dt, end_dt, add_time_el)
-		SO4trunc = self.clean_wide_table(SO4wide,['Value'], start_dt, end_dt, add_time_el)
-		
-		# Save
-		os.chdir(outdir)
-		CODtrunc.to_csv('COD_table' + end_dt_str + opfile_suff + '.csv')
-		VFAtrunc.to_csv('VFA_table' + end_dt_str + opfile_suff + '.csv')
-		TSS_VSStrunc.to_csv('TSS_VSS_table' + end_dt_str + opfile_suff + '.csv')
-		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
-		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
-		SO4trunc.to_csv('Sulfate_table' + end_dt_str + opfile_suff + '.csv')
-
 

@@ -1,3 +1,4 @@
+
 ''' 
 	Script loads data from daily log sheets and outputs to SQL database
 '''
@@ -18,23 +19,23 @@ from os.path import expanduser
 import sys
 import re
 
-# CR2C
+# CR2Cf
 import cr2c_utils as cut
 
-def rmChars(targChars,replCar,string):
-	for char in targChars:
-		string = string.replace(char,replCar)
-	return string
+def clean_varname(varname):
+	for char in '-:?[]()<>.,':
+		varname = varname.replace(char,'')
+		varname = varname.replace(' ','_')
+	return varname
+
 
 def process_data(tableName = 'DailyLogResponses'):
 
 	# Get the log data from gsheets
-	logdata = cut.get_gsheet_data([tableName])
-
+	logdata = cut.get_gsheet_data(tableName)
 	# Eliminate special characters (':-?[]()') and replace spaces with '_'	
 	colnamesRaw = logdata.columns.values
-	colnamesCln = [rmChars('-:?[]()<>.,','',colname) for colname in colnamesRaw]
-	colnamesCln = [rmChars(' ','_',colname) for colname in colnamesCln]
+	colnamesCln = [clean_varname(colname) for colname in colnamesRaw]
 	# Replace columns names of dataset with clean column names
 	logdata.columns = colnamesCln
 
@@ -53,10 +54,10 @@ def process_data(tableName = 'DailyLogResponses'):
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
 	# Create SQL object connection
-	conn = sqlite3.connect('cr2c_field_data.db')
+	conn = sqlite3.connect('cr2c_fielddata.db')
 	# Create table if it doesn't exist
 	conn.execute(create_str)
-	# Insert aggregated values for the elid and time period
+	# Insert aggregated values for the sid and time period
 	conn.executemany(
 		ins_str,
 		logdata.to_records(index = False).tolist()
@@ -67,13 +68,7 @@ def process_data(tableName = 'DailyLogResponses'):
 	conn.close()
 
 
-def get_data(
-	varNames = None, 
-	start_dt_str = None, 
-	end_dt_str = None, 
-	output_csv = False, 
-	outdir = None
-):
+def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None):
 
 	# Convert date string inputs to dt variables
 	if start_dt_str:
@@ -86,7 +81,7 @@ def get_data(
 	# Load data from SQL
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
-	conn = sqlite3.connect('cr2c_field_data.db')
+	conn = sqlite3.connect('cr2c_fielddata.db')
 
 	if varNames:
 		varNamesAll = 'Timestamp,' + ','.join(varNames)
@@ -101,7 +96,7 @@ def get_data(
 			[
 				fielddata,
 				pd.read_sql(
-					'SELECT {0} FROM {1}'.format(varNamesAll,tableName), 
+					'SELECT {0} FROM {1}'.format(varNamesAll, tableName), 
 					conn, 
 					coerce_float = True
 				)
@@ -120,10 +115,6 @@ def get_data(
 	if end_dt_str:
 		fielddata = fielddata.loc[fielddata['Date_Time'] <= end_dt + timedelta(days = 1),:]
 
-	if output_csv and not outdir:
-		print('Directory to output Lab data to...')
-		outdir = askdirectory(title = 'Directory to output Lab data to...')
-
 	# Output csv if desired
 	if output_csv:
 		if varNames:
@@ -134,5 +125,6 @@ def get_data(
 		fielddata.to_csv(op_fname, index = False, encoding = 'utf-8')
 
 	return fielddata
+
 
 

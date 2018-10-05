@@ -14,7 +14,7 @@ from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
 
-# Manages output directories
+# Gets local data store and python directories in Box Sync folder
 def get_dirs():
 	
 	# Find the CR2C.Operations folder on Box Sync on the given machine
@@ -78,8 +78,8 @@ def get_credentials():
 	return credentials, spreadsheetId
 
 
-# Retrieves all data from a gsheets file given list of sheet names
-def get_gsheet_data(sheet_names):
+# Retrieves data of specified tabs in a gsheets file
+def get_gsheet_data(sheet_name):
 
 	credentials, spreadsheetId = get_credentials()
 	http = credentials.authorize(httplib2.Http())
@@ -93,17 +93,17 @@ def get_gsheet_data(sheet_names):
 		http = http,
 		discoveryServiceUrl = discoveryUrl
 	)
-	range_names = [sheet_name + '!A:ZZ' for sheet_name in sheet_names]
+	range_name = [sheet_name + '!A:ZZ']
 	gsheet_result = service.spreadsheets().values().batchGet(
 		spreadsheetId = spreadsheetId, 
-		ranges = range_names
+		ranges = range_name
 	).execute()	
 
 	# Get values list from dictionary and extact headers (first item in list)
 	gsheet_values = gsheet_result['valueRanges'][0]['values']
 	headers = gsheet_values.pop(0) 
 	# Output a pandas dataframe
-	dframe = pd.DataFrame(gsheet_values, columns = headers)
+	df = pd.DataFrame(gsheet_values, columns = headers)
 
-	return dframe
+	return df
 

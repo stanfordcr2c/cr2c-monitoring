@@ -1,5 +1,5 @@
 '''
-	This script calculates totals and averages for any given HMI data point(s),
+	This script calculates totals and averages for any given op data point(s),
 	time period, and date range for which a raw eDNA query has been run (and a csv file
 	for that query obtained)
 	If desired, also outputs plots and summary tables
@@ -29,18 +29,17 @@ from os.path import expanduser
 import sys
 import traceback as tb
 import warnings as wn
-from tkinter.filedialog import askdirectory
 
 # CR2C
 import cr2c_utils as cut
 
 
 def get_data(
-	elids, 
 	stypes,
+	sids, 
 	tperiods, 
 	ttypes,
-	combine_all = False,
+	combine_all = True,
 	year_sub = None, 
 	month_sub = None, 
 	start_dt_str = None, 
@@ -56,83 +55,93 @@ def get_data(
 		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
 	if end_dt_str:
 		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
-	# Get list of years for which data are desired
-	years = np.arange(start_dt.year,end_dt.year + 1)
 
-	# Create connection to SQL database
+	# Find Operational Data directory and change working directory
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
-	hmi_data_all = pd.DataFrame()
 
-	hmi_data_all = {}
+	# Initialize output data variable
+	if combine_all:
+		opdata_all = pd.DataFrame()
+	else:
+		opdata_all = {}
 
-	for elid, stype, tperiod, ttype in zip(elids, stypes, tperiods, ttypes):
+	# Manage data selection input 
+	nsids = len(sids)
+	if nsids != len(stypes) or nsids != len(tperiods) or nsids != len(ttypes):
+		print('Error in cr2c_opdata: get_data: The lengths of the sids, stypes, tperiods and ttypes arguments must be equal')
+		sys.exit()
 
-		# month_sub insert
-		if month_sub:
-			msub_ins = 'WHERE Month == {0}'.format(month_sub)
-		else:
-			msub_ins = ''
+	# Manage month and year subset input (will be added to sqlite3 query string)
+	sub_ins = ''
+	if year_sub and month_sub:
+		sub_ins = 'WHERE YEAR == {} AND Month == {}'.format(year_sub, month_sub)
+	elif month_sub:
+		sub_ins = 'WHERE Month == {}'.format(month_sub)
+	elif year_sub:
+		sub_ins = 'WHERE Year == {}'.format(year_sub)
+
+	for sid, stype, tperiod, ttype in zip(sids, stypes, tperiods, ttypes):
 
 		sql_str = """
-			SELECT distinct * FROM {0}_{1}_{2}_{3}_AVERAGES
+			SELECT distinct * FROM {0}_{1}_{2}_{3}_AVERAGES {4}
 			order by Time 
-		""".format(stype, elid, tperiod, ttype)
+		""".format(stype, sid, tperiod, ttype, sub_ins)
 
 		# Open connection and read to pandas dataframe
-		conn = sqlite3.connect('cr2c_hmi_agg_data.db')
-		hmi_data = pd.read_sql(
+		conn = sqlite3.connect('cr2c_opdata.db')
+		opdata = pd.read_sql(
 			sql_str,
 			conn,
 			coerce_float = True
 		)
 
 		# Format the time variable
-		hmi_data['Time'] = pd.to_datetime(hmi_data['Time'])
+		opdata['Time'] = pd.to_datetime(opdata['Time'])
 		# Set time variable
 		if ttype == 'HOUR':
-			hmi_data.loc[:,'Time'] = hmi_data['Time'].values.astype('datetime64[h]')
+			opdata.loc[:,'Time'] = opdata['Time'].values.astype('datetime64[h]')
 		elif ttype == 'MINUTE':
-			hmi_data.loc[:,'Time'] = hmi_data['Time'].values.astype('datetime64[m]')
+			opdata.loc[:,'Time'] = opdata['Time'].values.astype('datetime64[m]')
 
-		# Rename Value variable to its corresponding element id
-		hmi_data.rename(columns = {'Value': elid}, inplace = True)
 		# Drop duplicates (happens with hourly aggregates sometimes...)
-		hmi_data.drop_duplicates(['Time'], inplace = True)
+		opdata.drop_duplicates(['Time'], inplace = True)
 
 		if start_dt_str:
-			hmi_data = hmi_data.loc[hmi_data['Time'] >= start_dt,]
+			opdata = opdata.loc[opdata['Time'] >= start_dt,]
 		if end_dt_str:
-			hmi_data = hmi_data.loc[hmi_data['Time'] < end_dt + timedelta(days = 1),]
+			opdata = opdata.loc[opdata['Time'] < end_dt + timedelta(days = 1),]
 
 		# If returning all as a single dataframe, merge the result in loop (or initialize dataframe)
 		if combine_all:
 
-			if not len(hmi_data_all):
-				hmi_data_all = hmi_data
+			# Rename Value variable to its corresponding Sensor ID
+			opdata.rename(columns = {'Value': sid}, inplace = True)
+			if not len(opdata_all):
+				opdata_all = opdata
 			else:
-				hmi_data_all = hmi_data_all.merge(hmi_data[['Time', elid]], on = 'Time', how = 'outer')
+				opdata_all = opdata_all.merge(opdata[['Time', sid]], on = 'Time', how = 'outer')
 		
 		# Otherwise, load output to dictionary
 		else:
-			hmi_data_all['{0}_{1}_{2}_{3}_AVERAGES'.format(elid, stype, tperiod, ttype)] = hmi_data
+			opdata_all['{0}_{1}_{2}_{3}_AVERAGES'.format(stype, sid, tperiod, ttype)] = opdata
 
 	if combine_all and output_csv:
 
 		os.chdir(outdir)
-		op_fname = '_'.join(elids + [str(tperiod) for tperiod in tperiods]) + '.csv'
-		hmi_data_all.to_csv(op_fname, index = False, encoding = 'utf-8')
+		op_fname = '_'.join(sids + [str(tperiod) for tperiod in tperiods]) + '.csv'
+		opdata_all.to_csv(op_fname, index = False, encoding = 'utf-8')
 
-	return hmi_data_all
+	return opdata_all
 
 
-# Returns a list of the tables in the HMI SQL database
+# Returns a list of the tables in the op SQL database
 def	get_table_names():
 
 	# Create connection to SQL database
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
-	conn = sqlite3.connect('cr2c_hmi_agg_data.db')
+	conn = sqlite3.connect('cr2c_opdata.db')
 	cursor = conn.cursor()
 	# Execute
 	cursor.execute(""" SELECT name FROM sqlite_master WHERE type ='table'""")
@@ -141,7 +150,7 @@ def	get_table_names():
 
 
 # Takes a list of file paths and concatenates all of the files
-def cat_dfs(ip_paths, idx_var = None, output = False, output_dsn = None):
+def cat_dfs(ip_paths, idx_var = None, output_csv = False, outdir = None, output_dsn = None):
 	
 	concat_dlist = []
 	for ip_path in ip_paths:
@@ -156,9 +165,8 @@ def cat_dfs(ip_paths, idx_var = None, output = False, output_dsn = None):
 
 	if output:
 
-		ip_dir = os.path.dirname(ip_paths[0])
 		concat_data.to_csv(
-			os.path.join(ip_dir, output_dsn), 
+			os.path.join(outdir, output_dsn), 
 			index = False, 
 			encoding = 'utf-8'
 		)
@@ -166,27 +174,27 @@ def cat_dfs(ip_paths, idx_var = None, output = False, output_dsn = None):
 	return concat_data
 
 
-# Primary HMI data aggregation class
-class hmi_data_agg:
+# Primary op data aggregation class
+class opdata_agg:
 
-	def __init__(self, start_dt_str, end_dt_str, hmi_path):
+	def __init__(self, start_dt_str, end_dt_str, ip_path):
 
 		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
 		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y') + timedelta(days = 1)
 		self.data_dir = cut.get_dirs()[0]
-		self.hmi_path = hmi_path
+		self.ip_path = ip_path
 
 
-	def prep_hmi_data(self, elid, stype):
+	def prep_opdata(self, stype, sid):
 
 		# This is the type of query (unlikely to change)
 		qtype = 'RAW'
 
-		# Read in raw HMI data
+		# Read in raw op data
 		try:
-			self.hmi_data = pd.read_csv(self.hmi_path, low_memory = False)
+			self.opdata = pd.read_csv(self.ip_path, low_memory = False)
 		except Exception as e:
-			print('\nThere was an error reading in the HMI data:\n')
+			print('\nThere was an error reading in the op data:\n')
 			tb.print_exc(file = sys.stdout)
 			tb.print_exc(limit = 1, file = sys.stdout)
 			sys.exit()
@@ -220,34 +228,34 @@ class hmi_data_agg:
 		# Load variables and set output variable names
 		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
 		# Rename value variable
-		self.hmi_data.loc[:,'Value'] = \
-			self.hmi_data[varname.format(elid,'Value', qtype)]
+		self.opdata.loc[:,'Value'] = \
+			self.opdata[varname.format(sid,'Value', qtype)]
 
 		# Set low/negative values to 0 (if a flow, otherwise remove) and remove unreasonably high values
 		if stype in ['GAS','WATER','LEVEL']:
-			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = 0
+			self.opdata.loc[self.opdata['Value'] < lo_limit, 'Value'] = 0
 		else:
-			self.hmi_data.loc[self.hmi_data['Value'] < lo_limit, 'Value'] = np.NaN
+			self.opdata.loc[self.opdata['Value'] < lo_limit, 'Value'] = np.NaN
 
-		self.hmi_data.loc[self.hmi_data['Value'] > hi_limit, 'Value'] = np.NaN
+		self.opdata.loc[self.opdata['Value'] > hi_limit, 'Value'] = np.NaN
 
 		# Rename and format corresponding timestamp variable
-		self.hmi_data.loc[:,'Time' ] = \
-			self.hmi_data[varname.format(elid, 'Time', qtype)]
+		self.opdata.loc[:,'Time' ] = \
+			self.opdata[varname.format(sid, 'Time', qtype)]
 		# Subset to "Time" and "Value" variables
-		self.hmi_data = self.hmi_data.loc[:,['Time','Value']]
+		self.opdata = self.opdata.loc[:,['Time','Value']]
 		# Eliminate missing values and reset index
-		self.hmi_data.dropna(axis = 0, how = 'any', inplace = True)
+		self.opdata.dropna(axis = 0, how = 'any', inplace = True)
 
 		# Set Time as datetime variable at second resolution (uses less memory than nanosecond!)
-		self.hmi_data.loc[:,'Time' ] = \
-			pd.to_datetime(self.hmi_data['Time']).values.astype('datetime64[s]')
+		self.opdata.loc[:,'Time' ] = \
+			pd.to_datetime(self.opdata['Time']).values.astype('datetime64[s]')
 		# Create datetime index
-		self.hmi_data.set_index(pd.DatetimeIndex(self.hmi_data['Time']), inplace = True)
+		self.opdata.set_index(pd.DatetimeIndex(self.opdata['Time']), inplace = True)
 		# Remove Time variable from dataset
-		self.hmi_data.drop('Time', axis = 1, inplace = True)
+		self.opdata.drop('Time', axis = 1, inplace = True)
 		# Get first and last available time stamps in index
-		self.first_ts, self.last_ts = self.hmi_data.index[0], self.hmi_data.index[-1]
+		self.first_ts, self.last_ts = self.opdata.index[0], self.opdata.index[-1]
 
 		# Check to make sure that the totals/averages do not include the first
 		# and last days for which data are available (just to ensure accuracy)
@@ -261,22 +269,16 @@ class hmi_data_agg:
 			# Issue warning
 			msg = \
 				'Given the range of data available for {0}, accurate aggregate values can only be obtained for: {1} to {2}'
-			wn.warn(msg.format(elid, dt.strftime(self.start_dt_warn, '%m-%d-%y'), dt.strftime(self.end_dt_warn, '%m-%d-%y')))
+			wn.warn(msg.format(sid, dt.strftime(self.start_dt_warn, '%m-%d-%y'), dt.strftime(self.end_dt_warn, '%m-%d-%y')))
 			# Change start_dt and end_dt of system to avoid overwriting sql file with empty data
 			self.start_dt = datetime.datetime(self.first_ts.year, self.first_ts.month, self.first_ts.day) + timedelta(days = 1)
 			# Need to set the self.end_dt to midnight of the NEXT day
 			self.end_dt = datetime.datetime(self.last_ts.year, self.last_ts.month, self.last_ts.day) 
 
-		return self.hmi_data
+		return self.opdata
 
 
-	def get_average(
-		self,
-		hmi_data,
-		tperiod,
-		ttype,
-		elid
-	):
+	def get_average(self, opdata, tperiod, ttype):
 
 		# Get minute-level dataframe of timesteps for the time period requested
 		ts_array = np.arange(
@@ -286,27 +288,27 @@ class hmi_data_agg:
 		)
 		empty_df = pd.DataFrame(ts_array, columns = ['Time'])
 		empty_df.set_index(pd.DatetimeIndex(ts_array), inplace = True)
-		# Merge this with the HMI data and fill in NaNs by interpolating
-		hmi_data_all = hmi_data.merge(empty_df, how = 'outer', left_index = True, right_index = True)
-		hmi_data_all.loc[:,'Value'] = hmi_data_all['Value'].interpolate()	
+		# Merge this with the op data and fill in NaNs by interpolating
+		opdata_all = opdata.merge(empty_df, how = 'outer', left_index = True, right_index = True)
+		opdata_all.loc[:,'Value'] = opdata_all['Value'].interpolate()	
 		# Create time variable from index values
-		hmi_data_all.loc[:,'Time'] = hmi_data_all.index.values
+		opdata_all.loc[:,'Time'] = opdata_all.index.values
 		# Get the time elapsed between adjacent Values (in minutes, dividing by np.timedelta64 converts to floating number)
-		hmi_data_all['TimeEl'] = (hmi_data_all['Time'].shift(-1) - hmi_data_all['Time'])/np.timedelta64(1,'m')
+		opdata_all['TimeEl'] = (opdata_all['Time'].shift(-1) - opdata_all['Time'])/np.timedelta64(1,'m')
 		# Subset to the time period desired (AFTER interpolating and computing the TimeEl variable)
-		hmi_data_all = hmi_data_all.loc[self.start_dt:self.end_dt]
+		opdata_all = opdata_all.loc[self.start_dt:self.end_dt]
 
 		# Get the timedelta/datetime64 string from the ttype input argument (either 'h' or 'm')
 		ttype_d = ttype[0].lower()
 		# Calculate the "Time Category" variable which indicates the time range for the observation
-		hmi_data_all['TimeCat'] = \
+		opdata_all['TimeCat'] = \
 			np.floor(
-				(hmi_data_all['Time'] - self.start_dt)/\
+				(opdata_all['Time'] - self.start_dt)/\
 				np.timedelta64(tperiod, ttype_d)
 			)
 		# Group by time range and compute a weighted average with "TimeEl" as the weight
 		tots_res = \
-			hmi_data_all.groupby('TimeCat').\
+			opdata_all.groupby('TimeCat').\
 			apply(lambda x: np.average(x.Value, weights = x.TimeEl))
 		tots_res = pd.DataFrame(tots_res, columns = ['Value'])
 		tots_res.reset_index(inplace = True)
@@ -323,16 +325,7 @@ class hmi_data_agg:
 		return tots_res
 
 
-	def run_report(
-		self,
-		tperiods,
-		ttypes,
-		elids,
-		stypes,
-		output_csv = False,
-		output_sql = True,
-		outdir = None
-	):
+	def run_agg(self, stypes, sids, tperiods, ttypes, output_csv = False, output_sql = True, outdir = None):
 
 		# Get sql table directory
 		os.chdir(self.data_dir)
@@ -340,14 +333,14 @@ class hmi_data_agg:
 		# Clean inputs
 		ttypes, stypes = [ttype.upper() for ttype in ttypes], [stype.upper() for stype in stypes]
 
-		for tperiod, ttype, elid, stype in zip(tperiods, ttypes, elids, stypes):
+		for tperiod, ttype, sid, stype in zip(tperiods, ttypes, sids, stypes):
 
-			print('Getting aggregated data for {0} ({1}{2})...'.format(elid, tperiod, ttype))
+			print('Getting aggregated data for {0} ({1}{2})...'.format(sid, tperiod, ttype))
 
 			# Get prepped data
-			self.prep_hmi_data(elid, stype)
+			self.prep_opdata(stype, sid)
 			# Get totalized values
-			tots_res = self.get_average(self.hmi_data, tperiod, ttype, elid)
+			tots_res = self.get_average(self.opdata, tperiod, ttype)
 			# Get year and month (for partitioning purposes)
 			tots_res.loc[:,'Year'] = tots_res['Time'].dt.year
 			tots_res.loc[:,'Month'] = tots_res['Time'].dt.month
@@ -360,17 +353,17 @@ class hmi_data_agg:
 				# SQL command strings for sqlite3
 				create_str = """
 					CREATE TABLE IF NOT EXISTS {0}_{1}_{2}_{3}_AVERAGES (Time INT PRIMARY KEY, Year , Month, Value)
-				""".format(stype, elid, tperiod, ttype)
+				""".format(stype, sid, tperiod, ttype)
 				ins_str = """
 					INSERT OR REPLACE INTO {0}_{1}_{2}_{3}_AVERAGES (Time, Year, Month, Value)
 					VALUES (?,?,?,?)
-				""".format(stype, elid, tperiod, ttype)
+				""".format(stype, sid, tperiod, ttype)
 				# Set connection to SQL database (pertaining to given year)
-				conn = sqlite3.connect('cr2c_hmi_agg_data.db')
+				conn = sqlite3.connect('cr2c_opdata.db')
 				# Load data to SQL
 				# Create the table if it doesn't exist
 				conn.execute(create_str)
-				# Insert aggregated values for the elid and time period
+				# Insert aggregated values for the sid and time period
 				conn.executemany(
 					ins_str,
 					tots_res.to_records(index = False).tolist()
@@ -384,7 +377,7 @@ class hmi_data_agg:
 					outdir = askdirectory()
 				os.chdir(outdir)
 				tots_res.to_csv('{0}_{1}_{2}_{3}_AVERAGES.csv'.\
-					format(stype, elid, tperiod, ttype), index = False, encoding = 'utf-8')
+					format(stype, sid, tperiod, ttype), index = False, encoding = 'utf-8')
 
 
 	def get_tmp_plots(
@@ -409,12 +402,12 @@ class hmi_data_agg:
 			opfile_suff = ''
 
 		# Get feeding data
-		feeding_dat_zm = get_data(['FT305'],['WATER'],[1],['MINUTE'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
-		feeding_dat = get_data(['FT305'],['WATER'],[1],['HOUR'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		feeding_dat_zm = get_data(['WATER'],['FT305'],[1],['MINUTE'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		feeding_dat = get_data(['WATER'],['FT305'],[1],['HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Get tmp data
-		tmp_dat_zm = get_data(['AIT302'],['TMP'],[1],['MINUTE'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
-		tmp_dat = get_data(['AIT302'],['TMP'],[1],['HOUR'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		tmp_dat_zm = get_data(['TMP'],['AIT302'],[1],['MINUTE'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		tmp_dat = get_data(['TMP'],['AIT302'],[1],['HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
 		# Merge the two files
 		tmp_feed_dat = feeding_dat.merge(tmp_dat, on = 'Time')
@@ -544,29 +537,29 @@ class hmi_data_agg:
 		else:
 			output_types = output_types.upper()
 
-		# Define HMI element ids according to query type (water or biogas)
+		# Define op Sensor IDs according to query type (water or biogas)
 		stype = stype.upper()
 		if stype == 'GAS':
-			elids = ['FT700','FT704']
+			sids = ['FT700','FT704']
 		if stype == 'WATER':
-			elids = ['FT202','FT305']
+			sids = ['FT202','FT305']
 		if stype == 'TEMP':
-			elids = ['AT304','AT310']
+			sids = ['AT304','AT310']
 
-		# Get output directory and string with all element ids from report
+		# Get output directory and string with all Sensor IDs from report
 		if not outdir:
 			tkTitle = 'Directory to output charts/tables to...'
 			print(tkTitle)
 			outdir = askdirectory(title = tkTitle)
 
-		feeding_dat = get_data(elids,[stype]*2, [1,1],['HOUR','HOUR'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		feeding_dat = get_data([stype]*2, sids, [1,1],['HOUR','HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 
-		# Retrieve element ids from aggregated data
-		all_elids = '_'.join(elids)
+		# Retrieve Sensor IDs from aggregated data
+		all_sids = '_'.join(sids)
 
-		# Get hourly flow totals for each elid
-		for elid in elids:
-			feeding_dat[elid] = feeding_dat[elid]*60
+		# Get hourly flow totals for each sid
+		for sid in sids:
+			feeding_dat[sid] = feeding_dat[sid]*60
 
 		# Convert Time variable to pd.datetime variable
 		feeding_dat['Time'] = pd.to_datetime(feeding_dat['Time'])
@@ -601,9 +594,9 @@ class hmi_data_agg:
 			nhours = 24*7*30
 
 		if get_nhours == 1:
-			for elid in elids:
-				feeding_dat['Number Hours {0}'.format(elid)] = \
-					np.where(feeding_dat[elid].values > 0, 1, 0)
+			for sid in sids:
+				feeding_dat['Number Hours {0}'.format(sid)] = \
+					np.where(feeding_dat[sid].values > 0, 1, 0)
 
 		agg_sumst = feeding_dat.groupby(xlabel).sum()
 
@@ -624,10 +617,10 @@ class hmi_data_agg:
 				tic_vals = ['{0} - {1}'.format(int(tic_val), int(tic_val + 1)) for tic_val in tic_vals]
 
 			if plt_type == 'BAR':
-				ax = agg_sumst[elids].plot.bar(stacked = False, width = 0.8, color = plt_colors)
+				ax = agg_sumst[sids].plot.bar(stacked = False, width = 0.8, color = plt_colors)
 				plt.xticks(tic_idxs,tic_vals)
 			else:
-				ax = agg_sumst[elids].plot(color = plt_colors)
+				ax = agg_sumst[sids].plot(color = plt_colors)
 
 			plt.ylabel(ylabel)
 			plt.legend()
@@ -640,7 +633,7 @@ class hmi_data_agg:
 			plt.tight_layout()
 
 			# Output plots and/or sumstats csv files to directory of choice
-			plot_filename  = "HMI{0}_{1}{2}.png".format(stype, all_elids, opfile_suff)
+			plot_filename  = "op{0}_{1}{2}.png".format(stype, all_sids, opfile_suff)
 			plt.savefig(
 				os.path.join(outdir, plot_filename),
 				width = 20,
@@ -650,9 +643,9 @@ class hmi_data_agg:
 
 		if 'TABLE' in output_types:
 
-			sumst_filename = "HMI{0}_{1}{2}.csv".format(stype, all_elids, opfile_suff)
+			sumst_filename = "op{0}_{1}{2}.csv".format(stype, all_sids, opfile_suff)
 			agg_sumst.reset_index(inplace = True)
-			agg_sumst = agg_sumst[[xlabel] + elids]
+			agg_sumst = agg_sumst[[xlabel] + sids]
 			agg_sumst.to_csv(
 				os.path.join(outdir, sumst_filename),
 				index = False,
@@ -661,7 +654,7 @@ class hmi_data_agg:
 
 	def get_temp_plots(self, end_dt_str, outdir = None, opfile_suff = None, plt_colors = None):
 
-		elids = ['AT304','AT310']
+		sids = ['AT304','AT310']
 
 		end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
 		start_dt = end_dt - timedelta(days = 180)
@@ -678,7 +671,7 @@ class hmi_data_agg:
 			opfile_suff = ''
 
 		# Get temperature data
-		temp_dat = get_data(elids,['TEMP']*2,[1,1],['HOUR','HOUR'], combine_all = True, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		temp_dat = get_data(['TEMP']*2, sids,[1,1],['HOUR','HOUR'], start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 		temp_dat.loc[:,'Date'] = temp_dat['Time'].dt.date
 		
 		# Daily average for the last 6 months

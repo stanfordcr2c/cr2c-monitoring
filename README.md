@@ -46,7 +46,7 @@ Andrew Hyunwoo Kim (Operator)
     * [opdata_agg.run_agg](#opdata_aggrun_agg)
   * [cr2c-fielddata](#cr2c-fielddata)
     * [get_data](#fldget_data)
-    * [rep_chars](#rep_chars)
+    * [clean_varname](#rep_chars)
     * [process_data](#process_data)
   * [cr2c-validation](#cr2c-validation)
     * [cr2c_validation](#cr2c_validationclass)
@@ -410,17 +410,15 @@ __Arguments:__
 __Output:__
 * A pandas dataframe with the form data
 
-<a name="rep_chars"></a>
-#### rep_chars(targChars, replChar, string)
+<a name="clean_varname"></a>
+#### clean_varname(varname)
 
-__Description:__ Replaces all target characters in a string with a replacement character
+__Description:__ Cleans a variable name in the log sheet form by eliminating all special characters and replacing spaces with a '_'
 __Arguments:__
-  * *targChars*: A string of characters that should be replaced
-  * *replChar*: A string giving the value to replace all instances of the target characters with
-  * *string*: The input string to be mutated
+  * *varname*: A variable name string
 
 __Output:__
-* The resulting mutated string
+* A clean variable name string
 
 <a name="process_data"></a>
 #### process_data(tableName = 'DailyLogResponses')

@@ -8,7 +8,7 @@ import json
 
 ## CR2C
 import cr2c_labdata as lab
-import cr2c_hmidata as hmi
+import cr2c_opdata as op
 import cr2c_fielddata as fld
 import cr2c_validation as val
 import cr2c_utils as cut
@@ -40,15 +40,15 @@ app.scripts.config.serve_locally = True
 #================= Create datetimea layout map from existing data =================#
 
 lab_types = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
-hmi_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI'] 
+op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI'] 
 val_types = ['COD Balance','Process Parameters','Instrument Validation']
-selection_vars = ['Stage','Type','Element ID', 'Validation']
+selection_vars = ['Stage','Type','Sensor ID', 'Validation']
 selectionID, selection, click, history = [None]*4
-cr2c_dtypes = {'Lab Data': {},'HMI Data': {},'Validation Data': {}}
+cr2c_dtypes = {'Lab Data': {},'Operational Data': {},'Validation Data': {}}
 
 # Load data
 lab_data = lab.get_data(lab_types)
-hmi_tables = hmi.get_table_names()
+op_tables = op.get_table_names()
 
 # Load lab_type variables and their stages/types
 for lab_type in lab_types:
@@ -72,12 +72,12 @@ for lab_type in lab_types:
             'Stage': list(lab_data[lab_type]['Stage'].unique())
         }
 
-for hmi_type in hmi_types:
+for op_type in op_types:
 
-    elids = [table_name.split('_')[1] for table_name in hmi_tables if table_name.split('_')[0] == hmi_type]
-    elids = list(set(elids))
-    ttypes = [table_name.split('_')[3] for table_name in hmi_tables if table_name.split('_')[0] == hmi_type]
-    cr2c_dtypes['HMI Data'][hmi_type] = {'Element ID': elids}
+    sids = [table_name.split('_')[1] for table_name in op_tables if table_name.split('_')[0] == op_type]
+    sids = list(set(sids))
+    ttypes = [table_name.split('_')[3] for table_name in op_tables if table_name.split('_')[0] == op_type]
+    cr2c_dtypes['Operational Data'][op_type] = {'Sensor ID': sids}
 
 
 for val_type in val_types:
@@ -85,7 +85,7 @@ for val_type in val_types:
     cr2c_dtypes['Validation Data'][val_type] = {'Validation': [val_type]}
 
 #### Create a nested dictionary of dynamic controls from data layout
-cr2c_objects = {'Lab Data': {},'HMI Data': {},'Validation Data': {}}
+cr2c_objects = {'Lab Data': {},'Operational Data': {},'Validation Data': {}}
 
 for dclass in cr2c_dtypes:
 
@@ -290,13 +290,13 @@ for dclass in cr2c_dtypes:
         Input('Lab Data-SULFATE-Stage-history','children'),
         Input('Lab Data-TKN-Stage-history','children'),
         Input('Lab Data-BOD-Stage-history','children'),
-        Input('HMI Data-WATER-Element ID-history','children'),
-        Input('HMI Data-GAS-Element ID-history','children'),
-        Input('HMI Data-TMP-Element ID-history','children'),  
-        Input('HMI Data-PRESSURE-Element ID-history','children'),
-        Input('HMI Data-PH-Element ID-history','children'),
-        Input('HMI Data-TEMP-Element ID-history','children'),
-        Input('HMI Data-DPI-Element ID-history','children')
+        Input('Operational Data-WATER-Sensor ID-history','children'),
+        Input('Operational Data-GAS-Sensor ID-history','children'),
+        Input('Operational Data-TMP-Sensor ID-history','children'),  
+        Input('Operational Data-PRESSURE-Sensor ID-history','children'),
+        Input('Operational Data-PH-Sensor ID-history','children'),
+        Input('Operational Data-TEMP-Sensor ID-history','children'),
+        Input('Operational Data-DPI-Sensor ID-history','children')
     ]
 )
 
@@ -346,7 +346,7 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
     df = pd.DataFrame([])
     seriesList = []
     plotFormat = {}
-    stages, types, element_ids = [None]*3
+    stages, types, sids = [None]*3
     axisNo = 1
     size = 6
     dashTypes = ("solid", "dot", "dash", "longdash", "dashdot", "longdashdot")
@@ -374,9 +374,9 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
                     if nclasses > 1:
                         size = 10
 
-                if dclass == 'HMI Data':
+                if dclass == 'Operational Data':
 
-                    element_ids = dataRequested[dclass][dtype]['Element ID']
+                    sids = dataRequested[dclass][dtype]['Sensor ID']
                     mode = 'lines'
 
                 plotFormat['size'] = size
@@ -389,7 +389,7 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
             seriesList += get_series(
                 dclass, dtype, 
                 time_resolution, time_order, start_date, end_date, 
-                stages, types, element_ids, 
+                stages, types, sids, 
                 plotFormat
             )
             axisNo += 1
@@ -418,7 +418,7 @@ def retrieve_value(dictionary, key):
 def get_series(
     dclass, dtype, 
     time_resolution, time_order, start_date, end_date, 
-    stages, types, element_ids,
+    stages, types, sids,
     plotFormat
 ):
     
@@ -477,30 +477,30 @@ def get_series(
                 dflist += [subSeries]
 
 
-    if dclass == 'HMI Data':
+    if dclass == 'Operational Data':
         
-        for elind, element_id in enumerate(element_ids):
+        for sind, sid in enumerate(sids):
 
             # Retrieve data
             try: # Try querying hourly data
                 
-                dfsub = hmi.get_data([element_id], [dtype], [1], ['HOUR'], combine_all = True)
+                dfsub = op.get_data([dtype], [sid], [1], ['HOUR'])
                 
             except: # Otherwise only available as minute data
                 
                 # Load minute data
-                dfsub = hmi.get_data([element_id],[dtype],[1],['MINUTE'], combine_all = True)
+                dfsub = op.get_data([dtype], [sid], [1],['MINUTE'])
                 # Group to hourly data
-                dfsub.loc[:,'Time'] = hmi_data['Time'].values.astype('datetime64[h]')
+                dfsub.loc[:,'Time'] = op_data['Time'].values.astype('datetime64[h]')
                 dfsub = dfsub.groupby('Time').mean()
                 dfsub.reset_index(inplace = True)
 
             if dtype in ['GAS','WATER']:
                 
-                dfsub.loc[:,element_id] = dfsub[element_id]*60
+                dfsub.loc[:,[sid]] = dfsub[sid]*60
 
-            dfsub.loc[:,'yvar'] = dfsub[element_id]
-            seriesName = seriesNamePrefix + element_id
+            dfsub.loc[:,'yvar'] = dfsub[sid]
+            seriesName = seriesNamePrefix + sid
 
             subSeries = {'seriesName': seriesName}
             subSeries['data'] = filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, end_date)
@@ -533,6 +533,8 @@ def get_series(
 
 def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, end_date):
 
+    # Initialize empty list of output dataframes
+    dflist = []
     # Filter data by dates
     if start_date:
 
@@ -595,31 +597,33 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
         dfsub.loc[:,'TimeBin'] = dfsub['Time'].dt.hour
         if time_resolution in ['Daily','Weekly','Monthly']:
             return
-        elif time_resolution == 'Hourly':
-            dfsub.loc[:,'Time'] = dfsub['TimeBin']
         else:
-            dfsub.loc[:,'Time'] = dfsub['Time'] - dfsub['Time'].values.astype('datetime64[h]')
+            dfsub.loc[:,'Time'] = dfsub['TimeBin']
 
     if time_order == 'By Weekday':
 
         dfsub.loc[:,'TimeBin'] = dfsub['Time'].dt.weekday
         if time_resolution in ['Weekly','Monthly']:
-            return
+            return  
         elif time_resolution == 'Daily':
             dfsub.loc[:,'Time'] = dfsub['TimeBin']
         else:
-            dfsub.loc[:,'Time'] = dfsub['Time'] - pd.to_datetime(dfsub['Time'].dt.date)
+            dfsub.loc[:,'Time'] = dfsub['Time'].dt.hour
 
     if time_order == 'By Month':
 
         dfsub.loc[:,'TimeBin'] = dfsub['Time'].dt.month
         if time_resolution == 'Monthly':
             dfsub.loc[:,'Time'] = dfsub['TimeBin']
-        else:
+        elif time_resolution == 'Hourly':
+            dfsub.loc[:,'Time'] = dfsub['Time'].dt.hour
+        elif time_resolution == 'Daily':
+            dfsub.loc[:,'Time'] = dfsub['Time'].dt.weekday
+        else:   
             dfsub.loc[:,'year'] = dfsub['Time'].dt.year
             dfsub.loc[:,'month'] = dfsub['Time'].dt.month
             dfsub.loc[:,'day'] = 1
-            dfsub.loc[:,'Time'] = dfsub['Time'] - pd.to_datetime(pd.DataFrame(dfsub[['year','month','day']]))
+            dfsub.loc[:,'Time'] = dfsub['Time'] - pd.to_datetime(dfsub[['year','month','day']])
 
     # If the time resolution is equivalent to the ordering, just output one series
     if (
@@ -634,11 +638,12 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
 
     else:  
 
-        dfsub.loc[:,'Time'] = dfsub['Time'].dt.total_seconds()/dfsub['secondsMult'] 
+        if time_order == 'By Month' and time_resolution == 'Weekly': 
+            dfsub.loc[:,'Time'] = dfsub['Time'].dt.total_seconds()/dfsub['secondsMult'] 
+
         dfsub = dfsub.groupby(['TimeBin','Time']).mean()
         dfsub.reset_index(inplace = True)
         timebins = list(dfsub['TimeBin'].sort_values().unique())
-        dflist = []
 
         for timebin in timebins:
 
@@ -655,10 +660,11 @@ def get_layout(dataRequested, time_resolution, time_order):
     layoutItems = {'height': 700}
     xrangeList = [np.datetime64('2017-05-10'), dt.today()]
     xaxisTitles = {
-        'Chronological': 'Time',
-        'By Hour': 'Hour',
-        'By Weekday': 'Weekday',
-        'By Month': 'Month'
+        'Minute': 'Minute',
+        'Hourly': 'Hour',
+        'Daily': 'Day',
+        'Weekly': 'Week',
+        'Monthly': 'Month'
     }
     yaxisTitles =  {
         'COD' : 'COD (mg/L)',
@@ -666,11 +672,11 @@ def get_layout(dataRequested, time_resolution, time_order):
         'OD' : 'OD (mg/L)',
         'TSS_VSS' : 'Suspended Solids (mg/L)',
         'PH' : 'pH',
-        'ALKALINITY' : '$\\text{Alkalinity (mg/L as } CaCO_3 \\text{)}$',
+        'ALKALINITY' : r'$\\text{Alkalinity (mg/L as } CaCO_3 \\text{)}$',
         'VFA' : 'VFAs as mgCOD/L',
-        'AMMONIA' : '$NH_3\\text{ (mg/L as N)}$',
+        'AMMONIA' : r'$NH_3\\text{ (mg/L as N)}$',
         'TKN' : 'mgTKN/L',
-        'SULFATE' : '$\\text{mg/L }SO_4$',
+        'SULFATE' : r'$\\text{mg/L }SO_4$',
         'GASCOMP' : 'Biogas %',
         'WATER' : 'Flow (Gal)',
         'GAS': 'Biogas Production (liters)',
@@ -682,11 +688,11 @@ def get_layout(dataRequested, time_resolution, time_order):
     }
 
     layoutItems['xaxis'] = {
-        'title': xaxisTitles[time_order],
+        'title': xaxisTitles[time_resolution],
         'ticks': 'inside'
     }
     if time_order == 'Chronological':
-
+        layoutItems['xaxis']['title'] = 'Time'
         layoutItems['xaxis']['type'] = 'date'
         layoutItems['xaxis']['rangeselector'] = {
             'buttons': list([
@@ -765,6 +771,4 @@ def get_layout(dataRequested, time_resolution, time_order):
 if __name__ == '__main__':
 
     app.run_server(debug = True)
-
-# To kill: sudo lsof -i:8050; kill [process]
 
