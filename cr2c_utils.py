@@ -22,7 +22,7 @@ def get_dirs():
 	targetdir2 = os.path.join('Box','CR2C.Operations')
 	mondir = None
 	for dirpath, dirname, filename in os.walk(expanduser('~')):
-		if dirpath.find(targetdir1) > 0 or dispath.find(targetdir2) > 0:
+		if dirpath.find(targetdir1) > 0 or dirpath.find(targetdir2) > 0:
 			mondir = os.path.join(dirpath,'Monitoring Data and Procedures')
 			break
 			
