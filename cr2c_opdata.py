@@ -60,12 +60,6 @@ def get_data(
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
 
-	# Initialize output data variable
-	if combine_all:
-		opdata_all = pd.DataFrame()
-	else:
-		opdata_all = {}
-
 	# Manage data selection input 
 	nsids = len(sids)
 	if nsids != len(stypes) or nsids != len(tperiods) or nsids != len(ttypes):
@@ -81,10 +75,12 @@ def get_data(
 	elif year_sub:
 		sub_ins = 'WHERE Year == {}'.format(year_sub)
 
-	for sid, stype, tperiod, ttype in zip(sids, stypes, tperiods, ttypes):
+	# Initialize output data variable
+	opdata_all = {}
+	for stype, sid, tperiod, ttype in zip(stypes, sids, tperiods, ttypes):
 
 		sql_str = """
-			SELECT distinct * FROM {0}_{1}_{2}_{3}_AVERAGES {4}
+			SELECT distinct * FROM {}_{}_{}_{}_AVERAGES {}
 			order by Time 
 		""".format(stype, sid, tperiod, ttype, sub_ins)
 
@@ -112,25 +108,33 @@ def get_data(
 		if end_dt_str:
 			opdata = opdata.loc[opdata['Time'] < end_dt + timedelta(days = 1),]
 
-		# If returning all as a single dataframe, merge the result in loop (or initialize dataframe)
+		# If returning all as a single dataframe, rename 'Value' to the Sensor ID
 		if combine_all:
-
 			# Rename Value variable to its corresponding Sensor ID
 			opdata.rename(columns = {'Value': sid}, inplace = True)
-			if not len(opdata_all):
-				opdata_all = opdata
-			else:
-				opdata_all = opdata_all.merge(opdata[['Time', sid]], on = 'Time', how = 'outer')
-		
-		# Otherwise, load output to dictionary
-		else:
-			opdata_all['{0}_{1}_{2}_{3}_AVERAGES'.format(stype, sid, tperiod, ttype)] = opdata
+			opdata.set_index(['Time','Year','Month'], inplace = True)
+		elif output_csv:
+			op_fname = 'cr2c_opdata_{}_{}_{}_{}.csv'.format(stype, sid, tperiod, ttype)
+			op_path = os.path.join(outdir, op_fname)
+			opdata.to_csv(op_path, index = False, encoding = 'utf-8')
 
-	if combine_all and output_csv:
+		opdata_all['{}_{}_{}_{}_AVERAGES'.format(stype, sid, tperiod, ttype)] = opdata
 
-		os.chdir(outdir)
-		op_fname = '_'.join(sids + [str(tperiod) for tperiod in tperiods]) + '.csv'
-		opdata_all.to_csv(op_fname, index = False, encoding = 'utf-8')
+	if combine_all:
+
+		opdata_all = pd.concat(
+			[df for df in list(opdata_all.values())], 
+			axis = 1, 
+			ignore_index = False,
+			sort = True
+		) 
+	
+		if output_csv:
+
+			os.chdir(outdir)
+			stypes = list(set(stypes))
+			op_fname = 'cr2c_opdata_' + '_'.join(stypes) + '.csv'
+			opdata_all.to_csv(op_fname, encoding = 'utf-8')
 
 	return opdata_all
 
@@ -155,13 +159,9 @@ def cat_dfs(ip_paths, idx_var = None, output_csv = False, outdir = None, output_
 	concat_dlist = []
 	for ip_path in ip_paths:
 		concat_dlist.append(pd.read_csv(ip_path, low_memory = False))
-	concat_data = pd.concat([df for df in concat_dlist], ignore_index = True)
+	concat_data = pd.concat([df for df in concat_dlist], ignore_index = True, sort = True)
 	# Remove duplicates (may be some overlap)
 	concat_data.drop_duplicates(keep = 'first', inplace = True)
-	
-	# Sort by index (if given)
-	if idx_var:
-		concat_data.sort_values(idx_var, inplace = True)
 
 	if output:
 
@@ -224,9 +224,12 @@ class opdata_agg:
 		elif stype == 'LEVEL':
 			hi_limit = 100
 			lo_limit = 0
+		elif stype == 'COND':
+			hi_limit = 5000
+			lo_limit = 0
 			
 		# Load variables and set output variable names
-		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
+		varname = 'CR2C.CODIGA.{}.SCALEDVALUE {} [{}]'
 		# Rename value variable
 		self.opdata.loc[:,'Value'] = \
 			self.opdata[varname.format(sid,'Value', qtype)]
@@ -268,7 +271,7 @@ class opdata_agg:
 
 			# Issue warning
 			msg = \
-				'Given the range of data available for {0}, accurate aggregate values can only be obtained for: {1} to {2}'
+				'Given the range of data available for {}, accurate aggregate values can only be obtained for: {1} to {2}'
 			wn.warn(msg.format(sid, dt.strftime(self.start_dt_warn, '%m-%d-%y'), dt.strftime(self.end_dt_warn, '%m-%d-%y')))
 			# Change start_dt and end_dt of system to avoid overwriting sql file with empty data
 			self.start_dt = datetime.datetime(self.first_ts.year, self.first_ts.month, self.first_ts.day) + timedelta(days = 1)
@@ -335,7 +338,7 @@ class opdata_agg:
 
 		for tperiod, ttype, sid, stype in zip(tperiods, ttypes, sids, stypes):
 
-			print('Getting aggregated data for {0} ({1}{2})...'.format(sid, tperiod, ttype))
+			print('Getting aggregated data for {} ({}{})...'.format(sid, tperiod, ttype))
 
 			# Get prepped data
 			self.prep_opdata(stype, sid)
@@ -352,10 +355,10 @@ class opdata_agg:
 
 				# SQL command strings for sqlite3
 				create_str = """
-					CREATE TABLE IF NOT EXISTS {0}_{1}_{2}_{3}_AVERAGES (Time INT PRIMARY KEY, Year , Month, Value)
+					CREATE TABLE IF NOT EXISTS {}_{}_{}_{}_AVERAGES (Time INT PRIMARY KEY, Year , Month, Value)
 				""".format(stype, sid, tperiod, ttype)
 				ins_str = """
-					INSERT OR REPLACE INTO {0}_{1}_{2}_{3}_AVERAGES (Time, Year, Month, Value)
+					INSERT OR REPLACE INTO {}_{}_{}_{}_AVERAGES (Time, Year, Month, Value)
 					VALUES (?,?,?,?)
 				""".format(stype, sid, tperiod, ttype)
 				# Set connection to SQL database (pertaining to given year)
@@ -376,7 +379,7 @@ class opdata_agg:
 				if not outdir:
 					outdir = askdirectory()
 				os.chdir(outdir)
-				tots_res.to_csv('{0}_{1}_{2}_{3}_AVERAGES.csv'.\
+				tots_res.to_csv('{}_{}_{}_{}_AVERAGES.csv'.\
 					format(stype, sid, tperiod, ttype), index = False, encoding = 'utf-8')
 
 
@@ -454,7 +457,7 @@ class opdata_agg:
 		ax1 = plt.subplot2grid((16,1),(0,0), rowspan = 2)
 		ax1.plot(tmp_feed_dat['Time'],tmp_feed_dat['AIT302'], 'g-', linewidth = 0.5)
 		ax1.set_title(
-			'Hourly Average TMP and Permeate Flow ({0} to {1})'.format(start_dt_str, end_dt_str),
+			'Hourly Average TMP and Permeate Flow ({} to {})'.format(start_dt_str, end_dt_str),
 			fontweight = 'bold'
 		)
 		ax1.set_ylabel('TMP (psia)')
@@ -493,7 +496,7 @@ class opdata_agg:
 		labels = ax5.get_xticklabels()
 		plt.setp(labels, rotation=45, fontsize=10)
 		# Output plots and/or sumstats csv files to directory of choice
-		plot_filename  = "FLOW_TMP{0}.png".format(opfile_suff)
+		plot_filename  = "FLOW_TMP{}.png".format(opfile_suff)
 		fig = matplotlib.pyplot.gcf()
 		fig.set_size_inches(7, 12)
 
@@ -584,18 +587,18 @@ class opdata_agg:
 			nhours = 24
 
 		if sum_period == 'WEEK':
-			xlabel = 'Weeks (since {0})'.format(start_dt_str)
+			xlabel = 'Weeks (since {})'.format(start_dt_str)
 			feeding_dat[xlabel] = np.floor((feeding_dat['Time'] - start_dt)/np.timedelta64(7,'D'))
 			nhours = 24*7
 
 		if sum_period == 'MONTH':
-			xlabel = 'Months (since {0}, as 30 days)'.format(start_dt_str)
+			xlabel = 'Months (since {}, as 30 days)'.format(start_dt_str)
 			feeding_dat[xlabel] = np.floor((feeding_dat['Time'] - start_dt)/np.timedelta64(30,'D'))
 			nhours = 24*7*30
 
 		if get_nhours == 1:
 			for sid in sids:
-				feeding_dat['Number Hours {0}'.format(sid)] = \
+				feeding_dat['Number Hours {}'.format(sid)] = \
 					np.where(feeding_dat[sid].values > 0, 1, 0)
 
 		agg_sumst = feeding_dat.groupby(xlabel).sum()
@@ -614,7 +617,7 @@ class opdata_agg:
 			tic_vals = [agg_sumst.index.values[tic_idx] for tic_idx in tic_idxs]
 
 			if sum_period != 'DAY':
-				tic_vals = ['{0} - {1}'.format(int(tic_val), int(tic_val + 1)) for tic_val in tic_vals]
+				tic_vals = ['{} - {}'.format(int(tic_val), int(tic_val + 1)) for tic_val in tic_vals]
 
 			if plt_type == 'BAR':
 				ax = agg_sumst[sids].plot.bar(stacked = False, width = 0.8, color = plt_colors)
@@ -633,7 +636,7 @@ class opdata_agg:
 			plt.tight_layout()
 
 			# Output plots and/or sumstats csv files to directory of choice
-			plot_filename  = "op{0}_{1}{2}.png".format(stype, all_sids, opfile_suff)
+			plot_filename  = "op{}_{}{}.png".format(stype, all_sids, opfile_suff)
 			plt.savefig(
 				os.path.join(outdir, plot_filename),
 				width = 20,
@@ -643,7 +646,7 @@ class opdata_agg:
 
 		if 'TABLE' in output_types:
 
-			sumst_filename = "op{0}_{1}{2}.csv".format(stype, all_sids, opfile_suff)
+			sumst_filename = "op{}_{}{}.csv".format(stype, all_sids, opfile_suff)
 			agg_sumst.reset_index(inplace = True)
 			agg_sumst = agg_sumst[[xlabel] + sids]
 			agg_sumst.to_csv(
@@ -689,7 +692,7 @@ class opdata_agg:
 		ax1.plot(temp_dat_dly['Date'],temp_dat_dly['AT304'], 'g-', linewidth = 0.5, color = plt_colors[0])
 		ax1.plot(temp_dat_dly['Date'],temp_dat_dly['AT310'], 'g-', linewidth = 0.5, color = plt_colors[1])
 		plt.title(
-			'Mean Daily Temperature ({0} to {1})'.format(start_dt_str, end_dt_str),
+			'Mean Daily Temperature ({} to {})'.format(start_dt_str, end_dt_str),
 			fontweight = 'bold'
 		)
 		ax1.set_ylabel('Temperature (°C)')
@@ -716,7 +719,7 @@ class opdata_agg:
 			ncol = 2
 		)
 		# Output plot to directory of choice
-		plot_filename  = "Temperature{0}.png".format(opfile_suff)
+		plot_filename  = "Temperature{}.png".format(opfile_suff)
 		fig = matplotlib.pyplot.gcf()
 		fig.set_size_inches(7, 8)
 
