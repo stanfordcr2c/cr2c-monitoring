@@ -39,7 +39,6 @@ class cr2c_validation:
 
 	def __init__(
 		self, 
-		outdir, 
 		ip_path = None, 
 		run_agg_feeding = False, 
 		run_agg_gasprod = False, 
@@ -47,8 +46,6 @@ class cr2c_validation:
 		run_agg_press = False
 	):
 		
-
-		self.outdir = outdir
 		self.ip_path = ip_path
 		self.run_agg_feeding = run_agg_feeding
 		self.run_agg_gasprod = run_agg_gasprod
@@ -87,7 +84,7 @@ class cr2c_validation:
 		return COD_diss_conc
 
 
-	def get_cod_bal(self, end_dt_str, nweeks, plot = True, table = True):
+	def get_cod_bal(self, end_dt_str, nweeks, plot = True, table = True, outdir = None):
 		
 		# Window for moving average calculation
 		ma_win = 1
@@ -408,7 +405,7 @@ class cr2c_validation:
 			plt.xlabel('Week Start Date', fontweight = 'bold')
 
 			plt.savefig(
-				os.path.join(self.outdir, 'COD Balance.png'),
+				os.path.join(outdir, 'COD Balance.png'),
 				bbox_extra_artists=(lgd,title,),
 				width = 50,
 				height = 50,
@@ -421,14 +418,14 @@ class cr2c_validation:
 		if table:
 			cod_bal_wkly[['Week Start','COD In','COD Out','Biogas','COD Wasted','Dissolved CH4','Sulfate Reduction']].\
 			to_csv(
-				os.path.join(self.outdir, 'COD Balance.csv'),
+				os.path.join(outdir, 'COD Balance.csv'),
 				index = False,
 				encoding = 'utf-8'				
 			)
 
 
 	# Calculate basic biotechnology parameters to monitor biology in reactors
-	def get_biotech_params(self, end_dt_str, nWeeks, plot = True, table = True):
+	def get_biotech_params(self, end_dt_str, nWeeks, plot = True, table = True, outdir = None):
 		
 		if self.cod_bal_wkly.empty:
 			self.get_cod_bal(end_dt_str, nWeeks, plot = False)
@@ -484,7 +481,7 @@ class cr2c_validation:
 			plt.ylim(ymin = 0)
 			plt.xlabel('Week Start Date')
 			plt.savefig(
-				os.path.join(self.outdir, 'VSS Removal.png'),
+				os.path.join(outdir, 'VSS Removal.png'),
 				width = 30,
 				height = 120,
 				bbox_extra_artists=(title,),
@@ -494,7 +491,7 @@ class cr2c_validation:
 
 		if table:
 			vss_params.to_csv(
-				os.path.join(self.outdir, 'VSS Parameters.csv'),
+				os.path.join(outdir, 'VSS Parameters.csv'),
 				index = False,
 				encoding = 'utf-8'
 			)
@@ -504,7 +501,16 @@ class cr2c_validation:
 	Calculate water head from pressure sensor readings, and compare it with the manometer readings.
 	Plot the merged data to show results.
 	'''
-	def instr_val(self, valtypes, op_sids, start_dt_str, end_dt_str, fld_varnames = None, ltypes = None, lstages = None, run_op_report = False, ip_path = None):
+	def instr_val(
+		self, 
+		valtypes, op_sids, 
+		start_dt_str = None, end_dt_str = None, 
+		fld_varnames = None, 
+		ltypes = None, lstages = None, 
+		run_op_report = False, ip_path = None,
+		output_csv = False,
+		outdir = None
+	):
 
 
 		# Validation data are from field measurements (daily log sheet)
@@ -527,8 +533,8 @@ class cr2c_validation:
 			# Create time variable with minute resolution from field data Timestamp variable
 			valdat['Time'] = pd.to_datetime(valdat['Timestamp']).values.astype('datetime64[m]')
 			# Replace missing barometric pressure readings with the mean psi at sea level
-			valdat.loc[:,'Barometer_Pressure_mmHg'] = pd.to_numeric(valdat['Barometer_Pressure_mmHg'], errors = 'coerce')
-			valdat.loc[np.isnan(valdat['Barometer_Pressure_mmHg']),'Barometer_Pressure_mmHg'] = 760
+			valdat.loc[:,'BAROMETER_PRESSURE_MMHG'] = pd.to_numeric(valdat['BAROMETER_PRESSURE_MMHG'], errors = 'coerce')
+			valdat.loc[np.isnan(valdat['BAROMETER_PRESSURE_MMHG']),'BAROMETER_PRESSURE_MMHG'] = 760
 			
 			# Loop through field variables to convert to numeric and calculate differences (if necessary)
 			for varInd,varname in enumerate(fld_varnames):
@@ -539,12 +545,12 @@ class cr2c_validation:
 				else:
 					valdat[op_sids[varInd] + 'VAL'] = pd.to_numeric(valdat[fld.clean_varname(varname)], errors = 'coerce')
 
-			valdat = valdat[['Time','Barometer_Pressure_mmHg'] + [sid + 'VAL' for sid in op_sids]]
+			valdat = valdat[['Time','BAROMETER_PRESSURE_MMHG'] + [sid + 'VAL' for sid in op_sids]]
 		
 		# Validation data are from lab measurements
 		elif ltypes or lstages:
 
-			valdatLong = pd.concat([pld.get_data([ltype])[ltype] for ltype in ltypes], axis = 0)
+			valdatLong = pd.concat([pld.get_data([ltype])[ltype] for ltype in ltypes], axis = 0, sort = True)
 			valdatLong = valdatLong.loc[valdatLong['Stage'].isin(lstages),:]
 			# Convert to wide format
 			# Calculate mean by obsid to account for possibility of multiple PH measurements taken for single sample
@@ -566,7 +572,7 @@ class cr2c_validation:
 			valdatDiff = valdat.copy()
 			valdatDiff['Time']  = valdatDiff['Time'] + timedelta(seconds = minDiff*60)
 			valdatList.append(valdatDiff)
-		valdatAll = pd.concat(valdatList, axis = 0)
+		valdatAll = pd.concat(valdatList, axis = 0, sort = True)
 
 		# Get op data for the element ids whose measurements are being validated
 		nsids = len(op_sids)
@@ -604,11 +610,12 @@ class cr2c_validation:
 		# Loop through each instrument to compute error and output plots 
 		# IF evidence of a significant difference between validated vs op or if instrument drift over time
 		for sind, sid in enumerate(op_sids):
+
 			if valtypes[sind] == 'PRESSURE':
 				# Convert barometric pressure readings to psi
-				valdatMerged.loc[:,'Barometer_Pressure_mmHg'] = valdatMerged['Barometer_Pressure_mmHg']*0.0193368
+				valdatMerged.loc[:,'BAROMETER_PRESSURE_MMHG'] = valdatMerged['BAROMETER_PRESSURE_MMHG']*0.0193368
 				# Convert pressure to inches of head
-				valdatMerged.loc[:,sid] = (valdatMerged[sid] - valdatMerged['Barometer_Pressure_mmHg'])*27.7076
+				valdatMerged.loc[:,sid] = (valdatMerged[sid] - valdatMerged['BAROMETER_PRESSURE_MMHG'])*27.7076
 
 			# Compute the percentage error (op measurement vs validation)
 			valdatMerged.loc[:,'error'] = (valdatMerged[sid] - valdatMerged[sid + 'VAL'])/valdatMerged[sid + 'VAL']
@@ -617,6 +624,10 @@ class cr2c_validation:
 			valdatSub = valdatMerged.loc[:,['Date', sid, sid + 'VAL','error']]
 			valdatSub.replace([np.inf, -np.inf], np.nan, inplace = True)
 			valdatSub.dropna(inplace = True)
+
+			if output_csv:
+				op_fname = '{}_validation.csv'.format(sid)
+				valdatSub.to_csv(os.path.join(outdir, op_fname), index = False, encoding = 'utf-8')
 
 			# Only continue if there are observations (sometimes there arent...)
 			if valdatSub.size > 0:
@@ -668,7 +679,7 @@ class cr2c_validation:
 					fig = matplotlib.pyplot.gcf()
 					fig.set_size_inches(10, 5)
 					plt.savefig(
-						os.path.join(self.outdir, plot_filename),
+						os.path.join(outdir, plot_filename),
 						bbox_extra_artists=(lgd,title)
 					)
 					plt.close()
