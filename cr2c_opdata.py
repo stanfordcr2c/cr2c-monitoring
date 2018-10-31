@@ -128,6 +128,7 @@ def get_data(
 			ignore_index = False,
 			sort = True
 		) 
+		opdata_all.reset_index(inplace = True)
 	
 		if output_csv:
 
@@ -192,7 +193,7 @@ class opdata_agg:
 
 		# Read in raw op data
 		try:
-			self.opdata = pd.read_csv(self.ip_path, low_memory = False)
+			opdata = pd.read_csv(self.ip_path, low_memory = False)
 		except Exception as e:
 			print('\nThere was an error reading in the op data:\n')
 			tb.print_exc(file = sys.stdout)
@@ -231,54 +232,61 @@ class opdata_agg:
 		# Load variables and set output variable names
 		varname = 'CR2C.CODIGA.{}.SCALEDVALUE {} [{}]'
 		# Rename value variable
-		self.opdata.loc[:,'Value'] = \
-			self.opdata[varname.format(sid,'Value', qtype)]
+		opdata.loc[:,'Value'] = \
+			opdata[varname.format(sid,'Value', qtype)]
 
 		# Set low/negative values to 0 (if a flow, otherwise remove) and remove unreasonably high values
 		if stype in ['GAS','WATER','LEVEL']:
-			self.opdata.loc[self.opdata['Value'] < lo_limit, 'Value'] = 0
+			opdata.loc[opdata['Value'] < lo_limit, 'Value'] = 0
 		else:
-			self.opdata.loc[self.opdata['Value'] < lo_limit, 'Value'] = np.NaN
+			opdata.loc[opdata['Value'] < lo_limit, 'Value'] = np.NaN
 
-		self.opdata.loc[self.opdata['Value'] > hi_limit, 'Value'] = np.NaN
+		opdata.loc[opdata['Value'] > hi_limit, 'Value'] = np.NaN
 
 		# Rename and format corresponding timestamp variable
-		self.opdata.loc[:,'Time' ] = \
-			self.opdata[varname.format(sid, 'Time', qtype)]
+		opdata.loc[:,'Time' ] = \
+			opdata[varname.format(sid, 'Time', qtype)]
 		# Subset to "Time" and "Value" variables
-		self.opdata = self.opdata.loc[:,['Time','Value']]
+		opdata = opdata.loc[:,['Time','Value']]
 		# Eliminate missing values and reset index
-		self.opdata.dropna(axis = 0, how = 'any', inplace = True)
+		opdata.dropna(axis = 0, how = 'any', inplace = True)
 
 		# Set Time as datetime variable at second resolution (uses less memory than nanosecond!)
-		self.opdata.loc[:,'Time' ] = \
-			pd.to_datetime(self.opdata['Time']).values.astype('datetime64[s]')
+		opdata.loc[:,'Time' ] = \
+			pd.to_datetime(opdata['Time']).values.astype('datetime64[s]')
 		# Create datetime index
-		self.opdata.set_index(pd.DatetimeIndex(self.opdata['Time']), inplace = True)
+		opdata.set_index(pd.DatetimeIndex(opdata['Time']), inplace = True)
 		# Remove Time variable from dataset
-		self.opdata.drop('Time', axis = 1, inplace = True)
-		# Get first and last available time stamps in index
-		self.first_ts, self.last_ts = self.opdata.index[0], self.opdata.index[-1]
+		opdata.drop('Time', axis = 1, inplace = True)
 
-		# Check to make sure that the totals/averages do not include the first
-		# and last days for which data are available (just to ensure accuracy)
-		if self.first_ts >= self.start_dt or self.last_ts <= self.end_dt:
+		if opdata.empty:
 
-			# Set dates for warning message (set to 0:00 of the given day)
-			self.start_dt_warn = self.first_ts + timedelta(days = 1)
-			self.start_dt_warn = datetime.datetime(self.start_dt_warn.year, self.start_dt_warn.month, self.start_dt_warn.day)
-			self.end_dt_warn   = self.last_ts - timedelta(days = 1)
+			return opdata
 
-			# Issue warning
-			msg = \
-				'Given the range of data available for {}, accurate aggregate values can only be obtained for: {1} to {2}'
-			wn.warn(msg.format(sid, dt.strftime(self.start_dt_warn, '%m-%d-%y'), dt.strftime(self.end_dt_warn, '%m-%d-%y')))
-			# Change start_dt and end_dt of system to avoid overwriting sql file with empty data
-			self.start_dt = datetime.datetime(self.first_ts.year, self.first_ts.month, self.first_ts.day) + timedelta(days = 1)
-			# Need to set the self.end_dt to midnight of the NEXT day
-			self.end_dt = datetime.datetime(self.last_ts.year, self.last_ts.month, self.last_ts.day) 
+		else:
 
-		return self.opdata
+			# Get first and last available time stamps in index
+			first_ts, last_ts = opdata.index[0], opdata.index[-1]
+
+			# Check to make sure that the totals/averages do not include the first
+			# and last days for which data are available (just to ensure accuracy)
+			if first_ts >= self.start_dt or last_ts <= self.end_dt:
+
+				# Set dates for warning message (set to 0:00 of the given day)
+				start_dt_warn = first_ts + timedelta(days = 1)
+				start_dt_warn = datetime.datetime(start_dt_warn.year, start_dt_warn.month, start_dt_warn.day)
+				end_dt_warn   = last_ts - timedelta(days = 1)
+				end_dt_warn = datetime.datetime(end_dt_warn.year, end_dt_warn.month, end_dt_warn.day)
+				# Issue warning
+				msg = \
+					'Given the range of data available for {}, accurate aggregate values can only be obtained for: {} to {}'
+				wn.warn(msg.format(sid, dt.strftime(start_dt_warn, '%m-%d-%y'), dt.strftime(end_dt_warn, '%m-%d-%y')))
+				# Change start_dt and end_dt of system to avoid overwriting sql file with empty data
+				self.start_dt = start_dt_warn
+				# Need to set the self.end_dt to midnight of the NEXT day (so NOT end_dt_warn)
+				self.end_dt = datetime.datetime(last_ts.year, last_ts.month, last_ts.day) 
+
+			return opdata
 
 
 	def get_average(self, opdata, tperiod, ttype):
@@ -341,9 +349,9 @@ class opdata_agg:
 			print('Getting aggregated data for {} ({}{})...'.format(sid, tperiod, ttype))
 
 			# Get prepped data
-			self.prep_opdata(stype, sid)
+			opdata = self.prep_opdata(stype, sid)
 			# Get totalized values
-			tots_res = self.get_average(self.opdata, tperiod, ttype)
+			tots_res = self.get_average(opdata, tperiod, ttype)
 			# Get year and month (for partitioning purposes)
 			tots_res.loc[:,'Year'] = tots_res['Time'].dt.year
 			tots_res.loc[:,'Month'] = tots_res['Time'].dt.month
