@@ -256,9 +256,9 @@ class cr2c_validation:
 		vss_dat_cln.columns = ['Date','VSS R','VSS Out']	
 
 		# Solids Wasting Data
-		waste_dat = fld.get_data(['AFMBR_Volume_Wasted_Gal'])
+		waste_dat = fld.get_data(['AFMBR_VOLUME_WASTED_GAL'])
 		waste_dat['Date'] = pd.to_datetime(waste_dat['Timestamp']).dt.date
-		waste_dat['AFMBR Volume Wasted (Gal)'] = waste_dat['AFMBR_Volume_Wasted_Gal'].astype('float')
+		waste_dat['AFMBR Volume Wasted (Gal)'] = waste_dat['AFMBR_VOLUME_WASTED_GAL'].astype('float')
 		waste_dat['Wasted (L)'] = waste_dat['AFMBR Volume Wasted (Gal)']*l_p_gal
 		waste_dat_cln = waste_dat[['Date','Wasted (L)']]
 
