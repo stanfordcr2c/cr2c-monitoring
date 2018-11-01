@@ -338,9 +338,6 @@ class opdata_agg:
 
 	def run_agg(self, stypes, sids, tperiods, ttypes, output_csv = False, output_sql = True, outdir = None):
 
-		# Get sql table directory
-		os.chdir(self.data_dir)
-
 		# Clean inputs
 		ttypes, stypes = [ttype.upper() for ttype in ttypes], [stype.upper() for stype in stypes]
 
@@ -370,6 +367,7 @@ class opdata_agg:
 					VALUES (?,?,?,?)
 				""".format(stype, sid, tperiod, ttype)
 				# Set connection to SQL database (pertaining to given year)
+				os.chdir(self.data_dir)
 				conn = sqlite3.connect('cr2c_opdata.db')
 				# Load data to SQL
 				# Create the table if it doesn't exist
