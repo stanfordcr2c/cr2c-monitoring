@@ -1,0 +1,11 @@
+runtime: python37
+
+instance_class: F2
+
+handlers:
+- url: /
+  script: home.app
+
+- url: /admin/.*
+  script: admin.app
+  login: admin
