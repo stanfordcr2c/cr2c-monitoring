@@ -1,27 +1,17 @@
+from flask import Flask
 
-## Utilities
-import os 
-from datetime import datetime as dt
-import pandas as pd
-import numpy as np
-import json
+# If `entrypoint` is not defined in app.yaml, App Engine will look for an app
+# called `app` in `main.py`.
+app = Flask(__name__)
 
-## Dash/Plotly
-import dash
-import dash_html_components as html
-import dash_core_components as dcc
-import plotly.graph_objs as go
-from dash.dependencies import Input, Output, State, Event
-from flask_caching import Cache
+@app.route('/')
+def hello():
+    """Return a friendly HTTP greeting."""
+    return 'Hello Codiga'
 
-# Initialize dash app
-app = dash.Dash(__name__)
-app.config['suppress_callback_exceptions'] = True
-
-
-app.layout = html.Div(id = 'page-content', children = html.Div(['Hello World']))
 
 if __name__ == '__main__':
-
-    app.run_server(debug = True)
-
+    # This is used when running locally only. When deploying to Google App
+    # Engine, a webserver process such as Gunicorn will serve the app. This
+    # can be configured by adding an `entrypoint` to app.yaml.
+    app.run(debug=True)
