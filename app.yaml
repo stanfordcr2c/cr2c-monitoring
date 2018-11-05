@@ -4,8 +4,5 @@ instance_class: F2
 
 handlers:
 - url: /
-  script: home.app
-
-- url: /admin/.*
-  script: admin.app
+  script: auto
   login: admin
