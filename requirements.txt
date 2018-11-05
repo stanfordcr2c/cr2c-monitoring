@@ -38,8 +38,6 @@ linecache2==1.0.0
 MarkupSafe==1.0
 matplotlib==2.2.2
 mistune==0.8.3
-mkl-fft==1.0.0
-mkl-random==1.0.1
 mpld3==0.3
 nbconvert==5.3.1
 nbformat==4.4.0
