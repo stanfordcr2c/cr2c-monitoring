@@ -18,6 +18,9 @@ import sqlite3
 from datetime import datetime as dt
 from datetime import timedelta
 
+#Google API
+from google.cloud import bigquery
+
 # Utilities
 import functools
 import warnings
@@ -54,19 +57,22 @@ def get_data(
 		if ltype.find('TSS') >= 0 or ltype.find('VSS') >= 0:
 			ltype = 'TSS_VSS'
 
-		ldata_long = pd.read_sql(
-			'SELECT * FROM {0}'.format(ltype), 
-			conn, 
-			coerce_float = True
-		)
+		# ldata_long = pd.read_sql(
+		# 	'SELECT * FROM {0}'.format(ltype), 
+		# 	conn, 
+		# 	coerce_float = True
+		# )
+		projectid = 'cr2c-monitoring'
+		dataset_id = 'test_dataset'
+		ldata_long = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, ltype), projectid)
 
-		# Dedupe data (some issue with duplicates)
+		# Dedupe data (just in case, pandas can be glitchy with duplicates)
 		ldata_long.drop_duplicates(inplace = True)
 		# Convert Date_Time variable to a pd datetime and eliminate missing values
 		ldata_long.loc[:,'Date_Time'] = pd.to_datetime(ldata_long['Date_Time'])
 		ldata_long.dropna(subset = ['Date_Time'], inplace = True)
 		# Filter to desired dates
-		ldata_long.drop('DKey', axis = 1, inplace = True)
+		# ldata_long.drop('Dkey', axis = 1, inplace = True)
 		if start_dt_str:
 			ldata_long = ldata_long.loc[ldata_long['Date_Time'] >= start_dt,:]
 		if end_dt_str:
@@ -1011,5 +1017,17 @@ class labrun:
 			conn.commit()
 			# Close Connection
 			conn.close()
-		
+
+			# Load data to Google BigQuery
+			projectid = 'cr2c-monitoring'
+			dataset_id = 'labdata'
+			# Make sure only new records are being appended to the dataset
+			ldata_long_already = get_data([ltype])[ltype]
+			ldata_long_new = ldata_long.loc[~ldata_long['Dkey'].isin(ldata_long_already['Dkey']),:]
+			# Remove duplicates and missing values
+			ldata_long_new.dropna(inplace = True)
+			ldata_long_new.drop_duplicates(inplace = True)
+			# Write to gbq table
+			if not ldata_long_new.empty:
+				ldata_long_new.to_gbq('{}.{}'.format(dataset_id, ltype), projectid, if_exists = 'append')
 

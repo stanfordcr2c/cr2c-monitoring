@@ -12,10 +12,10 @@ import cr2c_validation as val
 #======================================> Input Arguments <=====================================
 
 outdir_root = '/Users/josebolorinos/Google Drive/Codiga Center/Charts and Data/Monitoring Reports'
-hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/lbre-cr2c-col.stanford.edu/Most Plant Parameters_20181030062847.csv'
-start_dt_str = '8-26-18'
-hmi_start_dt_str = '10-12-18'
-end_dt_str = '10-26-18'
+hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/lbre-cr2c-col.stanford.edu/Most Plant Parameters_20181112102624.csv'
+start_dt_str = '9-9-18'
+hmi_start_dt_str = '11-3-18'
+end_dt_str = '11-9-18'
 
 #====================================> Create directories <====================================
 
@@ -55,7 +55,7 @@ mo1_start_dt_str = dt.strftime(mo1_start_dt,'%m-%d-%y')
 # Initialize lab data class
 cr2c_lr = pld.labrun() 
 # Lab Data
-cr2c_lr.process_data()
+# cr2c_lr.process_data()
 
 # Field Data
 fld.process_data('DailyLogResponsesV2')
@@ -70,48 +70,48 @@ op_run = op.opdata_agg(
 )
 
 # Hourly averages
-op_run.run_agg(
-    ['COND']*4 + 
-    ['PH']*4 + 
-    ['WATER']*10 + 
-    ['GAS']*2 + 
-    ['TEMP']*3 + 
-    ['TMP']*1 +
-    ['DPI']*3 + 
-    ['PRESSURE']*3 + 
-    ['LEVEL']*5
-    ,
-    ['AT201','AT303','AT306','AT309'] + 
-    ['AT203','AT305','AT308','AT311'] + 
-    ['FT200','FT201','FT202','FT300','FT301','FT302','FT303','FT304','FT305','FIT600'] + 
-    ['FT700','FT704'] + 
-    ['AT202','AT304','AT310'] +
-    ['AIT302'] + 
-    ['DPIT300','DPIT301','DPIT302'] +
-    ['PIT205','PIT700','PIT702','PIT704'] + 
-    ['LT200','LT201','LIT300','LIT301','LIT302']
-    ,
-    [1]*35,
-    ['HOUR']*35
-)
+# op_run.run_agg(
+#     ['COND']*4 + 
+#     ['PH']*4 + 
+#     ['WATER']*10 + 
+#     ['GAS']*2 + 
+#     ['TEMP']*3 + 
+#     ['TMP']*1 +
+#     ['DPI']*3 + 
+#     ['PRESSURE']*3 + 
+#     ['LEVEL']*5
+#     ,
+#     ['AT201','AT303','AT306','AT309'] + 
+#     ['AT203','AT305','AT308','AT311'] + 
+#     ['FT200','FT201','FT202','FT300','FT301','FT302','FT303','FT304','FT305','FIT600'] + 
+#     ['FT700','FT704'] + 
+#     ['AT202','AT304','AT310'] +
+#     ['AIT302'] + 
+#     ['DPIT300','DPIT301','DPIT302'] +
+#     ['PIT205','PIT700','PIT702','PIT704'] + 
+#     ['LT200','LT201','LIT300','LIT301','LIT302']
+#     ,
+#     [1]*35,
+#     ['HOUR']*35
+# )
 
 # Minute averages (for sensors we are validating and membrane parameters)
-op_run.run_agg(
-    ['water'] +
-    ['tmp'] +
-    ['ph']*2 + 
-    ['dpi']*2 +
-    ['pressure']*2
-    , # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
-    ['FT305'] +
-    ['AIT302'] +
-    ['AT203','AT305'] + 
-    ['DPIT300','DPIT301'] +
-    ['PIT700','PIT704']
-    , # Sensor ids that you want summary data for (have to be in HMI data file obviously)    
-    [1]*8, # Number of hours/minutes we want to average over
-    ['minute']*8, # Type of time period (can be "hour" or "minute")
-)
+# op_run.run_agg(
+#     ['water'] +
+#     ['tmp'] +
+#     ['ph']*2 + 
+#     ['dpi']*2 +
+#     ['pressure']*2
+#     , # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
+#     ['FT305'] +
+#     ['AIT302'] +
+#     ['AT203','AT305'] + 
+#     ['DPIT300','DPIT301'] +
+#     ['PIT700','PIT704']
+#     , # Sensor ids that you want summary data for (have to be in HMI data file obviously)    
+#     [1]*8, # Number of hours/minutes we want to average over
+#     ['minute']*8, # Type of time period (can be "hour" or "minute")
+# )
 
 #===================================> Get lab tables and plots<=================================
 
@@ -146,20 +146,6 @@ pld.get_lab_plots(
 )
 pld.get_lab_plots(
 	# Plot start date
-	start_dt_str,
-	# Plot end date
-	end_dt_str,
-	# List of monitoring data types to produce charts for (correspond to tabs on gsheets workbook)
-	['BOD'], 
-	# Variable to break down into panels according to
-	'Stage',
-	# Stages to Subset to
-	['Microscreen','MESH'],
-	outdir = labOutdir, 
-	opfile_suff = 'MS_MESH'
-)
-pld.get_lab_plots(
-	# Plot start date
 	mo6_start_dt_str,
 	# Plot end date
 	end_dt_str,
@@ -168,9 +154,9 @@ pld.get_lab_plots(
 	# Variable to break down into panels according to
 	'Stage',
 	# Stages to Subset to
-	['Microscreen','MESH'],
+	['Microscreen'],
 	outdir = labOutdir,
-	opfile_suff = 'MS_MESH'
+	opfile_suff = 'MS'
 )
 # Get wide tables
 cr2c_lr.summarize_tables(end_dt_str, 240, add_time_el = True, outdir = labOutdir)

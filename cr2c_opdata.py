@@ -388,6 +388,19 @@ class opdata_agg:
 				tots_res.to_csv('{}_{}_{}_{}_AVERAGES.csv'.\
 					format(stype, sid, tperiod, ttype), index = False, encoding = 'utf-8')
 
+			# Load data to Google BigQuery
+			projectid = 'cr2c-monitoring'
+			dataset_id = 'opdata'
+			# Make sure only new records are being appended to the dataset
+			ldata_long_already = get_data([ltype])[ltype]
+			ldata_long_new = ldata_long.loc[~ldata_long['Dkey'].isin(ldata_long_already['Dkey']),:]
+			# Remove duplicates and missing values
+			ldata_long_new.dropna(inplace = True)
+			ldata_long_new.drop_duplicates(inplace = True)
+			# Write to gbq table
+			if not ldata_long_new.empty:
+				ldata_long_new.to_gbq('{}.{}'.format(dataset_id, ltype), projectid, if_exists = 'append')
+
 
 	def get_tmp_plots(
 		self,
@@ -668,11 +681,6 @@ class opdata_agg:
 		end_dt = dt.strptime(end_dt_str,'%m-%d-%y')
 		start_dt = end_dt - timedelta(days = 180)
 		start_dt_str = dt.strftime(start_dt,'%m-%d-%y')
-
-		if not outdir:
-			tkTitle = 'Directory to output charts/tables to...'
-			print(tkTitle)
-			outdir = askdirectory(title = tkTitle)
 
 		if opfile_suff:
 			opfile_suff = '_' + opfile_suff
