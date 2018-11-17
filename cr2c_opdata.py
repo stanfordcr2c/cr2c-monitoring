@@ -53,12 +53,6 @@ def get_data(
 	data_dir = cut.get_dirs()[0]
 	os.chdir(data_dir)
 
-	# Initialize output data variable
-	if combine_all:
-		opdata_all = pd.DataFrame()
-	else:
-		opdata_all = {}
-
 	# Manage data selection input 
 	nsids = len(sids)
 	if nsids != len(stypes) or nsids != len(tperiods) or nsids != len(ttypes):
@@ -74,10 +68,12 @@ def get_data(
 	elif year_sub:
 		sub_ins = 'WHERE Year == {}'.format(year_sub)
 
-	for sid, stype, tperiod, ttype in zip(sids, stypes, tperiods, ttypes):
+	# Initialize output data variable
+	opdata_all = {}
+	for stype, sid, tperiod, ttype in zip(stypes, sids, tperiods, ttypes):
 
 		sql_str = """
-			SELECT distinct * FROM {0}_{1}_{2}_{3}_AVERAGES {4}
+			SELECT distinct * FROM {}_{}_{}_{}_AVERAGES {}
 			order by Time 
 		""".format(stype, sid, tperiod, ttype, sub_ins)
 
@@ -105,25 +101,34 @@ def get_data(
 		if end_dt_str:
 			opdata = opdata.loc[opdata['Time'] < end_dt + timedelta(days = 1),]
 
-		# If returning all as a single dataframe, merge the result in loop (or initialize dataframe)
+		# If returning all as a single dataframe, rename 'Value' to the Sensor ID
 		if combine_all:
-
 			# Rename Value variable to its corresponding Sensor ID
 			opdata.rename(columns = {'Value': sid}, inplace = True)
-			if not len(opdata_all):
-				opdata_all = opdata
-			else:
-				opdata_all = opdata_all.merge(opdata[['Time', sid]], on = 'Time', how = 'outer')
-		
-		# Otherwise, load output to dictionary
-		else:
-			opdata_all['{0}_{1}_{2}_{3}_AVERAGES'.format(stype, sid, tperiod, ttype)] = opdata
+			opdata.set_index(['Time','Year','Month'], inplace = True)
+		elif output_csv:
+			op_fname = 'cr2c_opdata_{}_{}_{}_{}.csv'.format(stype, sid, tperiod, ttype)
+			op_path = os.path.join(outdir, op_fname)
+			opdata.to_csv(op_path, index = False, encoding = 'utf-8')
 
-	if combine_all and output_csv:
+		opdata_all['{}_{}_{}_{}_AVERAGES'.format(stype, sid, tperiod, ttype)] = opdata
 
-		os.chdir(outdir)
-		op_fname = '_'.join(sids + [str(tperiod) for tperiod in tperiods]) + '.csv'
-		opdata_all.to_csv(op_fname, index = False, encoding = 'utf-8')
+	if combine_all:
+
+		opdata_all = pd.concat(
+			[df for df in list(opdata_all.values())], 
+			axis = 1, 
+			ignore_index = False,
+			sort = True
+		) 
+		opdata_all.reset_index(inplace = True)
+	
+		if output_csv:
+
+			os.chdir(outdir)
+			stypes = list(set(stypes))
+			op_fname = 'cr2c_opdata_' + '_'.join(stypes) + '.csv'
+			opdata_all.to_csv(op_fname, encoding = 'utf-8')
 
 	return opdata_all
 
@@ -148,13 +153,9 @@ def cat_dfs(ip_paths, idx_var = None, output_csv = False, outdir = None, output_
 	concat_dlist = []
 	for ip_path in ip_paths:
 		concat_dlist.append(pd.read_csv(ip_path, low_memory = False))
-	concat_data = pd.concat([df for df in concat_dlist], ignore_index = True)
+	concat_data = pd.concat([df for df in concat_dlist], ignore_index = True, sort = True)
 	# Remove duplicates (may be some overlap)
 	concat_data.drop_duplicates(keep = 'first', inplace = True)
-	
-	# Sort by index (if given)
-	if idx_var:
-		concat_data.sort_values(idx_var, inplace = True)
 
 	if output:
 
@@ -185,7 +186,7 @@ class opdata_agg:
 
 		# Read in raw op data
 		try:
-			self.opdata = pd.read_csv(self.ip_path, low_memory = False)
+			opdata = pd.read_csv(self.ip_path, low_memory = False)
 		except Exception as e:
 			print('\nThere was an error reading in the op data:\n')
 			tb.print_exc(file = sys.stdout)
@@ -217,58 +218,68 @@ class opdata_agg:
 		elif stype == 'LEVEL':
 			hi_limit = 100
 			lo_limit = 0
+		elif stype == 'COND':
+			hi_limit = 5000
+			lo_limit = 0
 			
 		# Load variables and set output variable names
-		varname = 'CR2C.CODIGA.{0}.SCALEDVALUE {1} [{2}]'
+		varname = 'CR2C.CODIGA.{}.SCALEDVALUE {} [{}]'
 		# Rename value variable
-		self.opdata.loc[:,'Value'] = \
-			self.opdata[varname.format(sid,'Value', qtype)]
+		opdata.loc[:,'Value'] = \
+			opdata[varname.format(sid,'Value', qtype)]
 
 		# Set low/negative values to 0 (if a flow, otherwise remove) and remove unreasonably high values
 		if stype in ['GAS','WATER','LEVEL']:
-			self.opdata.loc[self.opdata['Value'] < lo_limit, 'Value'] = 0
+			opdata.loc[opdata['Value'] < lo_limit, 'Value'] = 0
 		else:
-			self.opdata.loc[self.opdata['Value'] < lo_limit, 'Value'] = np.NaN
+			opdata.loc[opdata['Value'] < lo_limit, 'Value'] = np.NaN
 
-		self.opdata.loc[self.opdata['Value'] > hi_limit, 'Value'] = np.NaN
+		opdata.loc[opdata['Value'] > hi_limit, 'Value'] = np.NaN
 
 		# Rename and format corresponding timestamp variable
-		self.opdata.loc[:,'Time' ] = \
-			self.opdata[varname.format(sid, 'Time', qtype)]
+		opdata.loc[:,'Time' ] = \
+			opdata[varname.format(sid, 'Time', qtype)]
 		# Subset to "Time" and "Value" variables
-		self.opdata = self.opdata.loc[:,['Time','Value']]
+		opdata = opdata.loc[:,['Time','Value']]
 		# Eliminate missing values and reset index
-		self.opdata.dropna(axis = 0, how = 'any', inplace = True)
+		opdata.dropna(axis = 0, how = 'any', inplace = True)
 
 		# Set Time as datetime variable at second resolution (uses less memory than nanosecond!)
-		self.opdata.loc[:,'Time' ] = \
-			pd.to_datetime(self.opdata['Time']).values.astype('datetime64[s]')
+		opdata.loc[:,'Time' ] = \
+			pd.to_datetime(opdata['Time']).values.astype('datetime64[s]')
 		# Create datetime index
-		self.opdata.set_index(pd.DatetimeIndex(self.opdata['Time']), inplace = True)
+		opdata.set_index(pd.DatetimeIndex(opdata['Time']), inplace = True)
 		# Remove Time variable from dataset
-		self.opdata.drop('Time', axis = 1, inplace = True)
-		# Get first and last available time stamps in index
-		self.first_ts, self.last_ts = self.opdata.index[0], self.opdata.index[-1]
+		opdata.drop('Time', axis = 1, inplace = True)
 
-		# Check to make sure that the totals/averages do not include the first
-		# and last days for which data are available (just to ensure accuracy)
-		if self.first_ts >= self.start_dt or self.last_ts <= self.end_dt:
+		if opdata.empty:
 
-			# Set dates for warning message (set to 0:00 of the given day)
-			self.start_dt_warn = self.first_ts + timedelta(days = 1)
-			self.start_dt_warn = datetime.datetime(self.start_dt_warn.year, self.start_dt_warn.month, self.start_dt_warn.day)
-			self.end_dt_warn   = self.last_ts - timedelta(days = 1)
+			return opdata
 
-			# Issue warning
-			msg = \
-				'Given the range of data available for {0}, accurate aggregate values can only be obtained for: {1} to {2}'
-			wn.warn(msg.format(sid, dt.strftime(self.start_dt_warn, '%m-%d-%y'), dt.strftime(self.end_dt_warn, '%m-%d-%y')))
-			# Change start_dt and end_dt of system to avoid overwriting sql file with empty data
-			self.start_dt = datetime.datetime(self.first_ts.year, self.first_ts.month, self.first_ts.day) + timedelta(days = 1)
-			# Need to set the self.end_dt to midnight of the NEXT day
-			self.end_dt = datetime.datetime(self.last_ts.year, self.last_ts.month, self.last_ts.day) 
+		else:
 
-		return self.opdata
+			# Get first and last available time stamps in index
+			first_ts, last_ts = opdata.index[0], opdata.index[-1]
+
+			# Check to make sure that the totals/averages do not include the first
+			# and last days for which data are available (just to ensure accuracy)
+			if first_ts >= self.start_dt or last_ts <= self.end_dt:
+
+				# Set dates for warning message (set to 0:00 of the given day)
+				start_dt_warn = first_ts + timedelta(days = 1)
+				start_dt_warn = datetime.datetime(start_dt_warn.year, start_dt_warn.month, start_dt_warn.day)
+				end_dt_warn   = last_ts - timedelta(days = 1)
+				end_dt_warn = datetime.datetime(end_dt_warn.year, end_dt_warn.month, end_dt_warn.day)
+				# Issue warning
+				msg = \
+					'Given the range of data available for {}, accurate aggregate values can only be obtained for: {} to {}'
+				wn.warn(msg.format(sid, dt.strftime(start_dt_warn, '%m-%d-%y'), dt.strftime(end_dt_warn, '%m-%d-%y')))
+				# Change start_dt and end_dt of system to avoid overwriting sql file with empty data
+				self.start_dt = start_dt_warn
+				# Need to set the self.end_dt to midnight of the NEXT day (so NOT end_dt_warn)
+				self.end_dt = datetime.datetime(last_ts.year, last_ts.month, last_ts.day) 
+
+			return opdata
 
 
 	def get_average(self, opdata, tperiod, ttype):
@@ -320,20 +331,17 @@ class opdata_agg:
 
 	def run_agg(self, stypes, sids, tperiods, ttypes, output_csv = False, output_sql = True, outdir = None):
 
-		# Get sql table directory
-		os.chdir(self.data_dir)
-
 		# Clean inputs
 		ttypes, stypes = [ttype.upper() for ttype in ttypes], [stype.upper() for stype in stypes]
 
 		for tperiod, ttype, sid, stype in zip(tperiods, ttypes, sids, stypes):
 
-			print('Getting aggregated data for {0} ({1}{2})...'.format(sid, tperiod, ttype))
+			print('Getting aggregated data for {} ({}{})...'.format(sid, tperiod, ttype))
 
 			# Get prepped data
-			self.prep_opdata(stype, sid)
+			opdata = self.prep_opdata(stype, sid)
 			# Get totalized values
-			tots_res = self.get_average(self.opdata, tperiod, ttype)
+			tots_res = self.get_average(opdata, tperiod, ttype)
 			# Get year and month (for partitioning purposes)
 			tots_res.loc[:,'Year'] = tots_res['Time'].dt.year
 			tots_res.loc[:,'Month'] = tots_res['Time'].dt.month
@@ -345,13 +353,14 @@ class opdata_agg:
 
 				# SQL command strings for sqlite3
 				create_str = """
-					CREATE TABLE IF NOT EXISTS {0}_{1}_{2}_{3}_AVERAGES (Time INT PRIMARY KEY, Year , Month, Value)
+					CREATE TABLE IF NOT EXISTS {}_{}_{}_{}_AVERAGES (Time INT PRIMARY KEY, Year , Month, Value)
 				""".format(stype, sid, tperiod, ttype)
 				ins_str = """
-					INSERT OR REPLACE INTO {0}_{1}_{2}_{3}_AVERAGES (Time, Year, Month, Value)
+					INSERT OR REPLACE INTO {}_{}_{}_{}_AVERAGES (Time, Year, Month, Value)
 					VALUES (?,?,?,?)
 				""".format(stype, sid, tperiod, ttype)
 				# Set connection to SQL database (pertaining to given year)
+				os.chdir(self.data_dir)
 				conn = sqlite3.connect('cr2c_opdata.db')
 				# Load data to SQL
 				# Create the table if it doesn't exist
@@ -369,6 +378,6 @@ class opdata_agg:
 				if not outdir:
 					outdir = askdirectory()
 				os.chdir(outdir)
-				tots_res.to_csv('{0}_{1}_{2}_{3}_AVERAGES.csv'.\
+				tots_res.to_csv('{}_{}_{}_{}_AVERAGES.csv'.\
 					format(stype, sid, tperiod, ttype), index = False, encoding = 'utf-8')
 

@@ -96,7 +96,7 @@ for dclass in cr2c_dtypes:
                 id = '{}-dtype-tab'.format(dclass),
                 children = [dcc.Tab(label = dtype, value = dtype) for dtype in cr2c_dtypes[dclass]],
                 value = list(cr2c_dtypes[dclass].keys())[0]
-            ),
+            ), 
             html.Div(
                 id = '{}-selection-container'.format(dclass),
                 style = {
@@ -497,7 +497,7 @@ def get_series(
 
             if dtype in ['GAS','WATER']:
                 
-                dfsub.loc[:,[sid]] = dfsub[sid]*60
+                dfsub.loc[:,sid] = dfsub[sid]*60
 
             dfsub.loc[:,'yvar'] = dfsub[sid]
             seriesName = seriesNamePrefix + sid

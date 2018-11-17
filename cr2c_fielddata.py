@@ -26,6 +26,7 @@ def clean_varname(varname):
 	for char in '-:?[]()<>.,':
 		varname = varname.replace(char,'')
 		varname = varname.replace(' ','_')
+		varname = varname.upper()
 	return varname
 
 
@@ -84,6 +85,7 @@ def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv
 	conn = sqlite3.connect('cr2c_fielddata.db')
 
 	if varNames:
+		varNames = [varName.upper() for varName in varNames]
 		varNamesAll = 'Timestamp,' + ','.join(varNames)
 	else:
 		varNamesAll = '*'
@@ -125,6 +127,4 @@ def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv
 		fielddata.to_csv(op_fname, index = False, encoding = 'utf-8')
 
 	return fielddata
-
-
 

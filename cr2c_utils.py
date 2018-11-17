@@ -18,10 +18,11 @@ from oauth2client.file import Storage
 def get_dirs():
 	
 	# Find the CR2C.Operations folder on Box Sync on the given machine
-	targetdir = os.path.join('Box Sync','CR2C.Operations')
+	targetdir1 = os.path.join('Box Sync','CR2C.Operations')
+	targetdir2 = os.path.join('Box','CR2C.Operations')
 	mondir = None
 	for dirpath, dirname, filename in os.walk(expanduser('~')):
-		if dirpath.find(targetdir) > 0:
+		if dirpath.find(targetdir1) > 0 or dirpath.find(targetdir2) > 0:
 			mondir = os.path.join(dirpath,'Monitoring Data and Procedures')
 			break
 			

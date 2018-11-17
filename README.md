@@ -111,7 +111,7 @@ __Laboratory Data Schematic:__
 
 Data from monitoring forms that are filled out on site are synced to the “CR2CMonitoringProcedures” spreadsheet through the Google Forms app. In the same way as the laboratory data, these data can be downloaded from the google spreadsheet using the Google Sheets API. The cr2c_fielddata scripts clean and load the data from the Google spreadsheet where they are stored and output them to the cr2c_fielddata.db data store. 
 
-The __Field Data Schematic__ figure below shows structure of the field data as they are currently stored in the cr2c_fielddata.db store. Somewhat analogously to a spreadsheet, each tab is like a table in a data store that records the answers to a given google form. Each variable name in the table for a given google form is the name of the question in that form (such as the “CR2C Daily Operations Log” form) and each row is an answer to that question. The time stamp of each form submission is automatically stored by google forms. 
+The __Field Data Schematic__ figure below shows structure of the field data as they are currently stored in the cr2c_fielddata.db store. Somewhat analogously to a spreadsheet, each tab is a table in a data store that records the answers to a given google form (so if the name of the google form is "DailyLogSheet" the corresponding name of the table in the cr2c_fielddata.db store is "DailyLogSheet"). Each variable name in the table for a given google form is the name of the question in that form and each row is an answer to that question. For example, if the answer to the question "Operator Initials" in the "DailyLogSheet" form is "PB", this will be recorded as a value of "PB" for the variable names "Operator_Initials" in a table named "DailyLogSheet" in the cr2c_fielddata.db store. The time stamp of each form submission is automatically stored by google forms. Note: the script that processes form submissions cleans the question text string, so that the name of the variable in the form table is not identical to the text of the question in the form (see [clean_varname](#clean_varname) for details).
 
 __Field Data Schematic:__
 
@@ -121,7 +121,9 @@ __Field Data Schematic:__
 
 Operational data logged by the facility's automated sensors are wired through its programmable logic controller (PLC) and transmitted to a remote data collector (i.e. server) via open platform communication (OPC). These data are then pre-processed by WonderWare's eDNA data historian, which compresses and clean's raw OPC data. Currently, these operational data are obtained by manually remoting into the data collector, running an eDNA query, and transferring the output to a local machine where further cleaning and compression are performed by the cr2c_opdata scripts. The cr2c_opdata scripts cleans operational data by removing outlying values, calculating average parameter values for a specified time period and resolution (minute-level, hourly, daily, etc), and outputting the result to the cr2c_opdata.db data store.
 
-The __Operational Data Schematic__ below shows the structure of the operational data as they are currently stored in the cr2c_opdata.db store. Each table in the data store corresponds to a sensor id that identifies an automated sensor at the plant which in turn is specified with a sensor type that logs water flows ("WATER"), biogas flows ("GAS"), and other parameters such as pH ("PH"), temperature ("TEMP"), and trans-membrane pressure ("TMP"). Along with the sensor id and the sensor type, each table in the data store is specific to a certain level of temporal aggregation: 1 minute, 5 minutes, 1 hour, 6 hours, 1 day, etc. Each table contains four variables:
+The __Operational Data Schematic__ below shows the structure of the operational data as they are currently stored in the cr2c_opdata.db store. Each table in the data store corresponds to a sensor id that identifies an automated sensor at the plant which in turn is specified with a sensor type that logs water flows ("WATER"), biogas flows ("GAS"), and other parameters such as pH ("PH"), temperature ("TEMP"), and trans-membrane pressure ("TMP"). Along with the sensor id and the sensor type, each table in the data store is specific to a certain level of temporal aggregation: 1 minute, 5 minutes, 1 hour, 6 hours, 1 day, etc. To illustrate how sensor data map to a table name, 1-hour average water flows read by sensor FT200 would be stored in cr2c_opdata.db in a table called "WATER_FT200_1_HOUR_AVERAGES".
+
+Each table in the cr2c_opdata.db store contains four variables:
 * The time stamp corresponding to the _start_ of the time period in question ("Time")
 * The year of the time period in question ("Year")
 * The month of the time period in question ("Month")
@@ -193,6 +195,15 @@ __Arguments:__
 
 __Output:__
 * *ldata_all*: A dictionary with the resulting data. The keys are each of the *ltypes* specified above and the values are pandas dataframes with data for the given *ltype*
+
+__Example Caller:__
+get_data(
+  ltypes = ['PH','COD'],
+  start_dt_str = '1-1-17',
+  end_dt_str = '12-31-17',
+  output_csv = True,
+  outdir = 'path/to/output/dir'
+)
 
 <a name="labrun"></a>
 #### labrun
@@ -333,6 +344,21 @@ __Arguments:__
 __Output:__
 * A single dataframe or dictionary of dataframes with keys equal to the table names in the SQL file. If a single dataframe is output, all dataframes will be merged on time and the value of each sensor id will be a variable with name "sid". If a dictionary of tables, the table name will be *"stype"_"sid"_"tperiod"_"ttype"_AVERAGES*, so for example, WATER_FT200_6_HOUR_AVERAGES for sid "FT200", which measures flows of "WATER" averaged over 6 hour periods)
 
+__Example Caller:__
+The following example gets 1-hour averages for sensors FT200, FT305 and FT700 for November 2017 (can be specified through the "year_sub" and "month_sub" arguments or with the "start_dt_str" and "end_dt_str" arguments)
+get_data(
+  stypes = ['WATER','WATER','GAS'],
+  sids = ['FT200','FT305','FT700'],
+  tperiods = [1, 1, 1],
+  ttypes = ['HOUR','HOUR','HOUR'],
+  year_sub = 2017
+  month_sub = 11,
+  start_dt_str = '1/11/17',
+  end_dt_str = '30/11/17',
+  output_csv = True,
+  outdir = 'path/to/my/dir'
+)
+
 <a name="get_table_names"></a>
 #### get_table_names()
 
@@ -382,18 +408,30 @@ __Arguments:__
 __Output:__
 * A pandas dataframe with periodic interpolated average readings for a sensor
 
+
 <a name="opdata_aggrun_agg"></a>
-#### opdata_agg.run_agg(stype, sid, tperiods, ttypes, output_csv = False, output_sql = True, outdir = None)
+#### opdata_agg.run_agg(stypes, sids, tperiods, ttypes, output_csv = False, output_sql = True, outdir = None)
 
 __Description:__ Runs a report to obtain aggregated data for a series of stypes, sids, tperiods and ttypes in series. Outputs the result to the cr2c_opdata.db data store, and, if requested, to a series of csv files
 __Arguments:__
-  * *stype*: A list of strings giving type of sensor whose operational data are being prepped (types can be one of stypes described in [get_data](#opget_data) above)
+  * *stypes*: A list of strings giving type of sensor whose operational data are being prepped (types can be one of stypes described in [get_data](#opget_data) above)
   * *sids*: A list of sensor ids  of length equal to *stypes* whose aggregated data we want
   * *tperiods*: A list of integers of length equal to *stypes* giving the lengths of the time periods for which we are obtaining aggregated data.
   * *ttypes*: A list of time period type strings of length equal to *stypes* giving the time period "type" corresponding to the time period length
   * *output_csv*: (Optional) Logical, if true will output aggregated data to csv file(s) (depending on whether *combine_all* is True or False)
   * *output_sql*: (Optional) Logical, if true will output aggregated data to the cr2c_opdata.db data store
   * *outdir*: (Optional, required if *output_csv* is True) String giving the directory to output csv file(s) to
+
+__Example Caller:__
+
+opdata_agg.run_agg(
+  stypes = ['WATER','WATER','GAS'],
+  sids = ['FT200','FT305','FT700'],
+  tperiods = [1, 1, 1],
+  ttypes = ['HOUR','HOUR','HOUR'],
+  output_csv = True,
+  outdir = 'path/to/my/dir'
+)
 
 ### cr2c-fielddata
 
@@ -402,7 +440,7 @@ __Arguments:__
 
 __Description:__ Wrapper for querying aggregated data from the cr2c_fielddata.db data store. 
 __Arguments:__
-* *varNames*: (Optional) A list of strings giving the names of the variables for which we want data. If not specified, all of the response data will be returned. Note: For any variable in the form, the variable name in the data store will have all special characters removed, and all spaces replaced with a '_'
+* *varNames*: (Optional) A list of strings giving the names of the variables for which we want data. If not specified, all of the response data will be returned. All variable names recorded in the data store are capitalized so the input variable names argument is not case sensitive.  Note: For any variable in the form, the variable name in the data store will have all special characters removed, and all spaces replaced with a '_'.
 * *start_dt_str*: (Optional) String of format 'mm-dd-yy' giving the first date for which we want data
 * *end_dt_str*: A string of format 'mm-dd-yy' giving the last date for which we want data
 * *output_csv*: (Optional) Logical, if true will output aggregated data to csv file
@@ -410,10 +448,20 @@ __Arguments:__
 __Output:__
 * A pandas dataframe with the form data
 
+__Example Caller:__
+
+get_data(
+  varNames = ['Operator_Initials','Barometer_Pressure_mmHg'],
+  start_dt_str = '01-01-17',
+  end_dt_str = '12-31-17',
+  output_csv = True,
+  outdir = 'path/to/my/dir'
+)
+
 <a name="clean_varname"></a>
 #### clean_varname(varname)
 
-__Description:__ Cleans a variable name in the log sheet form by eliminating all special characters and replacing spaces with a '_'
+__Description:__ Cleans a variable name in the log sheet form by eliminating all special characters and replacing spaces with a '\_' and converting all characters to upper-case.
 __Arguments:__
   * *varname*: A variable name string
 
@@ -423,7 +471,7 @@ __Output:__
 <a name="process_data"></a>
 #### process_data(tableName = 'DailyLogResponses')
 
-__Description:__ Processes responses from daily log form by reading data in from google sheet and cleaning variable values. Outputs result to the cr2c_fielddata.db data store
+__Description:__ Processes responses from daily log form by reading data in from google sheet and cleaning variable values. Outputs result to the cr2c_fielddata.db data store.
 __Arguments:__ 
   * *tableName*: (Optional) A string giving the name of the table whose responses are to be processed. This corresponds to the sheetname of the google sheets file where the google form responses are stored and the name of the google form itself
 
@@ -472,6 +520,15 @@ __Arguments:__
   * *plot*: (Optional) Logical, if True will output a bar chart of the COD balance
   * *table*: (Optional) Logical, if True will output csv file with the COD balance data
 
+__Example Caller:__
+
+cr2c_validation.get_cod_bal(
+  '1-12-17',
+  12,
+  plot = True,
+  table = True
+)
+
 <a name="cr2c_validationget_biotech_params"></a>
 #### cr2c_validation.get_biotech_params(end_dt_str, nWeeks, plot = True, table = True)
 
@@ -481,6 +538,16 @@ __Arguments:__
   * *nweeks*: The number of weeks to compute solids wasting and growth parameters for
   * *plot*: (Optional) Logical, if True will output a plot of solids wasting and growth parameters
   * *table*: (Optional) Logical, if True will output csv file with the solids wasting and growth parameters
+
+__Example Caller:__
+
+cr2c_val = cr2c_validation(outdir = 'path/to/out/dir')
+cr2c_val.get_biotech_params(
+  '1-12-17',
+  12,
+  plot = True,
+  table = True
+)
 
 <a name="cr2c_validationinstr_val"></a>
 #### cr2c_validation.instr_val(valtypes, start_dt_str, end_dt_str, op_sids, fld_varnames = None, ltypes = None, lstages = None, run_op_report = False, ip_path = None)
@@ -501,4 +568,15 @@ __Arguments:__
   * *run_op_report*: (Optional) Logical, if True will execute an opdata_agg.run_agg method on the sensor(s) being validated
   * *ip_path*: (Optional, required if *run_op_report* is True) A string giving the path to the dataset that contains raw sensor data that will be used to execute an opdata_agg.run_agg method, if desired.
 
+__Example Caller:__
+
+cr2c_val = cr2c_validation(outdir = 'path/to/out/dir')
+cr2c_val.instr_val(
+  valtypes = ['PH','PH'],
+  start_dt_str = '1-1-17',
+  end_dt_str = '12-31-17',
+  hmi_sids = ['AT203','AT305'],
+  ltypes = ['PH','PH'], 
+  lstages = ['Microscreen','AFBR']
+)
 
