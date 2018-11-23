@@ -40,7 +40,7 @@ app.scripts.config.serve_locally = True
 #================= Create datetimea layout map from existing data =================#
 
 lab_types = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
-op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI'] 
+op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI','LEVEL'] 
 val_types = ['COD Balance','Process Parameters','Instrument Validation']
 selection_vars = ['Stage','Type','Sensor ID', 'Validation']
 selectionID, selection, click, history = [None]*4
@@ -347,11 +347,20 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
     seriesList = []
     plotFormat = {}
     stages, types, sids = [None]*3
-    axisNo = 1
+    seriesNo = 1
     size = 6
     dashTypes = ("solid", "dot", "dash", "longdash", "dashdot", "longdashdot")
     
+    # Number of data classes are being plotted
     nclasses = len(list(dataRequested.keys()))
+
+    # Number of distinct axis types being plotted     
+    # Need to reset dclass  variable (list comprehension doesn't work otherwise)
+    dclass = list(dataRequested.keys())[0]
+    req_dtypes = [dtype for dtype in dataRequested[dclass] for dclass in dataRequested]
+    axes_dict = {}
+    for req_dtype_ind,req_dtype in enumerate(req_dtypes):
+        axes_dict[req_dtype] = str(req_dtype_ind + 1)
     
     for dclass in dataRequested:
 
@@ -382,9 +391,9 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
                 plotFormat['size'] = size
                 plotFormat['mode'] = mode
                 plotFormat['seriesNamePrefix'] = seriesNamePrefix
-                plotFormat['yaxis'] = 'y' + str(axisNo) 
-                plotFormat['symbol'] = axisNo
-                plotFormat['dash'] = dashTypes[(axisNo - 1) % len(dashTypes)]
+                plotFormat['yaxis'] = 'y' +  axes_dict[dtype] 
+                plotFormat['symbol'] = seriesNo
+                plotFormat['dash'] = dashTypes[(seriesNo - 1) % len(dashTypes)]
 
             seriesList += get_series(
                 dclass, dtype, 
@@ -392,11 +401,10 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
                 stages, types, sids, 
                 plotFormat
             )
-            axisNo += 1
+            seriesNo += 1
 
 
-    layout = get_layout(dataRequested, time_resolution, time_order)
-
+    layout = get_layout(dataRequested, axes_dict, time_resolution, time_order)
     return {'data': seriesList  , 'layout': layout}
 
 
@@ -655,7 +663,7 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
         return dflist
 
 
-def get_layout(dataRequested, time_resolution, time_order):
+def get_layout(dataRequested, axes_dict, time_resolution, time_order):
 
     layoutItems = {'height': 700}
     xrangeList = [np.datetime64('2017-05-10'), dt.today()]
@@ -722,7 +730,6 @@ def get_layout(dataRequested, time_resolution, time_order):
 
         layoutItems['xaxis']['type'] = 'linear'
 
-    seriesNo = 0
     axisSides = ['right','left']
     axisSigns = [-1,1]
 
@@ -730,30 +737,28 @@ def get_layout(dataRequested, time_resolution, time_order):
 
         for dtype in dataRequested[dclass]:
 
-            seriesNo += 1
-            yaxisTitle = yaxisTitles[dtype]
-
-            if seriesNo == 1:
+            axisNo = int(axes_dict[dtype])
+            if axisNo == 1:
                 yaxisKey = 'yaxis'
             else:
-                yaxisKey = 'yaxis' + str(seriesNo)
+                yaxisKey = 'yaxis' + str(axes_dict[dtype])
 
-            if seriesNo < 3:
+            if axisNo < 3:
                 anchor = 'x'
                 position = 0
             else:
                 anchor = 'free'
-                position = (seriesNo + 1) % 2 + axisSigns[seriesNo % 2]*np.floor((seriesNo/2))*0.05
+                position = (axisNo + 1) % 2 + axisSigns[axisNo % 2]*np.floor((axisNo/2))*0.05
 
-            axisSide = axisSides[seriesNo % 2]
+            axisSide = axisSides[axisNo % 2]
             layoutItems[yaxisKey] = {
-                'title': yaxisTitle,
+                'title': yaxisTitles[dtype],
                 'anchor': anchor,
                 'side': axisSide,
                 'position': position
             }
 
-            if seriesNo > 1:
+            if axisNo > 1:
                 layoutItems[yaxisKey]['overlaying'] = 'y'
 
     if position > 0.5:
@@ -766,6 +771,7 @@ def get_layout(dataRequested, time_resolution, time_order):
     layoutItems['xaxis']['domain'] = [domainLeft, domainRight]
 
     return go.Layout(layoutItems)
+
 
 
 if __name__ == '__main__':
