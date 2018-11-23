@@ -57,13 +57,9 @@ def get_data(
 		if ltype.find('TSS') >= 0 or ltype.find('VSS') >= 0:
 			ltype = 'TSS_VSS'
 
-		# ldata_long = pd.read_sql(
-		# 	'SELECT * FROM {0}'.format(ltype), 
-		# 	conn, 
-		# 	coerce_float = True
-		# )
+		# Load data from google BigQuery
 		projectid = 'cr2c-monitoring'
-		dataset_id = 'test_dataset'
+		dataset_id = 'labdata'
 		ldata_long = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, ltype), projectid)
 
 		# Dedupe data (just in case, pandas can be glitchy with duplicates)
@@ -935,7 +931,7 @@ class labrun:
 			# ======================================= AMMONIA =============================================== #
 			if ltype == 'AMMONIA':
 				# Compute Ammonia concentration
-				self.ldata.loc[:,'Ammonia'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
+				self.ldata.loc[:,'AMMONIA'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
 				self.ldata.loc[:,'units'] = 'mg/L'
 
 			if ltype == 'TKN':
@@ -961,7 +957,7 @@ class labrun:
 			# ======================================= SULFATE =============================================== #
 			if ltype == 'SULFATE':
 				# Compute Sulfate concentration
-				self.ldata.loc[:,'Sulfate'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
+				self.ldata.loc[:,'SULFATE'] = self.ldata['Reading (mg/L)']*self.ldata['Dilution Factor']
 				self.ldata.loc[:,'units'] = 'mg/L S'
 
 			# ======================================= GASCOMP ============================================ #
@@ -1025,9 +1021,9 @@ class labrun:
 			ldata_long_already = get_data([ltype])[ltype]
 			ldata_long_new = ldata_long.loc[~ldata_long['Dkey'].isin(ldata_long_already['Dkey']),:]
 			# Remove duplicates and missing values
-			ldata_long_new.dropna(inplace = True)
+			ldata_long_new.dropna(subset = ['Date_Time'], inplace = True)
 			ldata_long_new.drop_duplicates(inplace = True)
 			# Write to gbq table
-			if not ldata_long_new.empty:
+			if not ldata_long_new.empty and ltype != 'PH':
 				ldata_long_new.to_gbq('{}.{}'.format(dataset_id, ltype), projectid, if_exists = 'append')
 
