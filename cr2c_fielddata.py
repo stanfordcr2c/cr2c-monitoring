@@ -33,12 +33,12 @@ def clean_varname(varname):
 def process_data(tableName = 'DailyLogResponses'):
 
 	# Get the log data from gsheets
-	logdata = cut.get_gsheet_data(tableName)
+	fielddata = cut.get_gsheet_data(tableName)
 	# Eliminate special characters (':-?[]()') and replace spaces with '_'	
-	colnamesRaw = logdata.columns.values
+	colnamesRaw = fielddata.columns.values
 	colnamesCln = [clean_varname(colname) for colname in colnamesRaw]
 	# Replace columns names of dataset with clean column names
-	logdata.columns = colnamesCln
+	fielddata.columns = colnamesCln
 
 	# SQL command strings for sqlite3
 	colnamesStr = ','.join(colnamesCln[1:])
@@ -61,12 +61,24 @@ def process_data(tableName = 'DailyLogResponses'):
 	# Insert aggregated values for the sid and time period
 	conn.executemany(
 		ins_str,
-		logdata.to_records(index = False).tolist()
+		fielddata.to_records(index = False).tolist()
 	)
 	conn.commit()
-
 	# Close Connection
 	conn.close()
+
+	# Load data to Google BigQuery
+	projectid = 'cr2c-monitoring'
+	dataset_id = 'fielddata'
+	# Make sure only new records are being appended to the dataset
+	fielddata_already = get_data()
+	fielddata_new = fielddata.loc[~fielddata['TIMESTAMP'].isin(fielddata_already['TIMESTAMP']),:]
+	# Remove duplicates and missing values
+	fielddata_new.dropna(subset = ['TIMESTAMP'], inplace = True)
+	fielddata_new.drop_duplicates(inplace = True)
+	# Write to gbq table
+	if not fielddata_new.empty:
+		fielddata_new.to_gbq('{}.{}'.format(dataset_id, tableName), projectid, if_exists = 'append')
 
 
 def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None):
@@ -79,11 +91,7 @@ def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv
 
 	tableNames = ['DailyLogResponses','DailyLogResponsesV2']
 
-	# Load data from SQL
-	data_dir = cut.get_dirs()[0]
-	os.chdir(data_dir)
-	conn = sqlite3.connect('cr2c_fielddata.db')
-
+	# Set "varNames" to * if none given
 	if varNames:
 		varNames = [varName.upper() for varName in varNames]
 		varNamesAll = 'Timestamp,' + ','.join(varNames)
@@ -91,21 +99,21 @@ def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv
 		varNamesAll = '*'
 
 	fielddata = pd.DataFrame([])
+	projectid = 'cr2c-monitoring'
+	dataset_id = 'fielddata'
 
 	for tableName in tableNames:
 
 		fielddata = pd.concat(
 			[
 				fielddata,
-				pd.read_sql(
-					'SELECT {0} FROM {1}'.format(varNamesAll, tableName), 
-					conn, 
-					coerce_float = True
-				)
+				# Load data from google BigQuery
+				pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, tableName), projectid)
 			],
 			axis = 0,
 			join = 'outer'
 		)
+
 	# Dedupe data (some issue with duplicates)
 	fielddata.drop_duplicates(inplace = True)
 	# Convert Date_Time variable to a pd datetime and eliminate missing values

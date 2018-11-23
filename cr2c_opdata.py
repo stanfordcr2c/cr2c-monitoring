@@ -84,12 +84,12 @@ def get_data(
 			order by Time 
 		""".format(stype, sid, tperiod, ttype, sub_ins)
 
-		# Open connection and read to pandas dataframe
-		conn = sqlite3.connect('cr2c_opdata.db')
-		opdata = pd.read_sql(
-			sql_str,
-			conn,
-			coerce_float = True
+		# Load data from google BigQuery
+		projectid = 'cr2c-monitoring'
+		dataset_id = 'opdata'
+		opdata = pd.read_gbq(
+			'SELECT * FROM {}.{}_{}_{}_{}_AVERAGES'.format(dataset_id, stype, sid, tperiod, ttype), 
+			projectid
 		)
 
 		# Format the time variable
@@ -102,6 +102,7 @@ def get_data(
 
 		# Drop duplicates (happens with hourly aggregates sometimes...)
 		opdata.drop_duplicates(['Time'], inplace = True)
+		opdata.dropna(subset = ['Time'], inplace = True)
 
 		if start_dt_str:
 			opdata = opdata.loc[opdata['Time'] >= start_dt,]
@@ -392,14 +393,26 @@ class opdata_agg:
 			projectid = 'cr2c-monitoring'
 			dataset_id = 'opdata'
 			# Make sure only new records are being appended to the dataset
-			ldata_long_already = get_data([ltype])[ltype]
-			ldata_long_new = ldata_long.loc[~ldata_long['Dkey'].isin(ldata_long_already['Dkey']),:]
+			tots_res_already = \
+				get_data(
+					[stype],
+					[sid],
+					[tperiod],
+					[ttype], 
+					combine_all = False
+				)['{}_{}_{}_{}_AVERAGES'.format(stype, sid, tperiod, ttype)]
+
+			tots_res_new = tots_res.loc[~tots_res['Time'].isin(tots_res_already['Time']),:]
 			# Remove duplicates and missing values
-			ldata_long_new.dropna(inplace = True)
-			ldata_long_new.drop_duplicates(inplace = True)
+			tots_res_new.dropna(inplace = True)
+			tots_res_new.drop_duplicates(inplace = True)
 			# Write to gbq table
-			if not ldata_long_new.empty:
-				ldata_long_new.to_gbq('{}.{}'.format(dataset_id, ltype), projectid, if_exists = 'append')
+			if not tots_res_new.empty:
+				tots_res_new.to_gbq(
+					'{}.{}_{}_{}_{}_AVERAGES'.format(dataset_id, stype, sid, tperiod, ttype), 
+					projectid, 
+					if_exists = 'append'
+				)
 
 
 	def get_tmp_plots(
