@@ -3,13 +3,6 @@
 	takes dates as inputs and outputs a summary file with mass balance info
 '''
 
-# Plotting
-import matplotlib
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
-import matplotlib.ticker as tkr
-import matplotlib.dates as dates
-
 # Data Prep
 import pylab as pl
 import numpy as np
@@ -84,7 +77,7 @@ class cr2c_validation:
 		return COD_diss_conc
 
 
-	def get_cod_bal(self, end_dt_str, nweeks, plot = True, table = True, outdir = None):
+	def get_cod_bal(self, end_dt_str, nweeks, table = True, outdir = None):
 		
 		# Window for moving average calculation
 		ma_win = 1
@@ -374,45 +367,6 @@ class cr2c_validation:
 		cod_bal_wkly.loc[:,'Week Start'] = cod_bal_wkly['Week Start'].dt.date
 		cod_bal_wkly = cod_bal_wkly.loc[cod_bal_wkly['Week Start'] < end_dt,:]
 
-		#===========================================> Plot! <==========================================
-		if plot:
-			fig, ax = plt.subplots()
-			title = fig.suptitle('Weekly COD Mass Balance', fontsize = 14, fontweight = 'bold', y = 0.95)
-			nWeeks = np.arange(len(cod_bal_wkly))
-			bWidth = 0.8
-			pBiogas = plt.bar(nWeeks,cod_bal_wkly['Biogas'], bWidth)
-			bottomCum = cod_bal_wkly['Biogas'].values
-			pOut = plt.bar(nWeeks,cod_bal_wkly['COD Out'], bWidth, bottom = bottomCum)
-			bottomCum += cod_bal_wkly['COD Out']
-			pDiss = plt.bar(nWeeks,cod_bal_wkly['Dissolved CH4'], bWidth, bottom = bottomCum)
-			bottomCum += cod_bal_wkly['Dissolved CH4']
-			pWasted = plt.bar(nWeeks,cod_bal_wkly['COD Wasted'], bWidth, bottom = bottomCum)
-			bottomCum += cod_bal_wkly['COD Wasted']
-			pSO4 = plt.bar(nWeeks,cod_bal_wkly['Sulfate Reduction'], bWidth, bottom = bottomCum)
-			pIn = plt.scatter(nWeeks,cod_bal_wkly['COD In'], c = 'r')
-			plt.xticks(nWeeks,cod_bal_wkly['Week Start'], rotation = 45) 
-			lgd = ax.legend(
-				# (pIn,pBiogas[0],pOut[0],pDiss[0],pWasted[0],pSO4[0]),
-				(pIn,pSO4[0],pWasted[0],pDiss[0],pOut[0],pBiogas[0]),
-				('COD In','Sulfate Reduction','Solids Wasting','Dissolved CH4','COD Out','Biogas'),
-				loc= 'center left',
-				bbox_to_anchor = (1, 0.5), 
-				fancybox = True, 
-				shadow = True, 
-				ncol = 1
-			)
-			plt.ylabel('kg of COD Equivalents',fontweight = 'bold')
-			plt.xlabel('Week Start Date', fontweight = 'bold')
-
-			plt.savefig(
-				os.path.join(outdir, 'COD Balance.png'),
-				bbox_extra_artists=(lgd,title,),
-				width = 50,
-				height = 50,
-				bbox_inches = 'tight'
-			) 
-			plt.close()
-		#===========================================> Plot! <==========================================		
 		self.cod_bal_wkly = cod_bal_wkly
 
 		if table:
@@ -425,10 +379,10 @@ class cr2c_validation:
 
 
 	# Calculate basic biotechnology parameters to monitor biology in reactors
-	def get_biotech_params(self, end_dt_str, nWeeks, plot = True, table = True, outdir = None):
+	def get_biotech_params(self, end_dt_str, nWeeks, table = True, outdir = None):
 		
 		if self.cod_bal_wkly.empty:
-			self.get_cod_bal(end_dt_str, nWeeks, plot = False)
+			self.get_cod_bal(end_dt_str, nWeeks)
 
 		# Dividing by 1E6 and 7 because units are totals for week and are in mg/L
 		# whereas COD units are in kg
@@ -449,46 +403,6 @@ class cr2c_validation:
 
 		vss_params = self.cod_bal_wkly[['Week Start','VSS SRT (days)','gVSS wasted/gCOD Removed']]
 
-		if plot:
-			fig, (ax1, ax2) = plt.subplots(2, 1, sharey = False)
-			title = fig.suptitle(
-				'Weekly VSS Wasting Parameters (last 8 weeks)',
-				fontweight = 'bold',
-				fontsize = 14,
-				y = 0.95
-
-			)
-			fig.subplots_adjust(top = 0.85)
-			ax1.plot(
-				vss_params['Week Start'], 
-				vss_params['gVSS wasted/gCOD Removed'],
-				linestyle = '-', marker = "o"
-			)
-			ax1.grid(True, axis = 'y', linestyle = '--')
-			plt.sca(ax1)
-			ax1.xaxis.set_ticklabels([])
-			plt.ylabel('gVSS wast./gCOD rem.')
-			plt.ylim(ymin = 0)
-			ax2.plot(
-				vss_params['Week Start'], 
-				vss_params['VSS SRT (days)'],
-				linestyle = '-', marker = "o"
-			)
-			ax2.grid(True, axis = 'y', linestyle = '--')
-			plt.sca(ax2)
-			plt.xticks(rotation = 45)
-			plt.ylabel('VSS SRT (d)') 
-			plt.ylim(ymin = 0)
-			plt.xlabel('Week Start Date')
-			plt.savefig(
-				os.path.join(outdir, 'VSS Removal.png'),
-				width = 30,
-				height = 120,
-				bbox_extra_artists=(title,),
-				bbox_inches = 'tight'
-			) 
-			plt.close()
-
 		if table:
 			vss_params.to_csv(
 				os.path.join(outdir, 'VSS Parameters.csv'),
@@ -498,8 +412,7 @@ class cr2c_validation:
 
 	'''
 	Verify pressure sensor readings from op data and manometer readings from Google sheets.
-	Calculate water head from pressure sensor readings, and compare it with the manometer readings.
-	Plot the merged data to show results.
+	Calculate water head from pressure sensor readings, and compare it with the manometer readings
 	'''
 	def instr_val(
 		self, 
@@ -607,7 +520,7 @@ class cr2c_validation:
 		valdatMerged.reset_index(inplace = True)
 		valdatMerged.loc[:,'Date'] = pd.to_datetime(valdatMerged['Date'])
 
-		# Loop through each instrument to compute error and output plots 
+		# Loop through each instrument to compute error
 		# IF evidence of a significant difference between validated vs op or if instrument drift over time
 		for sind, sid in enumerate(op_sids):
 
@@ -638,51 +551,5 @@ class cr2c_validation:
 				# Regress error on time (to test for drift), divide by 10**9*3600*24 so coefficients are in terms of days
 				slope, intercept, Rsq, pValTrend, stdErr = stats.linregress(valX, valdatSub['error'].values)
 				
-				# If drift is significant at the 10% level, or if means are significantly different, produce a plot with a warning
-				if pValTrend < 0.1  or pvalMeans < 0.1:
-					fig, ax = plt.subplots(1,1)
-					gs1 = gridspec.GridSpec(1, 1)
-					fig.subplots_adjust(top = 0.90, right = 0.7)
-					title = fig.suptitle(
-						'Instrument Validation: {0}'.format(sid),
-						fontweight = 'bold',
-						fontsize = 12,
-						y = 0.99
-					)
-					dates = [pd.to_datetime(date) for date in valdatSub['Date'].dt.date.values]
-					measure = ax.scatter(dates,valdatSub[sid], marker = 'o')
-					validated = ax.scatter(dates,valdatSub[sid + 'VAL'], color = 'r', marker = 'o')
-					ax.text(
-						0.8,0.15, 
-						'p-Value (Trend): {0}'.format(round(pValTrend,3)), 
-						bbox=dict(facecolor='black', alpha = 0.1),
-						transform = ax.transAxes
-					)
-					ax.text(
-						0.8,0.05, 
-						'p-Value (Diff.): {0}'.format(round(pvalMeans,3)),
-						bbox=dict(facecolor='black', alpha = 0.1),
-						transform = ax.transAxes
-					)
-					plt.xlim(min(dates) - timedelta(days = 1),max(dates) + timedelta(days = 1))
-					plt.xticks(rotation = 45)
-					lgd = ax.legend(
-						('op Value','Validated Measure'),
-						loc= 'center left',
-						bbox_to_anchor = (0.75, 0.90), 
-						fancybox=True
-					)
-					plt.tight_layout()
-
-					# Output plot to directory of choice
-					plot_filename  = "InstrumentValidation_{0}.png".format(sid)
-					fig = matplotlib.pyplot.gcf()
-					fig.set_size_inches(10, 5)
-					plt.savefig(
-						os.path.join(outdir, plot_filename),
-						bbox_extra_artists=(lgd,title)
-					)
-					plt.close()
-
 		return
 
