@@ -19,20 +19,9 @@ import dash_html_components as html
 import dash_core_components as dcc
 import plotly.graph_objs as go
 from dash.dependencies import Input, Output, State, Event
-from flask_caching import Cache
 
 # Initialize dash app
 app = dash.Dash(__name__)
-# Initialize flask cache
-cache_dir = os.path.join(cut.get_dirs()[0],'flask-cache')
-cacheConfig = {
-    # Probably preferable to use redis in the future
-    'CACHE_TYPE': 'filesystem',
-    'CACHE_DIR': cache_dir
-}
-cache = Cache()
-timeout = 300
-cache.init_app(app.server, config = cacheConfig)
 app.config['suppress_callback_exceptions'] = True
 app.css.config.serve_locally = True
 app.scripts.config.serve_locally = True
