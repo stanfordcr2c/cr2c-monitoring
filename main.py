@@ -7,11 +7,11 @@ import numpy as np
 import json
 
 ## CR2C
-import cr2c_labdata as lab
-import cr2c_opdata as op
-import cr2c_fielddata as fld
-import cr2c_validation as val
-import cr2c_utils as cut
+from dependencies import cr2c_labdata as lab
+from dependencies import cr2c_opdata as op
+from dependencies import cr2c_fielddata as fld
+from dependencies import cr2c_validation as val
+from dependencies import cr2c_utils as cut
 
 ## Dash/Plotly
 import dash
