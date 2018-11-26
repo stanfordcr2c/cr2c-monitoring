@@ -1,5 +1,0 @@
-#!/bin/bash
-
-cd "$( cd "$(dirname "$0")" ; pwd -P )"
-conda create --name cr2c-monitoring --file cr2c-dependencies.txt
-Conda install --name cr2c-monitoring --file cr2c-dependencies.txt
