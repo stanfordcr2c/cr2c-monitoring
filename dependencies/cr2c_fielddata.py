@@ -39,34 +39,6 @@ def process_data(tableName = 'DailyLogResponses'):
 	colnamesCln = [clean_varname(colname) for colname in colnamesRaw]
 	# Replace columns names of dataset with clean column names
 	fielddata.columns = colnamesCln
-
-	# SQL command strings for sqlite3
-	colnamesStr = ','.join(colnamesCln[1:])
-	colInsStr = ','.join(['?']*len(colnamesCln))
-	create_str = """
-		CREATE TABLE IF NOT EXISTS {0} (Timestamp CHAR PRIMARY KEY, {1})
-	""".format(tableName,colnamesStr)
-	ins_str = """
-		INSERT OR REPLACE INTO {0} (Timestamp,{1})
-		VALUES ({2})
-	""".format(tableName,colnamesStr,colInsStr)
-
-	# Change to data directory
-	data_dir = cut.get_dirs()[0]
-	os.chdir(data_dir)
-	# Create SQL object connection
-	conn = sqlite3.connect('cr2c_fielddata.db')
-	# Create table if it doesn't exist
-	conn.execute(create_str)
-	# Insert aggregated values for the sid and time period
-	conn.executemany(
-		ins_str,
-		fielddata.to_records(index = False).tolist()
-	)
-	conn.commit()
-	# Close Connection
-	conn.close()
-
 	# Load data to Google BigQuery
 	projectid = 'cr2c-monitoring'
 	dataset_id = 'fielddata'
@@ -94,7 +66,7 @@ def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv
 	# Set "varNames" to * if none given
 	if varNames:
 		varNames = [varName.upper() for varName in varNames]
-		varNamesAll = 'Timestamp,' + ','.join(varNames)
+		varNamesAll = 'TIMESTAMP,' + ','.join(varNames)
 	else:
 		varNamesAll = '*'
 
@@ -117,8 +89,8 @@ def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv
 	# Dedupe data (some issue with duplicates)
 	fielddata.drop_duplicates(inplace = True)
 	# Convert Date_Time variable to a pd datetime and eliminate missing values
-	fielddata['Timestamp'] = pd.to_datetime(fielddata['Timestamp'])
-	fielddata.dropna(subset = ['Timestamp'], inplace = True)
+	fielddata['TIMESTAMP'] = pd.to_datetime(fielddata['TIMESTAMP'])
+	fielddata.dropna(subset = ['TIMESTAMP'], inplace = True)
 
 	if start_dt_str:
 		fielddata = fielddata.loc[fielddata['Date_Time'] >= start_dt,:]
