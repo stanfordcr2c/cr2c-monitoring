@@ -49,10 +49,6 @@ def get_data(
 	if end_dt_str:
 		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
 
-	# Find Operational Data directory and change working directory
-	data_dir = cut.get_dirs()[0]
-	os.chdir(data_dir)
-
 	# Manage data selection input 
 	nsids = len(sids)
 	if nsids != len(stypes) or nsids != len(tperiods) or nsids != len(ttypes):
@@ -176,7 +172,6 @@ class opdata_agg:
 
 		self.start_dt = dt.strptime(start_dt_str,'%m-%d-%y')
 		self.end_dt = dt.strptime(end_dt_str,'%m-%d-%y') + timedelta(days = 1)
-		self.data_dir = cut.get_dirs()[0]
 		self.ip_path = ip_path
 
 
@@ -348,32 +343,6 @@ class opdata_agg:
 			tots_res.loc[:,'Month'] = tots_res['Time'].dt.month
 			# Reorder columns
 			tots_res = tots_res[['Time','Year','Month','Value']].copy()
-
-			# Output data as desired
-			if output_sql:
-
-				# SQL command strings for sqlite3
-				create_str = """
-					CREATE TABLE IF NOT EXISTS {}_{}_{}_{}_AVERAGES (Time INT PRIMARY KEY, Year , Month, Value)
-				""".format(stype, sid, tperiod, ttype)
-				ins_str = """
-					INSERT OR REPLACE INTO {}_{}_{}_{}_AVERAGES (Time, Year, Month, Value)
-					VALUES (?,?,?,?)
-				""".format(stype, sid, tperiod, ttype)
-				# Set connection to SQL database (pertaining to given year)
-				os.chdir(self.data_dir)
-				conn = sqlite3.connect('cr2c_opdata.db')
-				# Load data to SQL
-				# Create the table if it doesn't exist
-				conn.execute(create_str)
-				# Insert aggregated values for the sid and time period
-				conn.executemany(
-					ins_str,
-					tots_res.to_records(index = False).tolist()
-				)
-				conn.commit()
-				# Close Connection
-				conn.close()
 
 			if output_csv:
 				if not outdir:

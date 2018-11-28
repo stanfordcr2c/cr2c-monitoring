@@ -6,6 +6,7 @@ import pandas as pd
 import os
 from os.path import expanduser
 import sys
+import json
 
 # Google sheets API and dependencies
 import httplib2
@@ -13,6 +14,8 @@ from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
+from google.auth import compute_engine
+
 
 # Gets local data store and python directories in Box Sync folder
 def get_dirs():
@@ -47,42 +50,49 @@ def get_dirs():
 # Gets valid user credentials from storage.
 # If nothing has been stored, or if the stored credentials are invalid,
 # the OAuth2 flow is completed to obtain the new credentials.
-def get_credentials():
-
-	pydir = get_dirs()[1]
+def get_credentials(local = True):
 
 	SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 	CLIENT_SECRET_FILE = 'client_secret.json'
-	APPLICATION_NAME = 'cr2c-monitoring'
+	projectid = 'cr2c-monitoring'
 
-	home_dir = os.path.expanduser('~')
-	credential_dir = os.path.join(home_dir, '.credentials')
+	if local:
 
-	if not os.path.exists(credential_dir):
-		os.makedirs(credential_dir)
-	credential_path = os.path.join(
-		credential_dir,
-		'sheets.googleapis.com-cr2c-monitoring.json'
-	)
-	store = Storage(credential_path)
-	credentials = store.get()
+		pydir = get_dirs()[1]
+		home_dir = os.path.expanduser('~')
+		credential_dir = os.path.join(home_dir, '.credentials')
 
-	os.chdir(os.path.join(pydir,'GoogleProjectsAdmin'))
-	spreadsheetId = open('spreadsheetId.txt').read()
+		if not os.path.exists(credential_dir):
+			os.makedirs(credential_dir)
+		credential_path = os.path.join(
+			credential_dir,
+			'sheets.googleapis.com-cr2c-monitoring.json'
+		)
+		store = Storage(credential_path)
+		credentials = store.get()
+
+		os.chdir(os.path.join(pydir,'GoogleProjectsAdmin'))
+		spreadsheetId = open('spreadsheetId.txt').read()
+		
+	else:
+
+		credentials = compute_engine.credentials()
+		dataset_id = 'labdata'
+		spreadsheetId = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, 'google_spreadsheetId'), projectid)['spreadsheetId'].values[0]
 
 	if not credentials or credentials.invalid:	
 		flags = 'An unknown error occurred'
 		flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-		flow.user_agent = APPLICATION_NAME
+		flow.user_agent = projectid
 		credentials = tools.run_flow(flow, store, flags)
 
 	return credentials, spreadsheetId
 
 
 # Retrieves data of specified tabs in a gsheets file
-def get_gsheet_data(sheet_name):
+def get_gsheet_data(sheet_name, local = True):
 
-	credentials, spreadsheetId = get_credentials()
+	credentials, spreadsheetId = get_credentials(local)
 	http = credentials.authorize(httplib2.Http())
 	discoveryUrl = (
 		'https://sheets.googleapis.com/$discovery/rest?'
