@@ -22,7 +22,7 @@ from os.path import expanduser
 import sys
 
 # CR2C
-import cr2c_utils as cut
+from dependencies import cr2c_utils as cut
 
 
 # Wrapper for querying data from the cr2c_labdata.db data store
