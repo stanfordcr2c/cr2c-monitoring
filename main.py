@@ -77,6 +77,15 @@ for val_type in val_types:
 #### Create a nested dictionary of dynamic controls from data layout
 cr2c_objects = {'Lab Data': {},'Operational Data': {},'Validation Data': {}}
 
+tab_style={'color':'#0f2540','backgroundColor':'#9fabbe','borderBottom':'1px solid #d6d6d6','padding':'6px','height':'32px'}
+tab_selected_style = {
+    'borderTop': '1px solid #d6d6d6',
+    'borderBottom': '1px solid #d6d6d6',
+    'backgroundColor': '#0f2540',
+    'color': '#d0d0e1',
+    'padding': '6px','height':'32px'
+}
+
 for dclass in cr2c_dtypes:
 
     # Create nested Div to put in dtype-tab-container
@@ -84,16 +93,12 @@ for dclass in cr2c_dtypes:
         html.Div([
             dcc.Tabs(
                 id = '{}-dtype-tab'.format(dclass),
-                children = [dcc.Tab(label = dtype, value = dtype) for dtype in cr2c_dtypes[dclass]],
-                value = list(cr2c_dtypes[dclass].keys())[0]
-            ), 
+                children = [dcc.Tab(label = dtype, value = dtype, style = tab_style, selected_style = tab_selected_style) for dtype in cr2c_dtypes[dclass]],
+                value = list(cr2c_dtypes[dclass].keys())[0],style = {'verticalAlign':'middle'}
+            ),
             html.Div(
                 id = '{}-selection-container'.format(dclass),
-                style = {
-                    'border': 'thin lightgrey solid',
-                    'backgroundColor': 'rgb(250, 250, 250)',
-                    'padding': '5px 2px'
-                }                
+                style = {'marginTop':'0'}                
             )
         ])
 
@@ -103,7 +108,7 @@ for dclass in cr2c_dtypes:
         cr2c_objects[dclass][dtype]['tab'] = html.Div([
             dcc.Tabs(
                 id = '{}-{}-vtype-tab'.format(dclass, dtype),
-                children = [dcc.Tab(label = vtype, value = vtype) for vtype in cr2c_dtypes[dclass][dtype]],
+                children = [dcc.Tab(label = vtype, value = vtype, style = tab_style, selected_style = tab_selected_style) for vtype in cr2c_dtypes[dclass][dtype]],
                 value = list(cr2c_dtypes[dclass][dtype].keys())[0]
             ),
             html.Div(id = '{}-{}-selection-container'.format(dclass, dtype))
@@ -115,52 +120,96 @@ for dclass in cr2c_dtypes:
                 dcc.Checklist(
                     id = '{}-{}-{}-selection'.format(dclass, dtype, vtype),
                     options = [{'label': value, 'value': value} for value in cr2c_dtypes[dclass][dtype][vtype] if value],
-                    values = []
+                    values = [],labelStyle={'display': 'inline-block',"marginTop": "10"}
                 )
-            ])
+            ],
+            style={'textAlign':'center','backgroundColor':'#2e3f5d','color': '#d0d0e1'}
+            )
 
 
 layoutChildren = [
     dcc.Location(id='url', refresh=False),
-    html.Hr(),
-    html.H1('CR2C-Monitoring Dashboard', style = {'textAlign':'center'}),
-    dcc.Tabs(
-        id = 'dclass-tab', 
-        value = 'Lab Data', 
-        children = [dcc.Tab(label = dclass, value = dclass) for dclass in cr2c_dtypes]
+    
+    html.Div([
+        html.Span(
+            'CR2C-Monitoring  Dashboard', 
+            className='app-title', 
+            style = {'font-size':'36px','backgroundColor':'#2e3f5d','color':'#d0d0e1','whiteSpace':'pre'}
+        ),
+        html.Div(html.Img(src = 'https://i.imgur.com/t3QZAfp.png',height = '100%'),style = {'float':'right','height':'100%'})
+    ],
+        className = 'header',style = {'textAlign':'center','verticalAlign':'middle'}
+    ),
+    html.Div(
+        dcc.Tabs(
+            id = 'dclass-tab', 
+            value = 'Lab Data',
+            style = {'height':'55','color':'#d0d0e1','textAlign':'center','verticalAlign':'middle','font-size':'16px'},
+            children = [dcc.Tab(label = dclass, value = dclass, selected_style = {'backgroundColor':'#9fabbe','color':'#0f2540'}) for dclass in cr2c_dtypes],
+            colors = {"primary": "#2e3f5d"}
+        ),
+        style = {'backgroundColor':'#0f2540','color':'#d0d0e1'}
     ),
     html.Div(id = 'selection-container'),
-    html.Hr(),
     html.Div([
+        html.Label(
+            'Date Filter',
+            style = {'height':'30','textAlign':'center','verticalAlign':'middle','font-size':'20px'}
+        ),
         dcc.DatePickerRange(
             id = 'date-picker-range',
             min_date_allowed = dt(2017, 5, 10),
             max_date_allowed = dt.today(),
             initial_visible_month = dt.today(),
             clearable = True
+        )
+    ],
+    className='four columns',
+    style={'textAlign':'left'}
+    ),
+    html.Div([    
+        html.Div([
+            html.Label(
+                'Temporal Resolution', 
+                style = {'height':'30','textAlign':'center','verticalAlign':'middle','font-size':'20px'}
+            ),
+            dcc.Dropdown(
+                id = 'time-resolution-radio-item',
+                options = [{'label': value, 'value': value} for value in ['Minute','Hourly','Daily','Weekly','Monthly']],
+                value='Hourly',
+                clearable=False
+            )
+        ],
+        className='four columns'
         ),
-        dcc.RadioItems(
-            id = 'time-resolution-radio-item',
-            options = [{'label': value, 'value': value} for value in ['Minute','Hourly','Daily','Weekly','Monthly']],
-            value = 'Hourly'
-        ),
-        dcc.RadioItems(
-            id = 'time-order-radio-item',
-            options = [{'label': value, 'value': value} for value in ['Chronological','By Hour','By Weekday','By Month']],
-            value = 'Chronological'
-        ),
-        html.Hr(),
-        html.Div(
-            [html.Button(
-                'Clear Selection', 
-                id = 'reset-selection-button', 
-                n_clicks = 0,
-                style = {'height': '50px', 'width': '200px','font-size': '20px'}
-            )],
-            style = {'padding': '5px 2px'}
-        ),
-    ]),
-    html.Div([dcc.Graph(id = 'graph-object')]),
+
+        html.Div([
+            html.Label(
+                'Plot Order',
+                style = {'height':'30','textAlign':'center','verticalAlign':'middle','font-size':'20px'}
+            ),
+            dcc.Dropdown(
+                id = 'time-order-radio-item',
+                options = [{'label': value, 'value': value} for value in ['Chronological','By Hour','By Weekday','By Month']],
+                value='Chronological',
+                clearable=False
+            )
+        ],
+        className = 'four columns'
+        )
+    ],
+    className = 'row',style = {'backgroundColor':'white'}  
+    ),
+    html.Div(
+        [html.Button(
+            'Clear Selection', 
+            id = 'reset-selection-button', 
+            n_clicks = 0,className='button button-primary',
+            style = {'height': '45px', 'width': '220px','font-size': '15px'}
+        )],
+        style = {'padding': '1px','backgroundColor':'white','textAlign':'right'},
+    ),
+    html.Div([dcc.Graph(id = 'graph-object')],style={'backgroundColor':'white'}),
     html.Div(id = 'output-container', style = {'display': 'none'})
 ]
 
@@ -173,7 +222,8 @@ for dclass in cr2c_dtypes:
             layoutChildren.append(html.Div(id = '{}-{}-{}-history'.format(dclass, dtype, vtype), style = {'display': 'none'}))
             layoutChildren.append(html.Div(id = '{}-{}-{}-reset-selection'.format(dclass, dtype, vtype), style = {'display': 'none'}))
 
-app.layout = html.Div(id = 'page-content', children = layoutChildren)
+ 
+app.layout = html.Div(id = 'page-content', children = layoutChildren, style = {'fontFamily':'sans-serif','backgroundColor':'white'})
 
 #================= Callback functions defining interactions =================#
 
@@ -761,7 +811,6 @@ def get_layout(dataRequested, axes_dict, time_resolution, time_order):
     layoutItems['xaxis']['domain'] = [domainLeft, domainRight]
 
     return go.Layout(layoutItems)
-
 
 
 if __name__ == '__main__':
