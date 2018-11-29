@@ -29,7 +29,7 @@ from dash.dependencies import Input, Output, State, Event
 from flask import Flask
 
 # Initialize dash app
-server = Flask(__server__)
+server = Flask(__name__)
 app = dash.Dash(__name__, server = server)
 app.config['suppress_callback_exceptions'] = True
 app.css.config.serve_locally = True
@@ -141,7 +141,7 @@ layoutChildren = [
     
     html.Div([
         html.Span(
-            'CR2C-Monitoring  Dashboard', 
+            'Treatment Monitoring Dashboard', 
             className='app-title', 
             style = {'font-size':'36px','backgroundColor':'#2e3f5d','color':'#d0d0e1','whiteSpace':'pre'}
         ),
