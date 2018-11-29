@@ -1,6 +1,0 @@
-#!/bin/bash
-
-source activate cr2c-monitoring
-cd "$( cd "$(dirname "$0")" ; pwd -P )"
-python3 dashApp.py
-
