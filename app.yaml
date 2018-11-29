@@ -1,12 +1,13 @@
 runtime: python
+instance_class: B1
 env: flex
 entrypoint: gunicorn -b :$Port main:server
 
 runtime_config:
   python_version: 3
-  
+
 handlers:
-- url: /.*
+ - url: '/.*'  
   script: auto
   login: admin
   auth_fail_action: redirect
