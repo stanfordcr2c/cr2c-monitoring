@@ -589,7 +589,7 @@ def get_series(
         df.loc[:,'Time'] = df['Date_Time']
         df.loc[:,'yvar'] = df['Value']
 
-        if dtype == 'Instrument Validation':
+        if dtype == 'Instrument Validation' and sids:
             types = ['Sensor Value','Validated Measurement','Error']
 
         if not types:
