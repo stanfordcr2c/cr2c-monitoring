@@ -5,6 +5,12 @@ from datetime import datetime as dt
 import pandas as pd
 import numpy as np
 import json
+import sys
+import warnings
+
+# Suppress Warnings
+if not sys.warnoptions:
+    warnings.simplefilter("ignore")
 
 # Google Cloud Debugger (need to activate if using Python3)
 try:
@@ -38,16 +44,16 @@ app.scripts.config.serve_locally = True
 #================= Create datetimea layout map from existing data =================#
 
 lab_types = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
-op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI','LEVEL'] 
-val_types = ['COD Balance','Process Parameters','Instrument Validation']
-selection_vars = ['Stage','Type','Sensor ID', 'Validation']
+op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI','LEVEL','COND'] 
+val_types = ['cod_balance','vss_params','instr_validation']
+selection_vars = ['Stage','Type','Sensor ID']
 selectionID, selection, click, history = [None]*4
-cr2c_dtypes = {'Lab Data': {},'Operational Data': {},'Validation Data': {}}
+cr2c_dtypes = {'Lab Data': {},'Operational Data': {},'Validation': {}}
 
 # Load data
 lab_data = lab.get_data(lab_types)
-# op_tables = op.get_table_names()
-op_tables = ['GAS_FT700_1_HOUR_AVERAGES', 'GAS_FT704_1_HOUR_AVERAGES', 'WATER_FT202_1_HOUR_AVERAGES', 'TEMP_AT304_1_HOUR_AVERAGES', 'TEMP_AT310_1_HOUR_AVERAGES', 'PH_AT203_1_MINUTE_AVERAGES', 'PH_AT305_1_MINUTE_AVERAGES', 'DPI_DPIT300_1_MINUTE_AVERAGES', 'DPI_DPIT301_1_MINUTE_AVERAGES', 'PRESSURE_PIT700_1_MINUTE_AVERAGES', 'PRESSURE_PIT704_1_MINUTE_AVERAGES', 'WATER_FT305_1_MINUTE_AVERAGES', 'TMP_AIT302_1_MINUTE_AVERAGES', 'WATER_FT305_1_HOUR_AVERAGES', 'TMP_AIT302_1_HOUR_AVERAGES', 'PH_AT203_1_HOUR_AVERAGES', 'PH_AT305_1_HOUR_AVERAGES', 'DPI_DPIT300_1_HOUR_AVERAGES', 'DPI_DPIT301_1_HOUR_AVERAGES', 'PRESSURE_PIT700_1_HOUR_AVERAGES', 'PRESSURE_PIT704_1_HOUR_AVERAGES', 'WATER_FT200_1_HOUR_AVERAGES', 'TMP_AIT304_1_HOUR_AVERAGES', 'TMP_AIT305_1_HOUR_AVERAGES', 'TMP_AIT306_1_HOUR_AVERAGES', 'TMP_AIT307_1_HOUR_AVERAGES', 'COND_AT201_1_HOUR_AVERAGES', 'COND_AT303_1_HOUR_AVERAGES', 'COND_AT306_1_HOUR_AVERAGES', 'COND_AT309_1_HOUR_AVERAGES', 'TEMP_AT202_1_HOUR_AVERAGES', 'WATER_FIT600_1_HOUR_AVERAGES', 'WATER_FT201_1_HOUR_AVERAGES', 'WATER_FT300_1_HOUR_AVERAGES', 'WATER_FT301_1_HOUR_AVERAGES', 'WATER_FT302_1_HOUR_AVERAGES', 'WATER_FT303_1_HOUR_AVERAGES', 'WATER_FT702_1_HOUR_AVERAGES', 'LEVEL_LIT300_1_HOUR_AVERAGES', 'LEVEL_LIT301_1_HOUR_AVERAGES', 'LEVEL_LIT302_1_HOUR_AVERAGES', 'LEVEL_LT200_1_HOUR_AVERAGES', 'LEVEL_LT201_1_HOUR_AVERAGES', 'PRESSURE_PIT205_1_HOUR_AVERAGES', 'PRESSURE_PIT702_1_HOUR_AVERAGES', 'PH_AT308_1_HOUR_AVERAGES', 'PH_AT311_1_HOUR_AVERAGES', 'WATER_FT304_1_HOUR_AVERAGES', 'DPI_DPIT302_1_HOUR_AVERAGES', 'DPI_PIT205_1_HOUR_AVERAGES', 'DPI_PIT700_1_HOUR_AVERAGES', 'DPI_PIT702_1_HOUR_AVERAGES', 'LEVEL_PIT704_1_HOUR_AVERAGES', 'WATER_FT206_1_HOUR_AVERAGES']
+val_data = val.get_data(val_types)
+op_tables = op.get_table_names()
 
 # Load lab_type variables and their stages/types
 for lab_type in lab_types:
@@ -79,12 +85,23 @@ for op_type in op_types:
     cr2c_dtypes['Operational Data'][op_type] = {'Sensor ID': sids}
 
 
+val_type_descs = {'cod_balance': 'COD Balance','vss_params': 'Process Parameters','instr_validation': 'Instrument Validation'}
 for val_type in val_types:
 
-    cr2c_dtypes['Validation Data'][val_type] = {'Validation': [val_type]}
+    val_type_desc = val_type_descs[val_type]
+    cr2c_dtypes['Validation'][val_type_desc] = {
+        'Type': list(val_data[val_type]['Type'].unique())
+    }    
+
+    if val_type == 'instr_validation':
+
+        cr2c_dtypes['Validation'][val_type_desc] = {
+            'Sensor ID': list(val_data[val_type]['Sensor_ID'].unique())
+        } 
+
 
 #### Create a nested dictionary of dynamic controls from data layout
-cr2c_objects = {'Lab Data': {},'Operational Data': {},'Validation Data': {}}
+cr2c_objects = {'Lab Data': {},'Operational Data': {},'Validation': {}}
 
 tab_style={'color':'#0f2540','backgroundColor':'#9fabbe','borderBottom':'1px solid #d6d6d6','padding':'6px','height':'32px'}
 tab_selected_style = {
@@ -134,7 +151,6 @@ for dclass in cr2c_dtypes:
             ],
             style={'textAlign':'center','backgroundColor':'#2e3f5d','color': '#d0d0e1'}
             )
-
 
 layoutChildren = [
     dcc.Location(id='url', refresh=False),
@@ -219,7 +235,7 @@ layoutChildren = [
         style = {'padding': '1px','backgroundColor':'white','textAlign':'right'},
     ),
     html.Div([dcc.Graph(id = 'graph-object')],style={'backgroundColor':'white'}),
-    html.Div(id = 'output-container', style = {'display': 'none'})
+    html.Div(id = 'output-container', children = '', style = {'display': 'none'})
 ]
 
 for dclass in cr2c_dtypes:
@@ -345,7 +361,12 @@ for dclass in cr2c_dtypes:
         Input('Operational Data-PRESSURE-Sensor ID-history','children'),
         Input('Operational Data-PH-Sensor ID-history','children'),
         Input('Operational Data-TEMP-Sensor ID-history','children'),
-        Input('Operational Data-DPI-Sensor ID-history','children')
+        Input('Operational Data-DPI-Sensor ID-history','children'),
+        Input('Operational Data-COND-Sensor ID-history','children'),
+        Input('Operational Data-LEVEL-Sensor ID-history','children'),
+        Input('Validation-COD Balance-Type-history','children'),
+        Input('Validation-Process Parameters-Type-history','children'),
+        Input('Validation-Instrument Validation-Sensor ID-history','children')
     ]
 )
 
@@ -353,7 +374,8 @@ def load_data_selection(
     sel1, sel2, sel3, sel4, sel5, 
     sel6, sel7, sel8, sel9, sel10, 
     sel11, sel12, sel13, sel14, sel15, 
-    sel16, sel17, sel18, sel19, sel20
+    sel16, sel17, sel18, sel19, sel20,
+    sel21, sel22, sel23, sel24, sel25
 ):
 
     selections = [json.loads(selection) for selection in locals().values() if selection]
@@ -404,13 +426,16 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
     nclasses = len(list(dataRequested.keys()))
 
     # Number of distinct axis types being plotted     
-    # Need to reset dclass  variable (list comprehension doesn't work otherwise)
-    dclass = list(dataRequested.keys())[0]
-    req_dtypes = [dtype for dtype in dataRequested[dclass] for dclass in dataRequested]
+    req_dtypes = []
+    for dclass in dataRequested:
+        for dtype in dataRequested[dclass]:
+            req_dtypes.append(dtype)
+    # Limit to unique data types 
+    req_dtypes = list(set(req_dtypes))
     axes_dict = {}
     for req_dtype_ind,req_dtype in enumerate(req_dtypes):
         axes_dict[req_dtype] = str(req_dtype_ind + 1)
-    
+
     for dclass in dataRequested:
 
         for dtype in dataRequested[dclass]:
@@ -427,7 +452,6 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
 
                     stages = retrieve_value(dataRequested[dclass][dtype],'Stage')
                     types = retrieve_value(dataRequested[dclass][dtype],'Type')
-
                     mode = 'lines+markers'
                     if nclasses > 1:
                         size = 10
@@ -436,6 +460,12 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
 
                     sids = dataRequested[dclass][dtype]['Sensor ID']
                     mode = 'lines'
+
+                if dclass == 'Validation':
+
+                    sids  = retrieve_value(dataRequested[dclass][dtype],'Sensor ID')
+                    types = retrieve_value(dataRequested[dclass][dtype],'Type')
+                    mode = 'markers'
 
                 plotFormat['size'] = size
                 plotFormat['mode'] = mode
@@ -451,7 +481,6 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
                 plotFormat
             )
             seriesNo += 1
-
 
     layout = get_layout(dataRequested, axes_dict, time_resolution, time_order)
     return {'data': seriesList  , 'layout': layout}
@@ -491,13 +520,11 @@ def get_series(
         df.loc[:,'yvar'] = df['Value']
 
         if stages:
-            df = df[df['Stage'].isin(stages)]
             groupVars.append('Stage')
         else:
             stages = [None]
 
         if types:
-            df = df[df['Type'].isin(types)]
             groupVars.append('Type') 
         else:
             types = [None]
@@ -510,29 +537,21 @@ def get_series(
 
             for type_ in types:
 
-                if stage and type_:
-                    
+                if stage and type_:                
                     dfsub = df[(df['Type'] == type_) & (df['Stage'] == stage)]
                     seriesName = seriesNamePrefix + type_ + '-' + stage
-
                 elif stage:
-
                     dfsub = df[df['Stage'] == stage]
                     seriesName = seriesNamePrefix + stage
-
                 elif type_:
-
                     dfsub = df[df['Type'] == type_]
                     seriesName = seriesNamePrefix + type_
-
                 else:  
-
                     continue
 
                 subSeries = {'seriesName': seriesName}
                 subSeries['data'] = filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, end_date)
                 dflist += [subSeries]
-
 
     if dclass == 'Operational Data':
         
@@ -563,27 +582,80 @@ def get_series(
             subSeries['data'] = filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, end_date)
             dflist += [subSeries]
 
+    if dclass == 'Validation':
+
+        val_type_abbrevs = {'COD Balance':'cod_balance','Process Parameters':'vss_params','Instrument Validation':'instr_validation'}
+        df = val_data[val_type_abbrevs[dtype]]  
+        df.loc[:,'Time'] = df['Date_Time']
+        df.loc[:,'yvar'] = df['Value']
+
+        if dtype == 'Instrument Validation':
+            types = ['Sensor Value','Validated Measurement','Error']
+
+        if not types:
+            types = [None]
+        if not sids:
+            sids = [None]
+
+        for type_ in types:
+
+            for sid in sids:
+
+                if type_ and sid:
+                    dfsub = df[(df['Type'] == type_) & (df['Sensor_ID'] == sid)]
+                    seriesName = seriesNamePrefix + type_ + '-' + sid
+                elif type_:
+                    dfsub = df[df['Type'] == type_]
+                    seriesName = seriesNamePrefix + type_
+                elif sid:
+                    dfsub = df[df['Sensor_ID'] == sid]
+                    seriesName = seriesNamePrefix + sid
+                else:
+                    continue
+
+                subSeries = {'seriesName': seriesName}
+                subSeries['data'] = filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, end_date)
+                dflist += [subSeries]         
+
     for df in dflist:
 
         for dfsub in df['data']:
 
-            series.append(
-                go.Scatter(
-                    x = dfsub['data']['Time'],
-                    y = dfsub['data']['yvar'],
-                    mode = plotFormat['mode'],
-                    opacity = 0.8,  
-                    marker = {
-                        'size': plotFormat['size'], 
-                        'line': {'width': 0.5, 'color': 'white'},
-                        'symbol': plotFormat['symbol'],
-                    },
-                    line = {'dash': plotFormat['dash']},
-                    name = df['seriesName'] + dfsub['timeSuffix'],
-                    xaxis = 'x1',   
-                    yaxis = plotFormat['yaxis']
-                )
-            )  
+            if dtype == 'COD Balance' and df['seriesName'] not in ['COD In','COD Balance: COD In']:
+
+                    series.append(
+                        go.Bar(
+                            x = dfsub['data']['Time'],
+                            y = dfsub['data']['yvar'],
+                            opacity = 0.8,  
+                            name = df['seriesName'] + dfsub['timeSuffix'],
+                            xaxis = 'x1',   
+                            yaxis = plotFormat['yaxis']
+                        )
+                    )                    
+
+            else:
+
+                if dtype == 'Process Parameters':
+                    plotFormat['mode'] = 'lines+markers'
+
+                series.append(
+                    go.Scatter(
+                        x = dfsub['data']['Time'],
+                        y = dfsub['data']['yvar'],
+                        mode = plotFormat['mode'],
+                        opacity = 0.8,  
+                        marker = {
+                            'size': plotFormat['size'], 
+                            'line': {'width': 0.5, 'color': 'white'},
+                            'symbol': plotFormat['symbol'],
+                        },
+                        line = {'dash': plotFormat['dash']},
+                        name = df['seriesName'] + dfsub['timeSuffix'],
+                        xaxis = 'x1',   
+                        yaxis = plotFormat['yaxis']
+                    )
+                )  
 
     return series
 
@@ -607,17 +679,17 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
     if time_resolution == 'Minute':
 
         dfsub.loc[:,'Time'] = dfsub['Time'].values.astype('datetime64[m]')
-        dfsub['secondsMult'] = 60
+        dfsub.loc[:,'secondsMult'] = 60
 
     if time_resolution == 'Hourly':
 
         dfsub.loc[:,'Time'] = dfsub['Time'].values.astype('datetime64[h]')
-        dfsub['secondsMult'] = 3600
+        dfsub.loc[:,'secondsMult'] = 3600
 
     if time_resolution == 'Daily':
 
         dfsub.loc[:,'Time'] = pd.to_datetime(dfsub['Time'].dt.date)
-        dfsub['secondsMult'] = 3600*24
+        dfsub.loc[:,'secondsMult'] = 3600*24
 
     if time_resolution == 'Weekly':
 
@@ -715,6 +787,7 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
 def get_layout(dataRequested, axes_dict, time_resolution, time_order):
 
     layoutItems = {'height': 700}
+    position = 0.5
     xrangeList = [np.datetime64('2017-05-10'), dt.today()]
     xaxisTitles = {
         'Minute': 'Minute',
@@ -741,8 +814,12 @@ def get_layout(dataRequested, axes_dict, time_resolution, time_order):
         'PRESSURE': 'Pressure (psig)',
         'TEMP': 'Temperature (°C)',
         'DPI': 'Differential Pressure (psia)',
-        'LEVEL': 'Water Level (in.)'
-    }
+        'COND': 'Conductivity (S/m)',
+        'LEVEL': 'Water Level (in.)',
+        'COD Balance': 'COD (kg)',
+        'Instrument Validation': '',
+        'Process Parameters': ''
+    }   
 
     layoutItems['xaxis'] = {
         'title': xaxisTitles[time_resolution],
@@ -786,8 +863,11 @@ def get_layout(dataRequested, axes_dict, time_resolution, time_order):
 
         for dtype in dataRequested[dclass]:
 
+            if dtype == 'COD Balance':
+                layoutItems['barmode'] = 'stack'
+
             axisNo = int(axes_dict[dtype])
-            if axisNo == 1:
+            if axisNo == 1 and max(list(axes_dict.values())) == 1:
                 yaxisKey = 'yaxis'
             else:
                 yaxisKey = 'yaxis' + str(axes_dict[dtype])
