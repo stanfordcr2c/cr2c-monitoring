@@ -26,6 +26,48 @@ from dependencies import cr2c_opdata as op
 from dependencies import cr2c_fielddata as fld
 from dependencies.cr2c_opdata import opdata_agg as op_run
 
+def get_data(
+	val_types, 
+	start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None
+):
+
+	# Convert date string inputs to dt variables
+	if start_dt_str:
+		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
+	if end_dt_str:
+		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+
+	# Loop through types of lab data types (ltypes)
+	valdat_all = {}
+	for val_type in val_types:
+
+		# Load data from google BigQuery
+		projectid = 'cr2c-monitoring'
+		dataset_id = 'valdata'
+		valdat_long = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, val_type), projectid)
+
+		# Dedupe data (just in case, pandas can be glitchy with duplicates)
+		valdat_long.drop_duplicates(inplace = True)
+		# Convert Date_Time variable to a pd datetime and eliminate missing values
+		valdat_long.loc[:,'Date_Time'] = pd.to_datetime(valdat_long['Date_Time'])
+		valdat_long.dropna(subset = ['Date_Time'], inplace = True)
+		# Filter to desired dates
+		# ldata_long.drop('Dkey', axis = 1, inplace = True)
+		if start_dt_str:
+			valdat_long = valdat_long.loc[valdat_long['Date_Time'] >= start_dt,:]
+		if end_dt_str:
+			valdat_long = valdat_long.loc[valdat_long['Date_Time'] <= end_dt + timedelta(days = 1),:]
+		
+		# Output csv if desired
+		if output_csv:
+			os.chdir(outdir)
+			valdat_long.to_csv(val_type + '.csv', index = False, encoding = 'utf-8')
+
+		# Write to dictionary
+		valdat_all[val_type] = valdat_long
+
+	return valdat_all
+
 
 class cr2c_validation:
 
@@ -45,7 +87,6 @@ class cr2c_validation:
 		self.afbr_vol = 1100 # in L
 		self.afmbr_vol = 1700 # in L
 		self.react_vol = 2800 # in L
-		self.cod_bal_wkly = pd.DataFrame([])
 
 
 	def adj_Hcp(self, Hcp_gas, deriv_gas, temp):
@@ -76,12 +117,13 @@ class cr2c_validation:
 		return COD_diss_conc
 
 
-	def get_cod_bal(self, end_dt_str, nweeks, table = True, outdir = None):
+	def get_biotech_params(self, end_dt_str, nweeks, output_csv = False, outdir = None):
 		
 		# Window for moving average calculation
 		ma_win = 1
 		end_dt   = dt.strptime(end_dt_str,'%m-%d-%y').date()
-		start_dt = end_dt - timedelta(days = 7*nweeks)
+		end_weekday = dt.strptime(end_dt_str,'%m-%d-%y').weekday()
+		start_dt = end_dt - timedelta(days = 7*nweeks) - timedelta(days = end_weekday)
 		start_dt = start_dt
 		start_dt_str = dt.strftime(start_dt, '%m-%d-%y')
 		start_dt_query = start_dt - timedelta(days = ma_win)
@@ -249,7 +291,7 @@ class cr2c_validation:
 
 		# Solids Wasting Data
 		waste_dat = fld.get_data(['AFMBR_VOLUME_WASTED_GAL'])
-		waste_dat['Date'] = pd.to_datetime(waste_dat['Timestamp']).dt.date
+		waste_dat['Date'] = pd.to_datetime(waste_dat['TIMESTAMP']).dt.date
 		waste_dat['AFMBR Volume Wasted (Gal)'] = waste_dat['AFMBR_VOLUME_WASTED_GAL'].astype('float')
 		waste_dat['Wasted (L)'] = waste_dat['AFMBR Volume Wasted (Gal)']*l_p_gal
 		waste_dat_cln = waste_dat[['Date','Wasted (L)']]
@@ -366,51 +408,84 @@ class cr2c_validation:
 		cod_bal_wkly.loc[:,'Week Start'] = cod_bal_wkly['Week Start'].dt.date
 		cod_bal_wkly = cod_bal_wkly.loc[cod_bal_wkly['Week Start'] < end_dt,:]
 
-		self.cod_bal_wkly = cod_bal_wkly
+		# Dividing by 1E6 and 7 because units are totals for week and are in mg/L
+		# whereas COD units are in kg
+		cod_bal_wkly['gVSS wasted/gCOD Removed'] = \
+			(
+				cod_bal_wkly['VSS R']*cod_bal_wkly['Wasted (L)'] + 
+				cod_bal_wkly['VSS Out']*cod_bal_wkly['Flow Out']
+			)/1E6/7/\
+			(cod_bal_wkly['COD In'] - cod_bal_wkly['COD Out'] - cod_bal_wkly['Sulfate Reduction'])
 
-		if table:
-			cod_bal_wkly[['Week Start','COD In','COD Out','Biogas','COD Wasted','Dissolved CH4','Sulfate Reduction']].\
-			to_csv(
+		# No need to divide VSS concentration by 1E6 or 7 because same units in numerator and denominator
+		cod_bal_wkly['VSS SRT (days)'] = \
+			cod_bal_wkly['VSS R']*(self.afbr_vol + self.afmbr_vol)/\
+			(
+				cod_bal_wkly['VSS R']*cod_bal_wkly['Wasted (L)'] + \
+				cod_bal_wkly['VSS Out']*cod_bal_wkly['Flow Out']
+			)*7
+
+		cod_bal_long = pd.melt(
+			cod_bal_wkly, 
+			id_vars = ['Week Start'], 
+			value_vars = ['COD In','COD Out','Biogas','COD Wasted','Dissolved CH4','Sulfate Reduction','gVSS wasted/gCOD Removed','VSS SRT (days)']
+		)
+
+
+		cod_bal_long.columns = ['Date_Time','Type','Value']
+		# Create key unique by Date_Time, Stage, Type, and obs_id
+		cod_bal_long.loc[:,'Dkey'] = cod_bal_long['Date_Time'].astype(str) + cod_bal_long['Type']
+		# Reorder columns to put DKey as first column
+		colnames = list(cod_bal_long.columns.values)
+		cod_bal_long = cod_bal_long[colnames[-1:] + colnames[0:-1]]
+
+		# Split into cod_balance and vss_params
+		vss_params_long = cod_bal_long.loc[cod_bal_long['Type'].isin(['gVSS wasted/gCOD Removed','VSS SRT (days)']),:]
+		cod_bal_long = cod_bal_long.loc[~cod_bal_long['Type'].isin(['gVSS wasted/gCOD Removed','VSS SRT (days)']),:]
+
+		if output_csv:
+			cod_bal_long.to_csv(
 				os.path.join(outdir, 'COD Balance.csv'),
 				index = False,
 				encoding = 'utf-8'				
 			)
-
-
-	# Calculate basic biotechnology parameters to monitor biology in reactors
-	def get_biotech_params(self, end_dt_str, nWeeks, table = True, outdir = None):
-		
-		if self.cod_bal_wkly.empty:
-			self.get_cod_bal(end_dt_str, nWeeks)
-
-		# Dividing by 1E6 and 7 because units are totals for week and are in mg/L
-		# whereas COD units are in kg
-		self.cod_bal_wkly['gVSS wasted/gCOD Removed'] = \
-			(
-				self.cod_bal_wkly['VSS R']*self.cod_bal_wkly['Wasted (L)'] + 
-				self.cod_bal_wkly['VSS Out']*self.cod_bal_wkly['Flow Out']
-			)/1E6/7/\
-			(self.cod_bal_wkly['COD In'] - self.cod_bal_wkly['COD Out'] - self.cod_bal_wkly['Sulfate Reduction'])
-
-		# No need to divide VSS concentration by 1E6 or 7 because same units in numerator and denominator
-		self.cod_bal_wkly['VSS SRT (days)'] = \
-			self.cod_bal_wkly['VSS R']*(self.afbr_vol + self.afmbr_vol)/\
-			(
-				self.cod_bal_wkly['VSS R']*self.cod_bal_wkly['Wasted (L)'] + \
-				self.cod_bal_wkly['VSS Out']*self.cod_bal_wkly['Flow Out']
-			)*7
-
-		vss_params = self.cod_bal_wkly[['Week Start','VSS SRT (days)','gVSS wasted/gCOD Removed']]
-
-		if table:
-			vss_params.to_csv(
+			vss_params_long.to_csv(
 				os.path.join(outdir, 'VSS Parameters.csv'),
 				index = False,
-				encoding = 'utf-8'
+				encoding = 'utf-8'				
 			)
 
+		#Load COD Balance data to Google BigQuery
+		projectid = 'cr2c-monitoring'
+		dataset_id = 'valdata'
+
+		# Make sure only new records are being appended to the dataset
+		cod_bal_already = get_data(['cod_balance'])['cod_balance']
+		cod_bal_new = cod_bal_long.loc[~cod_bal_long['Dkey'].isin(cod_bal_already['Dkey']),:]
+
+		# Remove duplicates and missing values
+		cod_bal_new.dropna(subset = ['Date_Time'], inplace = True)
+		cod_bal_new.drop_duplicates(inplace = True)
+		# Write to gbq table
+		if not cod_bal_new.empty:
+			cod_bal_new.to_gbq('{}.{}'.format(dataset_id, 'cod_balance'), projectid, if_exists = 'append')
+
+		# Load VSS Params data to Google BigQuery
+		# Make sure only new records are being appended to the dataset
+		vss_params_already = get_data(['vss_params'])['vss_params']
+		vss_params_new = vss_params_long.loc[~vss_params_long['Dkey'].isin(vss_params_already['Dkey']),:]
+		# Remove duplicates and missing values
+		vss_params_new.dropna(subset = ['Date_Time'], inplace = True)
+		vss_params_new.drop_duplicates(inplace = True)
+		# Write to gbq table
+		if not vss_params_new.empty:
+			vss_params_new.to_gbq('{}.{}'.format(dataset_id, 'vss_params'), projectid, if_exists = 'append')
+
+		return cod_bal_long, vss_params_long
+
+
 	'''
-	Verify pressure sensor readings from op data and manometer readings from Google sheets.
+	Verify pressure and ph sensor readings from op data and manometer readings from Google sheets.
 	Calculate water head from pressure sensor readings, and compare it with the manometer readings
 	'''
 	def instr_val(
@@ -441,9 +516,9 @@ class cr2c_validation:
 			# Clean the query variables
 			query_varnames = [fld.clean_varname(varname) for varname in query_varnames]
 			# Query the field data (using clean variable names)
-			valdat = fld.get_data()[['Timestamp'] + query_varnames]
-			# Create time variable with minute resolution from field data Timestamp variable
-			valdat['Time'] = pd.to_datetime(valdat['Timestamp']).values.astype('datetime64[m]')
+			valdat = fld.get_data()[['TIMESTAMP'] + query_varnames]
+			# Create time variable with minute resolution from field data TIMESTAMP variable
+			valdat['Time'] = pd.to_datetime(valdat['TIMESTAMP']).values.astype('datetime64[m]')
 			# Replace missing barometric pressure readings with the mean psi at sea level
 			valdat.loc[:,'BAROMETER_PRESSURE_MMHG'] = pd.to_numeric(valdat['BAROMETER_PRESSURE_MMHG'], errors = 'coerce')
 			valdat.loc[np.isnan(valdat['BAROMETER_PRESSURE_MMHG']),'BAROMETER_PRESSURE_MMHG'] = 760
@@ -451,9 +526,9 @@ class cr2c_validation:
 			# Loop through field variables to convert to numeric and calculate differences (if necessary)
 			for varInd,varname in enumerate(fld_varnames):
 				if type(varname) == tuple:
-					valdat[op_sids[varInd] + 'VAL'] = \
-						pd.to_numeric(valdat[fld.clean_varname(varname[0])], errors = 'coerce') - \
-						pd.to_numeric(valdat[fld.clean_varname(varname[1])], errors = 'coerce')
+					valdat.loc[:,op_sids[varInd] + 'VAL'] = \
+						pd.to_numeric(valdat[fld.clean_varname(varname[1])], errors = 'coerce') - \
+						pd.to_numeric(valdat[fld.clean_varname(varname[0])], errors = 'coerce')
 				else:
 					valdat[op_sids[varInd] + 'VAL'] = pd.to_numeric(valdat[fld.clean_varname(varname)], errors = 'coerce')
 
@@ -519,8 +594,8 @@ class cr2c_validation:
 		valdatMerged.reset_index(inplace = True)
 		valdatMerged.loc[:,'Date'] = pd.to_datetime(valdatMerged['Date'])
 
+		valdatStack = []
 		# Loop through each instrument to compute error
-		# IF evidence of a significant difference between validated vs op or if instrument drift over time
 		for sind, sid in enumerate(op_sids):
 
 			if valtypes[sind] == 'PRESSURE':
@@ -530,12 +605,13 @@ class cr2c_validation:
 				valdatMerged.loc[:,sid] = (valdatMerged[sid] - valdatMerged['BAROMETER_PRESSURE_MMHG'])*27.7076
 
 			# Compute the percentage error (op measurement vs validation)
-			valdatMerged.loc[:,'error'] = (valdatMerged[sid] - valdatMerged[sid + 'VAL'])/valdatMerged[sid + 'VAL']
-			
+			valdatMerged.loc[:,'Error'] = (valdatMerged[sid] - valdatMerged[sid + 'VAL'])
+			valdatMerged.loc[:,'Percentage Error'] = (valdatMerged['Error'])/valdatMerged[sid + 'VAL']
 			# Subset to the element of interest
-			valdatSub = valdatMerged.loc[:,['Date', sid, sid + 'VAL','error']]
-			valdatSub.replace([np.inf, -np.inf], np.nan, inplace = True)
-			valdatSub.dropna(inplace = True)
+			valdatSub = valdatMerged.loc[:,['Date', sid, sid + 'VAL', 'Error']]
+			valdatSub.loc[:,'Sensor ID'] = sid
+			valdatSub.columns = ['Date_Time','Sensor Value','Validated Measurement','Error','Sensor ID'] 
+			valdatSub = valdatSub[['Date_Time','Sensor ID','Sensor Value','Validated Measurement','Error']]
 
 			if output_csv:
 				op_fname = '{}_validation.csv'.format(sid)
@@ -543,12 +619,42 @@ class cr2c_validation:
 
 			# Only continue if there are observations (sometimes there arent...)
 			if valdatSub.size > 0:
-				# Convert time to numeric variable
-				valX = pd.to_numeric(valdatSub.loc[:,'Date'])/(10**9*3600*24)
-				# Perform 2-sample t-test for difference in means
-				tStatMeans, pvalMeans = stats.ttest_ind(valdatSub[sid].values,valdatSub[sid + 'VAL'].values)
-				# Regress error on time (to test for drift), divide by 10**9*3600*24 so coefficients are in terms of days
-				slope, intercept, Rsq, pValTrend, stdErr = stats.linregress(valX, valdatSub['error'].values)
-				
-		return
+				valdatStack.append(valdatSub)
+		
+		valdatStack = pd.concat(valdatStack)
+		instr_val_long = pd.melt(valdatStack, id_vars = ['Date_Time','Sensor ID'], value_vars = ['Sensor Value','Validated Measurement','Error'])
+
+		instr_val_long.columns = ['Date_Time','Sensor_ID','Type','Value']
+
+		# Create key unique by Date_Time, Stage, Type, and obs_id
+		instr_val_long.loc[:,'Dkey'] = instr_val_long['Date_Time'].astype(str) + instr_val_long['Sensor_ID'] + instr_val_long['Type']
+		# Reorder columns to put DKey as first column
+		colnames = list(instr_val_long.columns.values)
+		instr_val_long = instr_val_long[colnames[-1:] + colnames[0:-1]]
+
+		if output_csv:
+			instr_val_long.to_csv(
+				os.path.join(outdir, 'Instrument Validation.csv'),
+				index = False,
+				encoding = 'utf-8'				
+			)
+
+		#Load COD Balance data to Google BigQuery
+		projectid = 'cr2c-monitoring'
+		dataset_id = 'valdata'
+
+		# Make sure only new records are being appended to the dataset
+		# instr_val_already = get_data(['instr_validation'])['instr_validation']
+		# instr_val_new = instr_val_long.loc[~instr_val_already['Dkey'].isin(instr_val_already['Dkey']),:]
+		instr_val_new = instr_val_long
+
+		# Remove duplicates and missing values
+		instr_val_new.dropna(subset = ['Date_Time'], inplace = True)
+		instr_val_new.drop_duplicates(inplace = True)
+
+		# Write to gbq table
+		if not instr_val_new.empty:
+			instr_val_new.to_gbq('{}.{}'.format(dataset_id, 'instr_validation'), projectid, if_exists = 'append')
+
+		return instr_val_long
 
