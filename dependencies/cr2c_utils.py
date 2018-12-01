@@ -118,3 +118,6 @@ def get_gsheet_data(sheet_name, local = True):
 
 	return df
 
+
+
+

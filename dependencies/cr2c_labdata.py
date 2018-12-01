@@ -78,8 +78,7 @@ class labrun:
 	
 	def __init__(self, verbose = False):
 		
-		self.ltype_list = \
-			['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
+		self.ltype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
 		self.min_feas_dt = dt.strptime('6-1-16', '%m-%d-%y')
 		self.file_dt = dt.now()
 		self.file_dt_str = dt.strftime(self.file_dt,'%m-%d-%y')
@@ -573,6 +572,6 @@ class labrun:
 			ldata_long_new.dropna(subset = ['Date_Time'], inplace = True)
 			ldata_long_new.drop_duplicates(inplace = True)
 			# Write to gbq table
-			if not ldata_long_new.empty and ltype != 'PH':
+			if not ldata_long_new.empty:
 				ldata_long_new.to_gbq('{}.{}'.format(dataset_id, ltype), projectid, if_exists = 'append')
 
