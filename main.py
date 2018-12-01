@@ -279,7 +279,10 @@ def generate_dclass_dtype_tab(dclass, dtype):
 def generate_dclass_dtype_vtype_tab(dclass, dtype, vtype):
 
     def dclass_dtype_vtype_tab(dclass, dtype, vtype):
-        return cr2c_objects[dclass][dtype][vtype]
+        try:
+            return cr2c_objects[dclass][dtype][vtype]
+        except:
+            return 
 
     return dclass_dtype_vtype_tab
 
