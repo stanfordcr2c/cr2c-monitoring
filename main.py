@@ -19,13 +19,6 @@ try:
 except ImportError:
     pass
 
-## CR2C
-from dependencies import cr2c_labdata as lab
-from dependencies import cr2c_opdata as op
-from dependencies import cr2c_fielddata as fld
-from dependencies import cr2c_validation as val
-from dependencies import cr2c_utils as cut
-
 ## Dash/Plotly
 import dash
 import dash_html_components as html
