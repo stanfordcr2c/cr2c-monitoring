@@ -504,6 +504,26 @@ def retrieve_value(dictionary, key):
         return dictionary[key]
 
 
+def pad_na(df, time_var):
+
+    df.loc[:,'Date'] = df[time_var].dt.date
+    start_time = df['Date'].min()
+    end_time = df['Date'].max()
+    n_days = end_time - start_time
+    n_days = int(n_days/timedelta(days = 1))
+    time_steps = np.array([start_time + timedelta(days = d) for d in range(n_days)])
+    empty_df = pd.DataFrame({'Date': time_steps})
+    padded_df = df.merge(empty_df, on = 'Date', how = 'outer')
+    # Replace NaT values for time_variable with date:00:00:00
+    padded_df.loc[np.isnat(padded_df[time_var]),time_var] = \
+        pd.to_datetime(padded_df.loc[np.isnat(padded_df[time_var]),'Date'])
+    padded_df.sort_values('Date', inplace = True)
+    padded_df.drop(['Date'] , axis = 1, inplace = True)
+    padded_df.reset_index(inplace = True)
+
+    return padded_df
+
+
 def get_series(
     dclass, dtype, 
     time_resolution, time_order, start_date, end_date, 
