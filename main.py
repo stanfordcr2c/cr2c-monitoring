@@ -235,7 +235,7 @@ layoutChildren = [
         style = {'padding': '1px','backgroundColor':'white','textAlign':'right'},
     ),
     html.Div([dcc.Graph(id = 'graph-object')],style={'backgroundColor':'white'}),
-    html.Div(id = 'output-container', children = '', style = {'display': 'none'})
+    html.Div(id = 'output-container', children = '{}', style = {'display': 'none'})
 ]
 
 for dclass in cr2c_dtypes:
