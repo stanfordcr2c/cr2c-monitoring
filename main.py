@@ -12,13 +12,6 @@ import warnings
 if not sys.warnoptions:
     warnings.simplefilter("ignore")
 
-# Google Cloud Debugger (need to activate if using Python3)
-try:
-    import googleclouddebugger
-    googleclouddebugger.enable()
-except ImportError:
-    pass
-
 ## CR2C
 from dependencies import cr2c_labdata as lab
 from dependencies import cr2c_opdata as op
