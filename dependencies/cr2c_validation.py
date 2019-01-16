@@ -12,7 +12,6 @@ import datetime as datetime
 from datetime import timedelta
 from datetime import datetime as dt
 from pandas import read_excel
-from scipy import stats 
 import math
 
 # Utilities
