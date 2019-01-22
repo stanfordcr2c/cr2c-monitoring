@@ -20,7 +20,7 @@ from google.cloud import bigquery
 # Gets valid user credentials from storage.
 # If nothing has been stored, or if the stored credentials are invalid,
 # the OAuth2 flow is completed to obtain the new credentials.
-def get_credentials(local = True, pydir = None):
+def get_credentials(pydir = None):
 
 	SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 	CLIENT_SECRET_FILE = 'client_secret.json'
@@ -44,11 +44,12 @@ def get_credentials(local = True, pydir = None):
 		os.chdir(os.path.join(pydir,'GoogleProjectsAdmin'))
 		spreadsheetId = open('spreadsheetId.txt').read()
 		
-	else:
+	# else:
 
-		credentials = compute_engine.credentials()
-		dataset_id = 'labdata'
-		spreadsheetId = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, 'google_spreadsheetId'), projectid)['spreadsheetId'].values[0]
+		# credentials = compute_engine.Credentials()
+		# print(credentials)
+		# dataset_id = 'labdata'
+		# spreadsheetId = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, 'google_spreadsheetId'), projectid)['spreadsheetId'].values[0]
 
 	if not credentials or credentials.invalid:	
 		flags = 'An unknown error occurred'
@@ -60,9 +61,9 @@ def get_credentials(local = True, pydir = None):
 
 
 # Retrieves data of specified tabs in a gsheets file
-def get_gsheet_data(sheet_name, local = True):
+def get_gsheet_data(sheet_name, local = True, pydir = None):
 
-	credentials, spreadsheetId = get_credentials(local)
+	credentials, spreadsheetId = get_credentials(local, pydir = pydir)
 	http = credentials.authorize(httplib2.Http())
 	discoveryUrl = (
 		'https://sheets.googleapis.com/$discovery/rest?'
@@ -102,9 +103,9 @@ def get_table_names(dataset_id, local = True, data_dir = None):
 
 	else:
 
-		client = bigquery.Client(credentials = get_credentials(local = local))
-		tables = list(client.list_tables(dataset_ref))
-		table_names = [table.table_id for table in tables]
+		gbq_str = """SELECT table_id FROM {}.__TABLES_SUMMARY__""".format(dataset_id)
+		table_names_list = pd.read_gbq(gbq_str).values
+		table_names = [table_name[0] for table_name in table_names_list]
 
 	return table_names
 
