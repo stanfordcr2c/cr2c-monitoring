@@ -122,30 +122,15 @@ def get_data(
 	
 		if output_csv:
 
-			os.chdir(outdir)
 			stypes = list(set(stypes))
 			op_fname = 'cr2c_opdata_' + '_'.join(stypes) + '.csv'
-			opdata_all.to_csv(op_fname, encoding = 'utf-8')
+			opdata_all.to_csv(os.path.join(outdir, op_fname), encoding = 'utf-8')
 
 	return opdata_all
 
 
-# Returns a list of the tables in the op SQL database
-def	get_table_names():
-
-	# Create connection to SQL database
-	data_dir = cut.get_dirs()[0]
-	os.chdir(data_dir)
-	conn = sqlite3.connect('cr2c_opdata.db')
-	cursor = conn.cursor()
-	# Execute
-	cursor.execute(""" SELECT name FROM sqlite_master WHERE type ='table'""")
-
-	return [names[0] for names in cursor.fetchall()]
-
-
 # Takes a list of file paths and concatenates all of the files
-def cat_dfs(ip_paths, idx_var = None, output_csv = False, outdir = None, output_dsn = None):
+def cat_dfs(ip_paths, idx_var = None, output_csv = False, outdir = None, out_dsn = None):
 	
 	concat_dlist = []
 	for ip_path in ip_paths:
@@ -157,7 +142,7 @@ def cat_dfs(ip_paths, idx_var = None, output_csv = False, outdir = None, output_
 	if output:
 
 		concat_data.to_csv(
-			os.path.join(outdir, output_dsn), 
+			os.path.join(outdir, out_dsn), 
 			index = False, 
 			encoding = 'utf-8'
 		)
@@ -347,9 +332,8 @@ class opdata_agg:
 			if output_csv:
 				if not outdir:
 					outdir = askdirectory()
-				os.chdir(outdir)
-				tots_res.to_csv('{}_{}_{}_{}_AVERAGES.csv'.\
-					format(stype, sid, tperiod, ttype), index = False, encoding = 'utf-8')
+				out_dsn = '{}_{}_{}_{}_AVERAGES.csv'.format(stype, sid, tperiod, ttype)
+				tots_res.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
 
 			# Load data to Google BigQuery
 			projectid = 'cr2c-monitoring'

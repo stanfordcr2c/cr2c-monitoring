@@ -100,11 +100,10 @@ def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv
 	# Output csv if desired
 	if output_csv:
 		if varNames:
-			op_fname = '{0}.csv'.format(','.join(varNames))
+			op_dsn = '{0}.csv'.format(','.join(varNames))
 		else:
-			op_fname = 'cr2c-fieldData.csv'
-		os.chdir(outdir)
-		fielddata.to_csv(op_fname, index = False, encoding = 'utf-8')
+			op_dsn = 'cr2c-fieldData.csv'
+		fielddata.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
 
 	return fielddata
 

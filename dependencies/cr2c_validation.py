@@ -5,8 +5,6 @@
 
 # Data Prep
 import numpy as np
-import scipy as sp
-from scipy import interpolate as ip
 import pandas as pd
 import datetime as datetime
 from datetime import timedelta
@@ -59,8 +57,8 @@ def get_data(
 		
 		# Output csv if desired
 		if output_csv:
-			os.chdir(outdir)
-			valdat_long.to_csv(val_type + '.csv', index = False, encoding = 'utf-8')
+			out_dsn = val_type + '.csv'
+			valdat_long.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
 
 		# Write to dictionary
 		valdat_all[val_type] = valdat_long

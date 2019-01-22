@@ -64,8 +64,8 @@ def get_data(
 		
 		# Output csv if desired
 		if output_csv:
-			os.chdir(outdir)
-			ldata_long.to_csv(ltype + '.csv', index = False, encoding = 'utf-8')
+			out_dsn = ltype + '.csv'
+			ldata_long.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
 
 		# Write to dictionary
 		ldata_all[ltype] = ldata_long
@@ -574,4 +574,5 @@ class labrun:
 			# Write to gbq table
 			if not ldata_long_new.empty:
 				ldata_long_new.to_gbq('{}.{}'.format(dataset_id, ltype), projectid, if_exists = 'append')
+
 
