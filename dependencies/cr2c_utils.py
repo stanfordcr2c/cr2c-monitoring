@@ -1,4 +1,3 @@
-
 # Data Prep
 import pandas as pd
 
@@ -15,42 +14,13 @@ from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
 from google.auth import compute_engine
-
-
-# Gets local data store and python directories in Box Sync folder
-def get_dirs():
-	
-	# Find the CR2C.Operations folder on Box Sync on the given machine
-	targetdir1 = os.path.join('Box Sync','CR2C.Operations')
-	targetdir2 = os.path.join('Box','CR2C.Operations')
-	mondir = None
-	for dirpath, dirname, filename in os.walk(expanduser('~')):
-		if dirpath.find(targetdir1) > 0 or dirpath.find(targetdir2) > 0:
-			mondir = os.path.join(dirpath,'Monitoring Data and Procedures')
-			break
-			
-	# Alert user if Box Sync folder not found on machine
-	if not mondir:
-		if os.path.isdir('D:/'):
-			for dirpath, dirname, filename in os.walk('D:/'):
-				if dirpath.find(targetdir) > 0:
-					mondir = os.path.join(dirpath,'Monitoring Data and Procedures')
-					break
-		if not mondir:
-			print("Could not find Codiga Center's Operations folder in Box Sync")
-			print('Please make sure that Box Sync is installed and the Operations folder is synced on your machine')
-			sys.exit()
-
-	pydir = os.path.join(mondir, 'Python')
-	data_dir = os.path.join(mondir,os.path.join('Data','SQL'))
-
-	return data_dir, pydir
+from google.cloud import bigquery
 
 
 # Gets valid user credentials from storage.
 # If nothing has been stored, or if the stored credentials are invalid,
 # the OAuth2 flow is completed to obtain the new credentials.
-def get_credentials(local = True):
+def get_credentials(local = True, pydir = None):
 
 	SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 	CLIENT_SECRET_FILE = 'client_secret.json'
@@ -118,6 +88,25 @@ def get_gsheet_data(sheet_name, local = True):
 
 	return df
 
+def get_table_names(dataset_id, local = True, data_dir = None):
+
+	if local:
+
+		# Create connection to SQL database
+		os.chdir(data_dir)
+		conn = sqlite3.connect('{}.db'.format(dataset_id))
+		cursor = conn.cursor()
+		# Execute
+		cursor.execute(""" SELECT name FROM sqlite_master WHERE type ='table'""")
+		table_names = [names[0] for names in cursor.fetchall()]
+
+	else:
+
+		client = bigquery.Client(credentials = get_credentials(local = local))
+		tables = list(client.list_tables(dataset_ref))
+		table_names = [table.table_id for table in tables]
+
+	return table_names
 
 
 
