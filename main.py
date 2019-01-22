@@ -2,6 +2,7 @@
 ## Utilities
 import os 
 from datetime import datetime as dt
+from datetime import timedelta
 import pandas as pd
 import numpy as np
 import json
@@ -10,7 +11,7 @@ import warnings
 
 # Suppress Warnings
 if not sys.warnoptions:
-    warnings.simplefilter("ignore")
+    warnings.simplefilter("ignore") 
 
 ## CR2C
 from dependencies import cr2c_labdata as lab
@@ -46,7 +47,7 @@ cr2c_dtypes = {'Lab Data': {},'Operational Data': {},'Validation': {}}
 # Load data
 lab_data = lab.get_data(lab_types)
 val_data = val.get_data(val_types)
-op_tables = op.get_table_names()
+op_tables = cut.get_table_names('opdata', local = False)
 
 # Load lab_type variables and their stages/types
 for lab_type in lab_types:
@@ -680,6 +681,9 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
 
     # Initialize empty list of output dataframes
     dflist = []
+    # Add missing values to every day (if no observation)
+    dfsub = pad_na(dfsub, 'Time')
+
     # Filter data by dates
     if start_date:
 
