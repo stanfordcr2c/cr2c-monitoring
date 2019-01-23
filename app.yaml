@@ -1,5 +1,4 @@
-runtime: python
-instance_class: B1
+runtime: custom
 env: flex
 entrypoint: gunicorn -b :$Port main:app
 
@@ -8,21 +7,12 @@ runtime_config:
 
 handlers:
  - url: '/.*'
-   script: auto
+   login: required
 
-readiness_check:
-  path: '/readiness_check'
-  check_interval_sec: 20
-  timeout_sec: 4
-  failure_threshold: 2
-  success_threshold: 2
-  app_start_timeout_sec: 300
-  
-liveness_check:
-  path: '/liveness_check'
-  check_interval_sec: 30
-  timeout_sec: 4
-  failure_threshold: 3
-  success_threshold: 2
-  initial_delay_sec: 300
+manual_scaling:
+  instances: 1
+resources:
+  cpu: 1
+  memory_gb: 1
+  disk_size_gb: 10
 
