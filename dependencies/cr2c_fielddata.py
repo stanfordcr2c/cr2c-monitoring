@@ -19,21 +19,21 @@ from os.path import expanduser
 import sys
 import re
 
-# CR2Cf
-from dependencies import cr2c_utils as cut
+# CR2C
+import cr2c_utils as cut
 
 def clean_varname(varname):
 	for char in '-:?[]()<>.,':
 		varname = varname.replace(char,'')
 		varname = varname.replace(' ','_')
 		varname = varname.upper()
-	return varname
+	return varname[:128]
 
 
-def process_data(tableName = 'DailyLogResponses'):
+def process_data(pydir, tableName = 'DailyLogResponses', create_table = False):
 
 	# Get the log data from gsheets
-	fielddata = cut.get_gsheet_data(tableName)
+	fielddata = cut.get_gsheet_data(tableName, pydir)
 	# Eliminate special characters (':-?[]()') and replace spaces with '_'	
 	colnamesRaw = fielddata.columns.values
 	colnamesCln = [clean_varname(colname) for colname in colnamesRaw]
@@ -42,9 +42,14 @@ def process_data(tableName = 'DailyLogResponses'):
 	# Load data to Google BigQuery
 	projectid = 'cr2c-monitoring'
 	dataset_id = 'fielddata'
-	# Make sure only new records are being appended to the dataset
-	fielddata_already = get_data()
-	fielddata_new = fielddata.loc[~fielddata['TIMESTAMP'].isin(fielddata_already['TIMESTAMP']),:]
+	
+	# If overwriting entire table (necessary if changing column names), field_data_already = None
+	if create_table:
+		fielddata_new = fielddata.copy()
+	# Otherwise, make sure only new records are being appended to the dataset
+	else:
+		fielddata_already = get_data()
+		fielddata_new = fielddata.loc[~fielddata['TIMESTAMP'].isin(fielddata_already['TIMESTAMP']),:]
 	# Remove duplicates and missing values
 	fielddata_new.dropna(subset = ['TIMESTAMP'], inplace = True)
 	fielddata_new.drop_duplicates(inplace = True)
