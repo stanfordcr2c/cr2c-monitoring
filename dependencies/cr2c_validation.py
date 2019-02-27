@@ -18,10 +18,10 @@ import sys
 import functools
 
 # CR2C
-from dependencies import cr2c_labdata as pld
-from dependencies import cr2c_opdata as op
-from dependencies import cr2c_fielddata as fld
-from dependencies.cr2c_opdata import opdata_agg as op_run
+import cr2c_labdata as pld
+import cr2c_opdata as op
+import cr2c_fielddata as fld
+from cr2c_opdata import opdata_agg as op_run
 
 def get_data(
 	val_types, 
@@ -618,7 +618,7 @@ class cr2c_validation:
 			if valdatSub.size > 0:
 				valdatStack.append(valdatSub)
 		
-		valdatStack = pd.concat(valdatStack)
+		valdatStack = pd.concat(valdatStack, sort = True)
 		instr_val_long = pd.melt(valdatStack, id_vars = ['Date_Time','Sensor ID'], value_vars = ['Sensor Value','Validated Measurement','Error'])
 
 		instr_val_long.columns = ['Date_Time','Sensor_ID','Type','Value']

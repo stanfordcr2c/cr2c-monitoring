@@ -20,37 +20,28 @@ from google.cloud import bigquery
 # Gets valid user credentials from storage.
 # If nothing has been stored, or if the stored credentials are invalid,
 # the OAuth2 flow is completed to obtain the new credentials.
-def get_credentials(pydir = None):
+def get_credentials(pydir):
 
 	SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 	CLIENT_SECRET_FILE = 'client_secret.json'
 	projectid = 'cr2c-monitoring'
 
-	if local:
+	home_dir = os.path.expanduser('~')
+	credential_dir = os.path.join(home_dir, '.credentials')
 
-		pydir = get_dirs()[1]
-		home_dir = os.path.expanduser('~')
-		credential_dir = os.path.join(home_dir, '.credentials')
+	if not os.path.exists(credential_dir):
+		os.makedirs(credential_dir)
+	credential_path = os.path.join(
+		credential_dir,
+		'sheets.googleapis.com-cr2c-monitoring.json'
+	)
+	store = Storage(credential_path)
+	credentials = store.get()
 
-		if not os.path.exists(credential_dir):
-			os.makedirs(credential_dir)
-		credential_path = os.path.join(
-			credential_dir,
-			'sheets.googleapis.com-cr2c-monitoring.json'
-		)
-		store = Storage(credential_path)
-		credentials = store.get()
-
-		os.chdir(os.path.join(pydir,'GoogleProjectsAdmin'))
-		spreadsheetId = open('spreadsheetId.txt').read()
+	spreadsheetId_path = os.path.join(pydir,'GoogleProjectsAdmin','spreadsheetId.txt')
+	# os.chdir(os.path.join(pydir,'GoogleProjectsAdmin'))
+	spreadsheetId = open(spreadsheetId_path).read()
 		
-	# else:
-
-		# credentials = compute_engine.Credentials()
-		# print(credentials)
-		# dataset_id = 'labdata'
-		# spreadsheetId = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, 'google_spreadsheetId'), projectid)['spreadsheetId'].values[0]
-
 	if not credentials or credentials.invalid:	
 		flags = 'An unknown error occurred'
 		flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
@@ -61,9 +52,9 @@ def get_credentials(pydir = None):
 
 
 # Retrieves data of specified tabs in a gsheets file
-def get_gsheet_data(sheet_name, local = True, pydir = None):
+def get_gsheet_data(sheet_name, pydir):
 
-	credentials, spreadsheetId = get_credentials(local, pydir = pydir)
+	credentials, spreadsheetId = get_credentials(pydir)
 	http = credentials.authorize(httplib2.Http())
 	discoveryUrl = (
 		'https://sheets.googleapis.com/$discovery/rest?'

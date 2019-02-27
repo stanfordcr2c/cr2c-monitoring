@@ -24,7 +24,7 @@ import traceback as tb
 import warnings as wn
 
 # CR2C
-from dependencies import cr2c_utils as cut
+import cr2c_utils as cut
 
 
 def get_data(

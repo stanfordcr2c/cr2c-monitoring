@@ -22,7 +22,7 @@ from os.path import expanduser
 import sys
 
 # CR2C
-from dependencies import cr2c_utils as cut
+import cr2c_utils as cut
 
 
 # Wrapper for querying data from the cr2c_labdata.db data store
@@ -337,12 +337,12 @@ class labrun:
 
 	# The main caller that executes all methods to read data from Google Sheets, clean and reformat it. 
 	# Performs necessary computations on laboratory results, converts all data to a long format, and outputs the result to the cr2c_labdata.db data store.
-	def process_data(self, local = True):
+	def process_data(self, pydir):
 		
 		# Start loop through the gsheets
 		for ltype in self.ltype_list:
 
-			self.ldata = cut.get_gsheet_data(ltype, local)
+			self.ldata = cut.get_gsheet_data(ltype, pydir = pydir)
 
 			if ltype == 'COD':
 				self.clean_dataset(ltype,['Date','Stage','Type'])
