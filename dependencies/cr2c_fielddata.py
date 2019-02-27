@@ -88,7 +88,8 @@ def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv
 				pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, tableName), projectid)
 			],
 			axis = 0,
-			join = 'outer'
+			join = 'outer',
+			sort = True
 		)
 
 	# Dedupe data (some issue with duplicates)
