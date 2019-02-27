@@ -30,7 +30,7 @@ def clean_varname(varname):
 	return varname[:128]
 
 
-def process_data(pydir, tableName = 'DailyLogResponses', create_table = False):
+def process_data(pydir, tableName = 'DailyLogResponses', create_gbq_table = False):
 
 	# Get the log data from gsheets
 	fielddata = cut.get_gsheet_data(tableName, pydir)
@@ -44,7 +44,7 @@ def process_data(pydir, tableName = 'DailyLogResponses', create_table = False):
 	dataset_id = 'fielddata'
 	
 	# If overwriting entire table (necessary if changing column names), field_data_already = None
-	if create_table:
+	if create_gbq_table:
 		fielddata_new = fielddata.copy()
 	# Otherwise, make sure only new records are being appended to the dataset
 	else:
