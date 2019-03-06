@@ -8,8 +8,6 @@ The contributors to this project are managers and operators of the Codiga Center
 
 Sebastien Tilmans (Director of Operations)
 Jose Bolorinos (Operator)
-Yinuo Yao (Operator)
-Andrew Hyunwoo Kim (Operator)
 
 ## Table of Contents
 
@@ -150,23 +148,36 @@ __Arguments:__
 __Output:__
 * _df_: Pandas dataframe with raw lab data from specified gsheet name
 
-<a name="get_dirs"></a>
-#### get_dirs()
-
-__Description:__ Gets directories necessary for reading and outputting data in the local Box Sync folder
-
-__Output:__
-* *data_dir*: Directory with all cr2c data stores
-* _pydir_: Directory with API key and client secret for google sheets API
 
 <a name="get_credentials"></a>
-#### get_credentials()
+#### get_credentials(*pydir*)
 
 __Description:__ Gets valid user credentials from storage. If nothing has been stored, or if the stored credentials are invalid, the OAuth2 flow is completed to obtain the new credentials.
+
+__Arguments:__ 
+* *pydir*: Directory with client secret file and google spreadsheet ids
 
 __Output:__
 * _credentials_: user credentials for accessing google spreadsheet file
 * _spreadsheetID_: id of the google spreedsheet file
+
+<a name="get_data"></a>
+#### get_data(*datasetid, table_names, varnames = None, local = False, local_dir = None, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None* )
+
+__Description:__ Retrieves data of specified tabs in a gsheets file
+
+__Arguments:__ 
+* *datasetid*: A string giving the id of the dataset from which data are being queried, can be "labdata","fielddata","opdata","validation"
+* *table_names*: List of table names within each dataset from which we want to query data
+* *varnames*: (Optional)List of variables within each table for which we want data. Default is None
+* *local*: (Optional, Required if local = True) Boolean indicating whether or not a local database is being queried, or the google BigQuery database. Default is False
+* *local_dir*: String giving the director of the local database. Default is None
+* *start_dt_str*: (Optional) date string to filter the result by date, sets the minimum date of the resulting data. Format MUST BE 'mm-dd-yy' so 1-1-18 for January 1st, 2018
+* *end_dt_str*: (Optional) Same as *start_dt_str* but sets the maximum date of the resulting data
+* *output_csv*: (Optional) Logical, if True, will output a csv file for each of the *ltypes* specified above
+* *outdir*: (Optional, required if *output_csv* is True) String giving the directory to output the csv file(s) to
+__Output:__
+* _df_: A dictionary of Pandas dataframes. The entries are (key,value): (table_name,dataframe)
 
 
 ### cr2c-labdata
