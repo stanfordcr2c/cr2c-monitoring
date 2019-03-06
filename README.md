@@ -19,8 +19,9 @@ Jose Bolorinos (Operator)
 * [Documentation](#documentation)
   * [cr2c-utils](#cr2c-utils)
     * [get_gsheet_data](#get_gsheet_data)
-    * [get_dirs](#get_dirs)
     * [get_credentials](#get_credentials)
+    * [get_data](#cutget_data)
+    * [write_to_db](#write_to_db)
   * [cr2c-labdata](#cr2c-labdata)
     * [get_data](#labget_data)
     * [labrun](#labrun)
@@ -161,7 +162,7 @@ __Output:__
 * _credentials_: user credentials for accessing google spreadsheet file
 * _spreadsheetID_: id of the google spreedsheet file
 
-<a name="get_data"></a>
+<a name="cutget_data"></a>
 #### get_data(*datasetid, table_names, varnames = None, local = False, local_dir = None, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None* )
 
 __Description:__ Retrieves data of specified tabs in a gsheets file
@@ -170,14 +171,28 @@ __Arguments:__
 * *datasetid*: A string giving the id of the dataset from which data are being queried, can be "labdata","fielddata","opdata","validation"
 * *table_names*: List of table names within each dataset from which we want to query data
 * *varnames*: (Optional)List of variables within each table for which we want data. Default is None
-* *local*: (Optional, Required if local = True) Boolean indicating whether or not a local database is being queried, or the google BigQuery database. Default is False
-* *local_dir*: String giving the director of the local database. Default is None
+* *local*: (Optional) Boolean indicating whether or not a local database is being queried, or the google BigQuery database. Default is False
+* *local_dir*: (Optional, Required if local = True) String giving the director of the local database. Default is None
 * *start_dt_str*: (Optional) date string to filter the result by date, sets the minimum date of the resulting data. Format MUST BE 'mm-dd-yy' so 1-1-18 for January 1st, 2018
 * *end_dt_str*: (Optional) Same as *start_dt_str* but sets the maximum date of the resulting data
 * *output_csv*: (Optional) Logical, if True, will output a csv file for each of the *ltypes* specified above
 * *outdir*: (Optional, required if *output_csv* is True) String giving the directory to output the csv file(s) to
 __Output:__
 * _df_: A dictionary of Pandas dataframes. The entries are (key,value): (table_name,dataframe)
+
+<a name="write_to_db"></a>
+#### write_to_db(*df, projectid, dataset_id, table_name, create_mode = False, local = False, local_dir = None*)
+
+__Description:__ Writes a pandas dataframe to a database. Ensures that only new records are being added
+
+__Arguments:__ 
+* *df*: Pandas dataframe to be written to database
+* *projectid*: String, project id (for now only have "cr2c-monitoring")
+* *dataset_id*: String, dataset being written to
+* *table_name*: String, table being written to
+* *create_mode*: Boolean, indicating whether a new table being created. This is useful if it is necessary to modify a table schema and rewrite all table results with new schema
+* *local*: (Optional) Boolean indicating whether or not a local database is being queried, or the google BigQuery database. Default is False
+* *local_dir*: (Optional, Required if local = True) String giving the director of the local database. Default is None
 
 
 ### cr2c-labdata
