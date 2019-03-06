@@ -30,32 +30,18 @@ def clean_varname(varname):
 	return varname[:128]
 
 
-def process_data(pydir, tableName = 'DailyLogResponses', create_gbq_table = False):
+def process_data(pydir, table_name = 'DailyLogResponsesV2', create_table = False):
 
 	# Get the log data from gsheets
-	fielddata = cut.get_gsheet_data(tableName, pydir)
+	fielddata = cut.get_gsheet_data(table_name, pydir)
 	# Eliminate special characters (':-?[]()') and replace spaces with '_'	
-	colnamesRaw = fielddata.columns.values
-	colnamesCln = [clean_varname(colname) for colname in colnamesRaw]
+	colnames_raw = fielddata.columns.values
+	colnames_cln = [clean_varname(colname) for colname in colnames_raw]
 	# Replace columns names of dataset with clean column names
-	fielddata.columns = colnamesCln
+	fielddata.columns = colnames_cln
+	fielddata.loc[:,'Dkey'] = fielddata['TIMESTAMP'].astype(str)
 	# Load data to Google BigQuery
-	projectid = 'cr2c-monitoring'
-	dataset_id = 'fielddata'
-	
-	# If overwriting entire table (necessary if changing column names), field_data_already = None
-	if create_gbq_table:
-		fielddata_new = fielddata.copy()
-	# Otherwise, make sure only new records are being appended to the dataset
-	else:
-		fielddata_already = get_data()
-		fielddata_new = fielddata.loc[~fielddata['TIMESTAMP'].isin(fielddata_already['TIMESTAMP']),:]
-	# Remove duplicates and missing values
-	fielddata_new.dropna(subset = ['TIMESTAMP'], inplace = True)
-	fielddata_new.drop_duplicates(inplace = True)
-	# Write to gbq table
-	if not fielddata_new.empty:
-		fielddata_new.to_gbq('{}.{}'.format(dataset_id, tableName), projectid, if_exists = 'append')
+	cut.write_to_db(fielddata,'cr2c-monitoring','fielddata', table_name, create_mode = create_table)
 
 
 def get_data(varNames = None, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None):

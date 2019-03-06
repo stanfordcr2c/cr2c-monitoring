@@ -337,7 +337,7 @@ class labrun:
 
 	# The main caller that executes all methods to read data from Google Sheets, clean and reformat it. 
 	# Performs necessary computations on laboratory results, converts all data to a long format, and outputs the result to the cr2c_labdata.db data store.
-	def process_data(self, pydir):
+	def process_data(self, create_table = False, pydir = None):
 		
 		# Start loop through the gsheets
 		for ltype in self.ltype_list:
@@ -563,16 +563,164 @@ class labrun:
 			ldata_long = ldata_long[colnames[-1:] + colnames[0:-1]]
 
 			# Load data to Google BigQuery
-			projectid = 'cr2c-monitoring'
-			dataset_id = 'labdata'
-			# Make sure only new records are being appended to the dataset
-			ldata_long_already = get_data([ltype])[ltype]
-			ldata_long_new = ldata_long.loc[~ldata_long['Dkey'].isin(ldata_long_already['Dkey']),:]
-			# Remove duplicates and missing values
-			ldata_long_new.dropna(subset = ['Date_Time'], inplace = True)
-			ldata_long_new.drop_duplicates(inplace = True)
-			# Write to gbq table
-			if not ldata_long_new.empty:
-				ldata_long_new.to_gbq('{}.{}'.format(dataset_id, ltype), projectid, if_exists = 'append')
+			cut.write_to_db(ldata_long, 'cr2c-monitoring','labdata', ltype, create_mode = create_table)
+
+
+	# Performs a pandas melt procedure on the lab data with the right column ordering
+	def wide_to_long(self, ltype, id_vars, value_vars):
+
+		# Melt the data frame
+		df_long = pd.melt(self.ldata, id_vars = id_vars, value_vars = value_vars)
+
+		# Add Type to "variable" variable if BOD (OD days, specifically)
+		if ltype == 'BOD':
+			df_long.reset_index(inplace = True)
+			df_long.loc[:,'variable'] = df_long['Type'] + ': ' + df_long['variable']
+		# Reorder columns
+		col_order = ['Date_Time','Stage','variable','units','obs_id','value']
+		varnames = ['Date_Time','Stage','Type','units','obs_id','Value']
+		df_long = df_long[col_order]
+		df_long.columns = varnames
+
+		return df_long
+
+
+	# Performs sequential pandas unstack procedures to convert a long dataframe to a wide dataframe
+	def long_to_wide(self, df, id_vars):
+
+		# Create descriptive Date/Time Variable
+		df.rename(columns = {'Date_Time' : 'Sample Date & Time'}, inplace = True)
+		all_vars = id_vars + ['Value']
+		df = df[all_vars].copy()
+
+		# Create a multi-index
+		df.drop_duplicates(subset = id_vars, inplace = True)
+		df.set_index(id_vars, inplace = True)
+
+		# Convert to wide format
+		if len(id_vars) > 2:
+			dfwide = df.unstack(id_vars[1])
+			if len(id_vars) > 3:
+				dfwide = dfwide.unstack(id_vars[2])
+		elif len(id_vars) > 1:
+			dfwide = df.unstack(id_vars[1])
+		
+		# Convert index to pandas native datetimeindex to allow easy date slicing
+		dfwide.reset_index(inplace = True)
+		dfwide.set_index('Sample Date & Time', inplace = True)
+
+		index = pd.to_datetime(dfwide.index)
+		dfwide.sort_index(inplace = True)
+		
+		return dfwide
+
+
+	# Counts the characters in a string that appear more than once and outputs a string of these characters	
+	def count_multichars(self,string):
+		chars = list(set([char for char in string if string.count(char) > 1]))
+		return ''.join(chars)
+
+
+	# Cleans the wide table of lab data results
+	def clean_wide_table(self, dfwide, value_vars, start_dt, end_dt, add_time_el):
+
+		stage_order = \
+			[
+				'Raw Influent',
+				'Grit Tank',
+				'Microscreen',
+				'MESH',
+				'AFBR',
+				'Duty AFMBR MLSS',
+				'Duty AFMBR Effluent',
+				'Research AFMBR MLSS',
+				'Research AFMBR Effluent'
+			]
+		
+
+		# First retrieve the stages for which there are data
+		act_stages = dfwide.columns.levels[1].values
+		# Reproduce stage order according to data availability
+		act_st_ord = [stage for stage in stage_order if stage in act_stages]
+
+		# Truncate (adding exception for Ammonia with no type variable)
+		if value_vars == ['Value']:
+			column_tuple = act_st_ord
+		else:
+			column_tuple = (act_st_ord, value_vars)
+
+		df_trunc = dfwide.Value.loc[start_dt:end_dt, column_tuple]
+
+		# Set column order (again, exception is for Ammonia with no type variable)
+		if value_vars == ['Value']:
+			df_trunc = df_trunc.reindex(act_st_ord, axis = 1, level = None)
+		else:
+			df_trunc = df_trunc.reindex(act_st_ord, axis = 1, level = 'Stage')
+			df_trunc = df_trunc.reindex(value_vars, axis = 1, level = 'Type')
+
+		# Create days since seed variable and insert as the first column
+		if add_time_el:
+			seed_dt = dt.strptime('5-11-17','%m-%d-%y')
+			days_since_seed = np.array((df_trunc.index - seed_dt).days)
+			df_trunc.insert(0, 'Days Since Seed', days_since_seed)
+
+		return df_trunc
+
+
+	# Combines and filters a set of wide tables and outputs the resulting table as a csv file
+	def summarize_tables(self, end_dt_str, ndays, add_time_el = True, outdir = None, opfile_suff = None):
+
+		if opfile_suff:
+			opfile_suff = '_' + opfile_suff
+		else:
+			opfile_suff = ''
+
+		# Get start and end dates
+		end_dt = dt.strptime(end_dt_str,'%m-%d-%y') + timedelta(days = 1)
+		start_dt = end_dt - timedelta(days = ndays)
+		seed_dt = dt.strptime('05-10-17','%m-%d-%y')
+
+		# Load data from SQL
+		ldata_all = get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA','AMMONIA','SULFATE'])
+
+		# Specify id variables (same for every type since combining Alkalinity and pH)
+		id_vars = ['Sample Date & Time','Stage','Type','obs_id']
+
+		# For Alkalinity, pH, NH3, and SO4, need to add Type variable back in
+		ALK = ldata_all['ALKALINITY'].copy()
+		ALK.loc[:,'Type'] = 'Alkalinity'
+		PH = ldata_all['PH'].copy()
+		PH.loc[:,'Type'] = 'pH'
+		NH3 = ldata_all['AMMONIA'].copy()
+		SO4 = ldata_all['SULFATE'].copy()
+
+		# Concatenate Alkaliity and pH and reset index
+		ALK_PH = pd.concat([PH,ALK], axis = 0, join = 'outer').reset_index(drop = True)
+
+		# Get wide data
+		CODwide = self.long_to_wide(ldata_all['COD'].copy(), id_vars)
+		VFAwide = self.long_to_wide(ldata_all['VFA'].copy(), id_vars)
+		TSS_VSSwide = self.long_to_wide(ldata_all['TSS_VSS'].copy(), id_vars)
+		ALK_PHwide = self.long_to_wide(ALK_PH, id_vars)
+		NH3wide = self.long_to_wide(NH3, ['Sample Date & Time','Stage'])
+		SO4wide = self.long_to_wide(SO4, ['Sample Date & Time','Stage'])
+		
+		# Truncate and set column order
+		CODtrunc = self.clean_wide_table(CODwide, ['Total','Soluble'], start_dt, end_dt, add_time_el)
+		VFAtrunc = self.clean_wide_table(VFAwide, ['Acetate','Propionate'], start_dt, end_dt, add_time_el)
+		TSS_VSStrunc = self.clean_wide_table(TSS_VSSwide,['TSS','VSS'], start_dt, end_dt, add_time_el)
+		ALK_PHtrunc = self.clean_wide_table(ALK_PHwide,['pH','Alkalinity'], start_dt, end_dt, add_time_el)
+		NH3trunc = self.clean_wide_table(NH3wide,['Value'], start_dt, end_dt, add_time_el)
+		SO4trunc = self.clean_wide_table(SO4wide,['Value'], start_dt, end_dt, add_time_el)
+		
+		# Save
+		os.chdir(outdir)
+		CODtrunc.to_csv('COD_table' + end_dt_str + opfile_suff + '.csv')
+		VFAtrunc.to_csv('VFA_table' + end_dt_str + opfile_suff + '.csv')
+		TSS_VSStrunc.to_csv('TSS_VSS_table' + end_dt_str + opfile_suff + '.csv')
+		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
+		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
+		SO4trunc.to_csv('Sulfate_table' + end_dt_str + opfile_suff + '.csv')
+
 
 

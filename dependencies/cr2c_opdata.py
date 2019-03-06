@@ -310,7 +310,7 @@ class opdata_agg:
 		return tots_res
 
 
-	def run_agg(self, stypes, sids, tperiods, ttypes, output_csv = False, output_sql = True, outdir = None):
+	def run_agg(self, stypes, sids, tperiods, ttypes, create_table = False, output_csv = False, outdir = None):
 
 		# Clean inputs
 		ttypes, stypes = [ttype.upper() for ttype in ttypes], [stype.upper() for stype in stypes]
@@ -329,33 +329,12 @@ class opdata_agg:
 			# Reorder columns
 			tots_res = tots_res[['Time','Year','Month','Value']].copy()
 
+			table_name = '{}_{}_{}_{}_AVERAGES'.format(stype, sid, tperiod, ttype)
 			if output_csv:
 				if not outdir:
 					outdir = askdirectory()
-				out_dsn = '{}_{}_{}_{}_AVERAGES.csv'.format(stype, sid, tperiod, ttype)
+				out_dsn = table_name + '.csv'
 				tots_res.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
 
 			# Load data to Google BigQuery
-			projectid = 'cr2c-monitoring'
-			dataset_id = 'opdata'
-			# Make sure only new records are being appended to the dataset
-			tots_res_already = \
-				get_data(
-					[stype],
-					[sid],
-					[tperiod],
-					[ttype], 
-					combine_all = False
-				)['{}_{}_{}_{}_AVERAGES'.format(stype, sid, tperiod, ttype)]
-
-			tots_res_new = tots_res.loc[~tots_res['Time'].isin(tots_res_already['Time']),:]
-			# Remove duplicates and missing values
-			tots_res_new.dropna(inplace = True)
-			tots_res_new.drop_duplicates(inplace = True)
-			# Write to gbq table
-			if not tots_res_new.empty:
-				tots_res_new.to_gbq(
-					'{}.{}_{}_{}_{}_AVERAGES'.format(dataset_id, stype, sid, tperiod, ttype), 
-					projectid, 
-					if_exists = 'append'
-				)
+			cut.write_to_db(tots_res,'cr2c-monitoring','opdata', table_name, create_mode = create_table)

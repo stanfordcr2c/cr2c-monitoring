@@ -20,8 +20,9 @@ import functools
 # CR2C
 import cr2c_labdata as pld
 import cr2c_opdata as op
-import cr2c_fielddata as fld
 from cr2c_opdata import opdata_agg as op_run
+import cr2c_fielddata as fld
+import cr2c_utils as cut
 
 def get_data(
 	val_types, 
@@ -34,7 +35,7 @@ def get_data(
 	if end_dt_str:
 		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
 
-	# Loop through types of lab data types (ltypes)
+	# Loop through types of lab data 
 	valdat_all = {}
 	for val_type in val_types:
 
@@ -114,14 +115,13 @@ class cr2c_validation:
 		return COD_diss_conc
 
 
-	def get_biotech_params(self, end_dt_str, nweeks, output_csv = False, outdir = None):
+	def get_biotech_params(self, end_dt_str, nweeks, create_cod_balance_table = False, create_vss_params_table = False, output_csv = False, outdir = None):
 		
 		# Window for moving average calculation
 		ma_win = 1
-		end_dt   = dt.strptime(end_dt_str,'%m-%d-%y').date()
 		end_weekday = dt.strptime(end_dt_str,'%m-%d-%y').weekday()
-		start_dt = end_dt - timedelta(days = 7*nweeks) - timedelta(days = end_weekday)
-		start_dt = start_dt
+		end_dt   = dt.strptime(end_dt_str,'%m-%d-%y').date() - timedelta(days = end_weekday)
+		start_dt = end_dt - timedelta(days = 7*nweeks) 
 		start_dt_str = dt.strftime(start_dt, '%m-%d-%y')
 		start_dt_query = start_dt - timedelta(days = ma_win)
 		start_dt_qstr = dt.strftime(start_dt_query,'%m-%d-%y')
@@ -141,7 +141,7 @@ class cr2c_validation:
 		# L in a mol of gas at STP
 		Vol_STP = 22.4
 
-		#=========================================> op DATA <=========================================
+		#=========================================> HMI DATA <=========================================
 		
 		# If requested, run the op_data_agg script for the reactor meters and time period of interest
 		if self.run_agg_feeding or self.run_agg_gasprod or self.run_agg_temp:
@@ -227,8 +227,7 @@ class cr2c_validation:
 			lambda left,right: pd.merge(left,right, on = 'Date', how = 'outer'), 
 			op_dflist
 		)
-
-		#=========================================> op DATA <=========================================
+		#=========================================> HMI DATA <=========================================
 
 		#=========================================> LAB DATA <=========================================
 		# Get lab data from file on box and filter to desired dates
@@ -452,31 +451,9 @@ class cr2c_validation:
 				encoding = 'utf-8'				
 			)
 
-		#Load COD Balance data to Google BigQuery
-		projectid = 'cr2c-monitoring'
-		dataset_id = 'valdata'
-
-		# Make sure only new records are being appended to the dataset
-		cod_bal_already = get_data(['cod_balance'])['cod_balance']
-		cod_bal_new = cod_bal_long.loc[~cod_bal_long['Dkey'].isin(cod_bal_already['Dkey']),:]
-
-		# Remove duplicates and missing values
-		cod_bal_new.dropna(subset = ['Date_Time'], inplace = True)
-		cod_bal_new.drop_duplicates(inplace = True)
-		# Write to gbq table
-		if not cod_bal_new.empty:
-			cod_bal_new.to_gbq('{}.{}'.format(dataset_id, 'cod_balance'), projectid, if_exists = 'append')
-
-		# Load VSS Params data to Google BigQuery
-		# Make sure only new records are being appended to the dataset
-		vss_params_already = get_data(['vss_params'])['vss_params']
-		vss_params_new = vss_params_long.loc[~vss_params_long['Dkey'].isin(vss_params_already['Dkey']),:]
-		# Remove duplicates and missing values
-		vss_params_new.dropna(subset = ['Date_Time'], inplace = True)
-		vss_params_new.drop_duplicates(inplace = True)
-		# Write to gbq table
-		if not vss_params_new.empty:
-			vss_params_new.to_gbq('{}.{}'.format(dataset_id, 'vss_params'), projectid, if_exists = 'append')
+		#Load COD Balance data to database(s)
+		cut.write_to_db(cod_bal_long,'cr2c-monitoring','valdata','cod_balance', create_mode = create_cod_balance_table)
+		cut.write_to_db(vss_params_long,'cr2c-monitoring','valdata','vss_params', create_mode = create_vss_params_table)
 
 		return cod_bal_long, vss_params_long
 
@@ -491,6 +468,7 @@ class cr2c_validation:
 		start_dt_str = None, end_dt_str = None, 
 		fld_varnames = None, 
 		ltypes = None, lstages = None, 
+		create_table = None,
 		run_op_report = False, ip_path = None,
 		output_csv = False,
 		outdir = None
@@ -636,22 +614,8 @@ class cr2c_validation:
 				encoding = 'utf-8'				
 			)
 
-		#Load COD Balance data to Google BigQuery
-		projectid = 'cr2c-monitoring'
-		dataset_id = 'valdata'
-
-		# Make sure only new records are being appended to the dataset
-		# instr_val_already = get_data(['instr_validation'])['instr_validation']
-		# instr_val_new = instr_val_long.loc[~instr_val_already['Dkey'].isin(instr_val_already['Dkey']),:]
-		instr_val_new = instr_val_long
-
-		# Remove duplicates and missing values
-		instr_val_new.dropna(subset = ['Date_Time'], inplace = True)
-		instr_val_new.drop_duplicates(inplace = True)
-
-		# Write to gbq table
-		if not instr_val_new.empty:
-			instr_val_new.to_gbq('{}.{}'.format(dataset_id, 'instr_validation'), projectid, if_exists = 'append')
+		# Load COD Balance data to database(s)
+		cut.write_to_db(instr_val_long,'cr2c-monitoring','valdata','instr_validation', create_mode = create_table)
 
 		return instr_val_long
 
