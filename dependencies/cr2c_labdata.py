@@ -544,9 +544,13 @@ class labrun:
 				# Set value vars for melting
 				value_vars = ['Hel_Pressure (psi)','Nitrogen (%)','Oxygen (%)','Methane (%)','Carbon Dioxide (%)']
 
-			# Add Sample Date-Time variable from PH
+			# Add Sample Date-Time variable from pH
 			if ltype != 'PH':
-				self.ldata = self.ldata.merge(ldata_dt, on = 'Date')
+				# Use left merge to include self.ldata values if PH hasn't been added yet
+				self.ldata = self.ldata.merge(ldata_dt, on = 'Date', how = 'left')
+				# Replace missing Date_Time values with the date and midnight
+				self.ldata.loc[pd.isna(self.ldata['Date_Time']),'Date_Time'] = \
+					self.ldata.loc[pd.isna(self.ldata['Date_Time']),'Date']
 
 			# Convert to long format
 			if ltype in ['PH','ALKALINITY','AMMONIA','TKN','SULFATE']:
@@ -681,7 +685,7 @@ class labrun:
 		seed_dt = dt.strptime('05-10-17','%m-%d-%y')
 
 		# Load data from SQL
-		ldata_all = get_data(['COD','TSS_VSS','ALKALINITY','PH','VFA','AMMONIA','SULFATE'])
+		ldata_all = cut.get_data('labdata',['COD','TSS_VSS','ALKALINITY','PH','VFA','AMMONIA','SULFATE'])
 
 		# Specify id variables (same for every type since combining Alkalinity and pH)
 		id_vars = ['Sample Date & Time','Stage','Type','obs_id']
@@ -714,13 +718,11 @@ class labrun:
 		SO4trunc = self.clean_wide_table(SO4wide,['Value'], start_dt, end_dt, add_time_el)
 		
 		# Save
-		os.chdir(outdir)
-		CODtrunc.to_csv('COD_table' + end_dt_str + opfile_suff + '.csv')
-		VFAtrunc.to_csv('VFA_table' + end_dt_str + opfile_suff + '.csv')
-		TSS_VSStrunc.to_csv('TSS_VSS_table' + end_dt_str + opfile_suff + '.csv')
-		ALK_PHtrunc.to_csv('ALK_PH_table' + end_dt_str + opfile_suff + '.csv')
-		NH3trunc.to_csv('Ammonia_table' + end_dt_str + opfile_suff + '.csv')
-		SO4trunc.to_csv('Sulfate_table' + end_dt_str + opfile_suff + '.csv')
-
+		CODtrunc.to_csv(os.path.join(outdir, 'COD_table' + end_dt_str + opfile_suff + '.csv'))
+		VFAtrunc.to_csv(os.path.join(outdir, 'VFA_table' + end_dt_str + opfile_suff + '.csv'))
+		TSS_VSStrunc.to_csv(os.path.join(outdir, 'TSS_VSS_table' + end_dt_str + opfile_suff + '.csv'))
+		ALK_PHtrunc.to_csv(os.path.join(outdir, 'ALK_PH_table' + end_dt_str + opfile_suff + '.csv'))
+		NH3trunc.to_csv(os.path.join(outdir, 'Ammonia_table' + end_dt_str + opfile_suff + '.csv'))
+		SO4trunc.to_csv(os.path.join(outdir, 'Sulfate_table' + end_dt_str + opfile_suff + '.csv'))
 
 
