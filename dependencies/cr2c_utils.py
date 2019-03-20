@@ -6,6 +6,9 @@ import os
 from os.path import expanduser
 import sys
 import json
+from datetime import datetime as dt
+from datetime import timedelta
+import functools
 
 # Google sheets API and dependencies
 import httplib2
@@ -38,8 +41,7 @@ def get_credentials(pydir):
 	store = Storage(credential_path)
 	credentials = store.get()
 
-	spreadsheetId_path = os.path.join(pydir,'GoogleProjectsAdmin','spreadsheetId.txt')
-	# os.chdir(os.path.join(pydir,'GoogleProjectsAdmin'))
+	spreadsheetId_path = os.path.join(pydir,'spreadsheetId.txt')
 	spreadsheetId = open(spreadsheetId_path).read()
 		
 	if not credentials or credentials.invalid:	
@@ -81,13 +83,12 @@ def get_gsheet_data(sheet_name, pydir):
 	return df
 
 
-def get_table_names(dataset_id, local = True, data_dir = None):
+def get_table_names(dataset_id, local = False, data_dir = None):
 
 	if local:
 
 		# Create connection to SQL database
-		os.chdir(data_dir)
-		conn = sqlite3.connect('{}.db'.format(dataset_id))
+		conn = sqlite3.connect(os.path.join(data_dir,'{}.db'.format(dataset_id)))
 		cursor = conn.cursor()
 		# Execute
 		cursor.execute(""" SELECT name FROM sqlite_master WHERE type ='table'""")
@@ -96,19 +97,20 @@ def get_table_names(dataset_id, local = True, data_dir = None):
 	else:
 
 		gbq_str = """SELECT table_id FROM {}.__TABLES_SUMMARY__""".format(dataset_id)
-		table_names_list = pd.read_gbq(gbq_str).values
+		table_names_list = pd.read_gbq(gbq_str, 'cr2c-monitoring').values
 		table_names = [table_name[0] for table_name in table_names_list]
 
 	return table_names
 
+
 def get_data(
-	projectid, dataset_id, table_names, 
+	dataset_id, table_names, 
 	varnames = None, 
-	local = False, local_dir = None, 
 	start_dt_str = None, end_dt_str = None, 
+	local = False, local_dir = None, 
 	output_csv = False, outdir = None
 ):
-
+	
 	# Convert date string inputs to dt variables
 	if start_dt_str:
 		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
@@ -125,17 +127,16 @@ def get_data(
 		key = 'Dkey'
 
 	all_data = {}
-	
 	for table_name in table_names:
 
 		if varnames:
 			varnames_db = time_var + ',' + ','.join(varnames)
 			if dataset_id == 'fielddata':
-				varnames_query = varnames_query.upper()
+				varnames_db = varnames_db.upper()
 		else:
 			varnames_db = '*'
 
-		df = pd.read_gbq('SELECT {} FROM {}.{}'.format(varnames_db, dataset_id, table_name), projectid)
+		df = pd.read_gbq('SELECT {} FROM {}.{}'.format(varnames_db, dataset_id, table_name), 'cr2c-monitoring')
 		# Remove duplicate records
 		df.drop_duplicates(inplace = True)
 		# Create datetime variable and remove missing timestamp values
@@ -148,18 +149,17 @@ def get_data(
 		if start_dt_str:
 			df = df.loc[df[time_var] >= start_dt,:]
 		if end_dt_str:
-			df = df.loc[df[time_var] <= end_dt + timedelta(days = 1),:]
+			df = df.loc[df[time_var] < end_dt + timedelta(days = 1),:]
 
-		# Output csv if desired
+		# Output csv if desired 
 		if output_csv:
 			op_dsn = 'cr2c_{}_{}.csv'.format(dataset_id, table_name)
 			df.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
 
-		all_data[table_name] = df
+		all_data[table_name] = df			
 
 	return all_data
 
-	
 
 def write_to_db(
 	df, projectid, dataset_id, table_name, 
@@ -180,7 +180,7 @@ def write_to_db(
 	if create_mode:
 		df_new = df.copy()
 	else:
-		df_already = get_data(projectid, dataset_id, [table_name])[table_name]
+		df_already = get_data(dataset_id, [table_name])[table_name]
 		df_new = df.loc[~df[key].isin(df_already[key]),:]
 
 	# Remove duplicates and missing values, sort
@@ -191,6 +191,69 @@ def write_to_db(
 	# Write to gbq table
 	if not df_new.empty:
 		df_new.to_gbq('{}.{}'.format(dataset_id, table_name), projectid, if_exists = 'append')
+
+
+# Function for merging tables in a dictionary by a set of id variables
+def merge_tables(df_dict, id_vars, measure_varnames, merged_varnames = None):
+
+	# Set merged_varnames to measure_vars if not specified (simplifies loop below!)
+	if not merged_varnames:
+		merged_varnames = measure_varnames
+
+	# Change measure variable names according to user spec
+	for df, measure_varname, merged_varname in zip(df_dict.values(), measure_varnames, merged_varnames):
+		df.rename(columns = {measure_varname: merged_varname}, inplace = True)
+		df.set_index(id_vars, inplace = True)
+
+	df_merged = pd.concat(
+		[df[merged_varname] for df, merged_varname in zip(df_dict.values(), merged_varnames)], 
+		axis = 1, 
+		ignore_index = False,
+		sort = True
+	) 
+	df_merged.reset_index(inplace = True)
+
+	return df_merged
+
+
+# Function for stacking tables in a dictionary (subset to desired stacking variables)
+def stack_tables(df_dict, keep_vars = None):
+
+	df_stacked = pd.concat(
+		[df for df in list(df_dict.values())], 
+		axis = 0, 
+		ignore_index = True,
+		sort = True
+	) 
+	df_stacked.reset_index(inplace = True)
+	df_stacked.to_csv(os.path.join('/Users/josebolorinos/Google Drive/Codiga Center/debugging','df_stacked.csv'))
+	if keep_vars:
+		df_stacked = df_stacked.loc[:,keep_vars]
+
+	return df_stacked
+
+
+# Takes a list of file paths and concatenates all of the files
+def cat_dfs(ip_paths, idx_var = None, output_csv = False, outdir = None, out_dsn = None):
+	
+	concat_dlist = []
+	for ip_path in ip_paths:
+		concat_dlist.append(pd.read_csv(ip_path, low_memory = False))
+	concat_data = pd.concat([df for df in concat_dlist], ignore_index = True, sort = True)
+	# Remove duplicates (may be some overlap)
+	concat_data.drop_duplicates(keep = 'first', inplace = True)
+
+	if output:
+
+		concat_data.to_csv(
+			os.path.join(outdir, out_dsn), 
+			index = False, 
+			encoding = 'utf-8'
+		)
+	
+	return concat_data
+	
+
 
 
 

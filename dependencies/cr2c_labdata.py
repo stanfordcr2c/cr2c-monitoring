@@ -25,60 +25,12 @@ import sys
 import cr2c_utils as cut
 
 
-# Wrapper for querying data from the cr2c_labdata.db data store
-def get_data(
-	ltypes, 
-	start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None
-):
-
-	# Convert date string inputs to dt variables
-	if start_dt_str:
-		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
-	if end_dt_str:
-		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
-
-	# Loop through types of lab data types (ltypes)
-	ldata_all = {}
-	for ltype in ltypes:
-
-		# Clean user input wrt TSS_VSS
-		if ltype.find('TSS') >= 0 or ltype.find('VSS') >= 0:
-			ltype = 'TSS_VSS'
-
-		# Load data from google BigQuery
-		projectid = 'cr2c-monitoring'
-		dataset_id = 'labdata'
-		ldata_long = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, ltype), projectid)
-
-		# Dedupe data (just in case, pandas can be glitchy with duplicates)
-		ldata_long.drop_duplicates(inplace = True)
-		# Convert Date_Time variable to a pd datetime and eliminate missing values
-		ldata_long.loc[:,'Date_Time'] = pd.to_datetime(ldata_long['Date_Time'])
-		ldata_long.dropna(subset = ['Date_Time'], inplace = True)
-		# Filter to desired dates
-		# ldata_long.drop('Dkey', axis = 1, inplace = True)
-		if start_dt_str:
-			ldata_long = ldata_long.loc[ldata_long['Date_Time'] >= start_dt,:]
-		if end_dt_str:
-			ldata_long = ldata_long.loc[ldata_long['Date_Time'] <= end_dt + timedelta(days = 1),:]
-		
-		# Output csv if desired
-		if output_csv:
-			out_dsn = ltype + '.csv'
-			ldata_long.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
-
-		# Write to dictionary
-		ldata_all[ltype] = ldata_long
-
-	return ldata_all
-
-
 # Main lab data class (where all processing/plotting occurs)
 class labrun:
 	
 	def __init__(self, verbose = False):
 		
-		self.ltype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
+		self.ltype_list = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD','WASTED_SOLIDS']
 		self.min_feas_dt = dt.strptime('6-1-16', '%m-%d-%y')
 		self.file_dt = dt.now()
 		self.file_dt_str = dt.strftime(self.file_dt,'%m-%d-%y')
@@ -201,7 +153,7 @@ class labrun:
 		].copy()
 
 		# Format and clean stage variable
-		if ltype != 'GASCOMP':
+		if ltype not in ['GASCOMP','WASTED_SOLIDS']:
 
 			self.ldata.loc[:,'Stage'] = self.ldata['Stage'].astype(str)
 			self.ldata.loc[:,'Stage'] = self.ldata['Stage'].str.upper()
@@ -303,7 +255,10 @@ class labrun:
 				'Acid Concentration (N)','NH4Cl Concentration (mg/L)','Tryptophan Concentration (mg/L)'
 			]
 			for varname in varnames:
-				self.set_var_format(ltype, varname, float)		
+				self.set_var_format(ltype, varname, float)	
+
+		if ltype == 'WASTED_SOLIDS':
+			self.set_var_format(ltype,'Volume (gallons)', float)	
 			
 		# Get the obs_id variable (This step also removes duplicates and issues warnings)
 		self.manage_dups(ltype, id_vars)
@@ -350,6 +305,8 @@ class labrun:
 				self.clean_dataset(ltype,['Date','Stage'])
 			elif ltype == 'GASCOMP':
 				self.clean_dataset(ltype,['Date','Helium pressure (psi) +/- 50 psi'])
+			elif ltype == 'WASTED_SOLIDS':
+				self.clean_dataset(ltype,['Date'])
 			else:
 				self.clean_dataset(ltype,['Date','Stage'])
 
@@ -460,8 +417,6 @@ class labrun:
 
 				self.ldata = pd.melt(BODMeans, id_vars = ['Date','Stage'], value_vars = ['BOD 5','BOD U'])
 				self.ldata = self.ldata.merge(BODSDs, on = ['Date','Stage','variable'], how = 'outer')
-
-
 				self.ldata.loc[:,'Type'] = self.ldata['variable']
 				self.ldata.loc[:,'Value'] = self.ldata['value_x']
 				self.ldata.loc[:,'Min Value'] = self.ldata['Value'] - 1.96*self.ldata['value_y']
@@ -543,6 +498,13 @@ class labrun:
 				self.ldata.loc[:,'units'] = '(see Type)'
 				# Set value vars for melting
 				value_vars = ['Hel_Pressure (psi)','Nitrogen (%)','Oxygen (%)','Methane (%)','Carbon Dioxide (%)']
+			
+			# ======================================= Solids Wasting ===================================== #
+			if ltype == 'WASTED_SOLIDS':
+				self.ldata.loc[:,'Volume'] = self.ldata['Volume (gallons)']
+				self.ldata.loc[:,'Stage'] = 'NA'
+				self.ldata.loc[:,'units'] = 'Gallons'
+				value_vars = ['Volume']
 
 			# Add Sample Date-Time variable from pH
 			if ltype != 'PH':
@@ -555,8 +517,9 @@ class labrun:
 			# Convert to long format
 			if ltype in ['PH','ALKALINITY','AMMONIA','TKN','SULFATE']:
 				value_vars = [ltype]
-
 			# Convert to long format 
+			if ltype == 'WASTED_SOLIDS':
+				print(self.ldata.columns)
 			ldata_long = self.wide_to_long(ltype, id_vars, value_vars)
 
 			# Create key unique by Date_Time, Stage, Type, and obs_id

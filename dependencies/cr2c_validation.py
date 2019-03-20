@@ -24,47 +24,47 @@ from cr2c_opdata import opdata_agg as op_run
 import cr2c_fielddata as fld
 import cr2c_utils as cut
 
-def get_data(
-	val_types, 
-	start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None
-):
+# def get_data(
+# 	val_types, 
+# 	start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None
+# ):
 
-	# Convert date string inputs to dt variables
-	if start_dt_str:
-		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
-	if end_dt_str:
-		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
+# 	# Convert date string inputs to dt variables
+# 	if start_dt_str:
+# 		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
+# 	if end_dt_str:
+# 		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
 
-	# Loop through types of lab data 
-	valdat_all = {}
-	for val_type in val_types:
+# 	# Loop through types of lab data 
+# 	valdat_all = {}
+# 	for val_type in val_types:
 
-		# Load data from google BigQuery
-		projectid = 'cr2c-monitoring'
-		dataset_id = 'valdata'
-		valdat_long = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, val_type), projectid)
+# 		# Load data from google BigQuery
+# 		projectid = 'cr2c-monitoring'
+# 		dataset_id = 'valdata'
+# 		valdat_long = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, val_type), projectid)
 
-		# Dedupe data (just in case, pandas can be glitchy with duplicates)
-		valdat_long.drop_duplicates(inplace = True)
-		# Convert Date_Time variable to a pd datetime and eliminate missing values
-		valdat_long.loc[:,'Date_Time'] = pd.to_datetime(valdat_long['Date_Time'])
-		valdat_long.dropna(subset = ['Date_Time'], inplace = True)
-		# Filter to desired dates
-		# ldata_long.drop('Dkey', axis = 1, inplace = True)
-		if start_dt_str:
-			valdat_long = valdat_long.loc[valdat_long['Date_Time'] >= start_dt,:]
-		if end_dt_str:
-			valdat_long = valdat_long.loc[valdat_long['Date_Time'] <= end_dt + timedelta(days = 1),:]
+# 		# Dedupe data (just in case, pandas can be glitchy with duplicates)
+# 		valdat_long.drop_duplicates(inplace = True)
+# 		# Convert Date_Time variable to a pd datetime and eliminate missing values
+# 		valdat_long.loc[:,'Date_Time'] = pd.to_datetime(valdat_long['Date_Time'])
+# 		valdat_long.dropna(subset = ['Date_Time'], inplace = True)
+# 		# Filter to desired dates
+# 		# ldata_long.drop('Dkey', axis = 1, inplace = True)
+# 		if start_dt_str:
+# 			valdat_long = valdat_long.loc[valdat_long['Date_Time'] >= start_dt,:]
+# 		if end_dt_str:
+# 			valdat_long = valdat_long.loc[valdat_long['Date_Time'] <= end_dt + timedelta(days = 1),:]
 		
-		# Output csv if desired
-		if output_csv:
-			out_dsn = val_type + '.csv'
-			valdat_long.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
+# 		# Output csv if desired
+# 		if output_csv:
+# 			out_dsn = val_type + '.csv'
+# 			valdat_long.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
 
-		# Write to dictionary
-		valdat_all[val_type] = valdat_long
+# 		# Write to dictionary
+# 		valdat_all[val_type] = valdat_long
 
-	return valdat_all
+# 	return valdat_all
 
 
 class cr2c_validation:
@@ -127,14 +127,10 @@ class cr2c_validation:
 		start_dt_qstr = dt.strftime(start_dt_query,'%m-%d-%y')
 
 		# op element IDs for gas, temperature and influent/effluent flow meters 
-		gas_sids  = ['FT700','FT704']
-		temp_sids = ['AT304','AT310']
-		inf_sid   = 'FT202'
-		eff_sid   = 'FT305'
-		# Length of time period for which data are being queried
-		perLen = 1
-		# Type of time period for which data are being queried
-		tperiod = 'HOUR'
+		gas_sids   = ['FT700','FT702','FT704']
+		temp_sids  = ['AT304','AT310']
+		inf_sid    = 'FT202'
+		eff_sids   = ['FT304','FT305']
 
 		# Reactor volumes
 		l_p_gal = 3.78541 # Liters/Gallon
@@ -150,63 +146,61 @@ class cr2c_validation:
 			get_op.run_agg(
 				['water']*2, # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
 				[inf_sid, eff_sid], # Sensor ids that you want summary data for (have to be in op data file obviously)
-				[perLen]*2, # Number of hours you want to average over
-				[tperiod]*2 # Type of time period (can be "hour" or "minute")
+				[1]*2, # Number of hours you want to average over
+				['HOUR']*2 # Type of time period (can be "hour" or "minute")
 			)	
 		if self.run_agg_gasprod:
 			get_op.run_agg(
 				['GAS']*len(gas_sids), # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
 				gas_sids, # Sensor ids that you want summary data for (have to be in op data file obviously)
-				[perLen]*len(gas_sids), # Number of hours you want to average over
-				[tperiod]*len(gas_sids), # Type of time period (can be "hour" or "minute")
+				[1]*len(gas_sids), # Number of hours you want to average over
+				['HOUR']*len(gas_sids), # Type of time period (can be "hour" or "minute")
 			)
 		if self.run_agg_temp:
 			get_op.run_agg(
 				['TEMP']*len(temp_sids), # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
 				temp_sids, # Sensor ids that you want summary data for (have to be in op data file obviously)
-				[perLen]*len(temp_sids), # Number of hours you want to average over
-				[tperiod]*len(temp_sids), # Type of time period (can be "hour" or "minute")
+				[1]*len(temp_sids), # Number of hours you want to average over
+				['HOUR']*len(temp_sids), # Type of time period (can be "hour" or "minute")
 			)
 
-		# Read in the data
-		gasprod_dat = op.get_data(
-			['GAS']*2,
-			gas_sids,
-			[perLen]*len(gas_sids),
-			[tperiod]*len(gas_sids), 
-			combine_all = True,
+		# Get gas production data data
+		gasprod_dat = cut.get_data(
+			'opdata',
+			['GAS_{}_1_HOUR_AVERAGES'.format(sid) for sid in gas_sids],
 			start_dt_str = start_dt_str, 
-			end_dt_str = end_dt_str
+			end_dt_str = end_dt_str			
 		)
-		# Do the same for feeding and temperature
-		feeding_dat = op.get_data(
-			['WATER']*2,
-			[inf_sid, eff_sid],
-			[perLen]*2, 
-			[tperiod]*2, 
-			combine_all = True,
-			start_dt_str = start_dt_str,
-			end_dt_str = end_dt_str
+		# Feeding and temperature data
+		water_sids = [inf_sid] + eff_sids
+		feeding_dat = cut.get_data(
+			'opdata',
+			['WATER_{}_1_HOUR_AVERAGES'.format(sid) for sid in water_sids],
+			start_dt_str = start_dt_str, 
+			end_dt_str = end_dt_str			
 		)
-		temp_dat = op.get_data(
-			['TEMP']*2,
-			temp_sids,
-			[perLen]*len(temp_sids), 
-			[tperiod]*len(temp_sids), 
-			combine_all = True,
-			start_dt_str = start_dt_str,
-			end_dt_str = end_dt_str
+		temp_dat = cut.get_data(
+			'opdata',
+			['TEMP_{}_1_HOUR_AVERAGES'.format(sid) for sid in temp_sids],
+			start_dt_str = start_dt_str, 
+			end_dt_str = end_dt_str			
 		) 
+
+		# Merge each type of opdata to single wide table
+		gasprod_dat = cut.merge_tables(gasprod_dat, ['Time'],['Value']*len(gas_sids), merged_varnames = gas_sids)
+		feeding_dat = cut.merge_tables(feeding_dat, ['Time'],['Value']*len(water_sids), merged_varnames = water_sids)
+		temp_dat = cut.merge_tables(temp_dat, ['Time'],['Value']*len(temp_sids), merged_varnames = temp_sids)
+
 		# Prep the op data
-		gasprod_dat['Meas Biogas Prod'] = (gasprod_dat['FT700'] + gasprod_dat['FT704'])*60*perLen
+		gasprod_dat['Meas Biogas Prod'] = (gasprod_dat['FT700'] + gasprod_dat['FT702'] + gasprod_dat['FT704'])*60
 		gasprod_dat['Date'] = gasprod_dat['Time'].dt.date
 		gasprod_dat_cln = gasprod_dat[['Date','Meas Biogas Prod']]
 		gasprod_dat_cln = gasprod_dat_cln.groupby('Date').sum()
 		gasprod_dat_cln.reset_index(inplace = True)
 
 		# Feeding op Data
-		feeding_dat['Flow In']  = feeding_dat[inf_sid]*60*perLen*l_p_gal
-		feeding_dat['Flow Out'] = feeding_dat[eff_sid]*60*perLen*l_p_gal
+		feeding_dat['Flow In']  = feeding_dat[inf_sid]*60*l_p_gal
+		feeding_dat['Flow Out'] = (feeding_dat[eff_sids[0]] + feeding_dat[eff_sids[1]])*60*l_p_gal
 		feeding_dat['Date'] = feeding_dat['Time'].dt.date
 		feeding_dat_cln = feeding_dat[['Date','Flow In','Flow Out']]
 		feeding_dat_cln = feeding_dat_cln.groupby('Date').sum()
@@ -231,7 +225,7 @@ class cr2c_validation:
 
 		#=========================================> LAB DATA <=========================================
 		# Get lab data from file on box and filter to desired dates
-		labdat  = pld.get_data(['COD','TSS_VSS','SULFATE','GASCOMP'])
+		labdat  = cut.get_data('labdata',['COD','TSS_VSS','SULFATE','GASCOMP'])
 
 		# COD data
 		cod_dat = labdat['COD']
@@ -285,11 +279,10 @@ class cr2c_validation:
 		vss_dat_cln = vss_dat_wide[['Date','VSS R','VSS Out']]
 		vss_dat_cln.columns = ['Date','VSS R','VSS Out']	
 
-		# Solids Wasting Data
-		waste_dat = fld.get_data(['AFMBR_VOLUME_WASTED_GAL'])
-		waste_dat['Date'] = pd.to_datetime(waste_dat['TIMESTAMP']).dt.date
-		waste_dat['AFMBR Volume Wasted (Gal)'] = waste_dat['AFMBR_VOLUME_WASTED_GAL'].astype('float')
-		waste_dat['Wasted (L)'] = waste_dat['AFMBR Volume Wasted (Gal)']*l_p_gal
+		# Solids Wasting Data (from gsheet)
+		waste_dat = cut.get_data('labdata',['WASTED_SOLIDS'])['WASTED_SOLIDS']
+		waste_dat['Date'] = pd.to_datetime(waste_dat['Date_Time']).dt.date
+		waste_dat['Wasted (L)'] = waste_dat['Value']*l_p_gal
 		waste_dat_cln = waste_dat[['Date','Wasted (L)']]
 
 		# Sulfate data
@@ -402,7 +395,7 @@ class cr2c_validation:
 		cod_bal_wkly = cod_bal_dat.groupby('Week Start').sum(numeric_only = True)
 		cod_bal_wkly.reset_index(inplace = True)
 		cod_bal_wkly.loc[:,'Week Start'] = cod_bal_wkly['Week Start'].dt.date
-		cod_bal_wkly = cod_bal_wkly.loc[cod_bal_wkly['Week Start'] < end_dt,:]
+		cod_bal_wkly = cod_bal_wkly.loc[cod_bal_wkly['Week Start'] <= end_dt,:]
 
 		# Dividing by 1E6 and 7 because units are totals for week and are in mg/L
 		# whereas COD units are in kg
@@ -414,12 +407,7 @@ class cr2c_validation:
 			(cod_bal_wkly['COD In'] - cod_bal_wkly['COD Out'] - cod_bal_wkly['Sulfate Reduction'])
 
 		# No need to divide VSS concentration by 1E6 or 7 because same units in numerator and denominator
-		cod_bal_wkly['VSS SRT (days)'] = \
-			cod_bal_wkly['VSS R']*(self.afbr_vol + self.afmbr_vol)/\
-			(
-				cod_bal_wkly['VSS R']*cod_bal_wkly['Wasted (L)'] + \
-				cod_bal_wkly['VSS Out']*cod_bal_wkly['Flow Out']
-			)*7
+		cod_bal_wkly['VSS SRT (days)'] = (self.afbr_vol + self.afmbr_vol)/cod_bal_wkly['Wasted (L)']
 
 		cod_bal_long = pd.melt(
 			cod_bal_wkly, 
@@ -452,8 +440,8 @@ class cr2c_validation:
 			)
 
 		#Load COD Balance data to database(s)
-		cut.write_to_db(cod_bal_long,'cr2c-monitoring','valdata','cod_balance', create_mode = create_cod_balance_table)
 		cut.write_to_db(vss_params_long,'cr2c-monitoring','valdata','vss_params', create_mode = create_vss_params_table)
+		cut.write_to_db(cod_bal_long,'cr2c-monitoring','valdata','cod_balance', create_mode = create_cod_balance_table)
 
 		return cod_bal_long, vss_params_long
 
@@ -491,7 +479,11 @@ class cr2c_validation:
 			# Clean the query variables
 			query_varnames = [fld.clean_varname(varname) for varname in query_varnames]
 			# Query the field data (using clean variable names)
-			valdat = fld.get_data()[['TIMESTAMP'] + query_varnames]
+			table_names = cut.get_table_names('fielddata')
+			valdat = cut.get_data('fielddata', table_names)
+			# Stack measurements from all tables
+			valdat = cut.stack_tables(valdat, ['TIMESTAMP'] + query_varnames)
+
 			# Create time variable with minute resolution from field data TIMESTAMP variable
 			valdat['Time'] = pd.to_datetime(valdat['TIMESTAMP']).values.astype('datetime64[m]')
 			# Replace missing barometric pressure readings with the mean psi at sea level
@@ -512,19 +504,23 @@ class cr2c_validation:
 		# Validation data are from lab measurements
 		elif ltypes or lstages:
 
-			valdatLong = pd.concat([pld.get_data([ltype])[ltype] for ltype in ltypes], axis = 0, sort = True)
-			valdatLong = valdatLong.loc[valdatLong['Stage'].isin(lstages),:]
+			# Get data for unique set of ltypes requested
+			valdat = cut.get_data('labdata', list(set(ltypes)))
+			# Stack lab data
+			valdat_long = cut.stack_tables(valdat)
+			# valdat_long = pd.concat([cut.get_data('labdata',[ltype])[ltype] for ltype in ltypes], axis = 0, sort = True)
+			valdat_long = valdat_long.loc[valdat_long['Stage'].isin(lstages),:]
 			# Convert to wide format
 			# Calculate mean by obsid to account for possibility of multiple PH measurements taken for single sample
-			valdatLong = valdatLong.groupby(['Date_Time','Stage','Type','obs_id']).mean()
-			valdatWide = valdatLong.unstack(['Type','Stage'])
-			valdatWide.reset_index(inplace = True)
+			valdat_long = valdat_long.groupby(['Date_Time','Stage','Type','obs_id']).mean()
+			valdat_wide = valdat_long.unstack(['Type','Stage'])
+			valdat_wide.reset_index(inplace = True)
 			# valdat = valdatWide['Date_Time']
-			valdat = pd.DataFrame(valdatWide['Date_Time'].values, columns = ['Time'])
-			valdatColnames = [op_sids[lind] + 'VAL' for lind,ltype in enumerate(ltypes)]
+			valdat = pd.DataFrame(valdat_wide['Date_Time'].values, columns = ['Time'])
+			valdat_colnames = [op_sids[lind] + 'VAL' for lind,ltype in enumerate(ltypes)]
 			for lind,ltype in enumerate(ltypes):
-				valdat[valdatColnames[lind]] = valdatWide['Value'][ltype][lstages[lind]]
-			valdat = valdat[['Time'] + valdatColnames]
+				valdat[valdat_colnames[lind]] = valdat_wide['Value'][ltype][lstages[lind]]
+			valdat = valdat[['Time'] + valdat_colnames]
 
 
 		# Expand valdat to get copies of each logged value for each of:
@@ -550,15 +546,10 @@ class cr2c_validation:
 			)
 
 		# Retrieve data from SQL file
-		opdat = op.get_data(
-			valtypes,
-			op_sids,
-			[1]*nsids,
-			['MINUTE']*nsids,
-			combine_all = True,
-			start_dt_str = start_dt_str,
-			end_dt_str = end_dt_str
-		)
+		table_names = ['{}_{}_1_MINUTE_AVERAGES'.format(stype, sid) for stype, sid in zip(valtypes, op_sids)]
+		opdat = cut.get_data('opdata', table_names, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
+		# Merge tables
+		opdat = cut.merge_tables(opdat, ['Time'], ['Value']*len(op_sids), merged_varnames = op_sids)
 
 		# Merge the op data with the validation data
 		valdatMerged = opdat.merge(valdatAll, on = 'Time', how = 'inner')
