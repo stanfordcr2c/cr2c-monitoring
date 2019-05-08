@@ -22,7 +22,7 @@ from os.path import expanduser
 import sys
 
 # CR2C
-import cr2c_utils as cut
+from dependencies import cr2c_utils as cut
 
 
 # Main lab data class (where all processing/plotting occurs)

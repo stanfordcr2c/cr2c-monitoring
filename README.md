@@ -72,21 +72,21 @@ This project is based on Python 3 and makes use of Python's data management modu
 
 [Google Sheets API](https://developers.google.com/sheets/api/guides/concepts)
 
-All dependencies are listed in the "cr2c-dependencies.txt" document in the repository. 
+All dependencies are listed in the "requirements.txt" document in the repository. 
 
 We recommend that you download [Anaconda](https://www.anaconda.com/download/#macos) for easy managing and updating of virtual python environments. With Anaconda, a new virtual environment can easily be created from a dependencies file:
 
-`conda create --name cr2c-monitoring --file cr2c-dependencies.txt`
+`conda create --name cr2c-monitoring --file requirements.txt`
 
 or a list of dependencies can be installed into an existing environment: 
 
-`conda install --name myenv --file cr2c-dependencies.txt`
+`conda install --name myenv --file requirements.txt`
 
 See Anaconda's [documentation](https://conda.io/docs/user-guide/tasks/manage-environments.html) for more details on managing environments. 
 
 Alternatively, all dependencies can be installed with pip:
 
-`pip install -r cr2c-dependencies.txt`
+`pip install -r requirements.txt`
 
 Virtual environments can also be managed with Python 3's [venv](https://docs.python.org/3/library/venv.html) module
 

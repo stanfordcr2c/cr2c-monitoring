@@ -18,53 +18,11 @@ import sys
 import functools
 
 # CR2C
-import cr2c_labdata as pld
-import cr2c_opdata as op
-from cr2c_opdata import opdata_agg as op_run
-import cr2c_fielddata as fld
-import cr2c_utils as cut
-
-# def get_data(
-# 	val_types, 
-# 	start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None
-# ):
-
-# 	# Convert date string inputs to dt variables
-# 	if start_dt_str:
-# 		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
-# 	if end_dt_str:
-# 		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
-
-# 	# Loop through types of lab data 
-# 	valdat_all = {}
-# 	for val_type in val_types:
-
-# 		# Load data from google BigQuery
-# 		projectid = 'cr2c-monitoring'
-# 		dataset_id = 'valdata'
-# 		valdat_long = pd.read_gbq('SELECT * FROM {}.{}'.format(dataset_id, val_type), projectid)
-
-# 		# Dedupe data (just in case, pandas can be glitchy with duplicates)
-# 		valdat_long.drop_duplicates(inplace = True)
-# 		# Convert Date_Time variable to a pd datetime and eliminate missing values
-# 		valdat_long.loc[:,'Date_Time'] = pd.to_datetime(valdat_long['Date_Time'])
-# 		valdat_long.dropna(subset = ['Date_Time'], inplace = True)
-# 		# Filter to desired dates
-# 		# ldata_long.drop('Dkey', axis = 1, inplace = True)
-# 		if start_dt_str:
-# 			valdat_long = valdat_long.loc[valdat_long['Date_Time'] >= start_dt,:]
-# 		if end_dt_str:
-# 			valdat_long = valdat_long.loc[valdat_long['Date_Time'] <= end_dt + timedelta(days = 1),:]
-		
-# 		# Output csv if desired
-# 		if output_csv:
-# 			out_dsn = val_type + '.csv'
-# 			valdat_long.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
-
-# 		# Write to dictionary
-# 		valdat_all[val_type] = valdat_long
-
-# 	return valdat_all
+from dependencies import cr2c_labdata as pld
+from dependencies import cr2c_opdata as op
+from dependencies.cr2c_opdata import opdata_agg as op_run
+from dependencies import cr2c_fielddata as fld
+from dependencies import cr2c_utils as cut
 
 
 class cr2c_validation:
@@ -84,7 +42,7 @@ class cr2c_validation:
 		self.run_agg_temp = run_agg_temp
 		self.afbr_vol = 1100 # in L
 		self.afmbr_vol = 1700 # in L
-		self.react_vol = 2800 # in L
+		self.react_vol = 4500 # in L
 
 
 	def adj_Hcp(self, Hcp_gas, deriv_gas, temp):
@@ -128,7 +86,7 @@ class cr2c_validation:
 
 		# op element IDs for gas, temperature and influent/effluent flow meters 
 		gas_sids   = ['FT700','FT702','FT704']
-		temp_sids  = ['AT304','AT310']
+		temp_sids  = ['AT304','AT307','AT310']
 		inf_sid    = 'FT202'
 		eff_sids   = ['FT304','FT305']
 
@@ -208,7 +166,7 @@ class cr2c_validation:
 
 		# Reactor Temperature op data
 		temp_dat['Reactor Temp (C)'] = \
-			(temp_dat['AT304']*self.afbr_vol + temp_dat['AT310']*self.afmbr_vol)/self.react_vol
+			(temp_dat['AT304']*self.afbr_vol + (temp_dat['AT307'] + temp_dat['AT310'])*self.afmbr_vol)/self.react_vol
 		temp_dat['Date'] = temp_dat['Time'].dt.date
 		temp_dat_cln = temp_dat[['Date','Reactor Temp (C)']]
 		temp_dat_cln = temp_dat_cln.groupby('Date').mean()
@@ -240,9 +198,9 @@ class cr2c_validation:
 		# Weighted aveage COD concentrations in the reactors
 		cod_dat_wide['CODt R'] = \
 			(cod_dat_wide['Value']['AFBR']['Total']*self.afbr_vol +\
-			cod_dat_wide['Value']['Duty AFMBR MLSS']['Total']*self.afmbr_vol)/\
+			(cod_dat_wide['Value']['Research AFMBR MLSS']['Total'] + cod_dat_wide['Value']['Duty AFMBR MLSS']['Total'])*self.afmbr_vol)/\
 			(self.react_vol)
-		cod_dat_wide['CODt Out'] = cod_dat_wide['Value']['Duty AFMBR Effluent']['Total']
+		cod_dat_wide['CODt Out'] = cod_dat_wide['Value']['Research AFMBR Effluent']['Total'] + cod_dat_wide['Value']['Duty AFMBR Effluent']['Total']
 		cod_dat_wide.reset_index(inplace = True)
 		cod_dat_cln = cod_dat_wide[['Date','CODt MS','CODt R','CODt Out']]
 		cod_dat_cln.columns = ['Date','CODt MS','CODt R','CODt Out']
@@ -271,10 +229,15 @@ class cr2c_validation:
 		vss_dat_wide = vss_dat.unstack(['Stage','Type'])
 		# Weighted aveage COD concentrations in the reactors
 		vss_dat_wide['VSS R'] = \
-			(vss_dat_wide['Value']['AFBR']['VSS']*self.afbr_vol +\
-			vss_dat_wide['Value']['Duty AFMBR MLSS']['VSS']*self.afmbr_vol)/\
+			(
+				vss_dat_wide['Value']['AFBR']['VSS']*self.afbr_vol +\
+				vss_dat_wide['Value']['Research AFMBR MLSS']['VSS']*self.afmbr_vol +\
+				vss_dat_wide['Value']['Duty AFMBR MLSS']['VSS']*self.afmbr_vol
+			)/\
 			(self.afbr_vol + self.afmbr_vol)
-		vss_dat_wide['VSS Out'] = vss_dat_wide['Value']['Duty AFMBR Effluent']['VSS']
+		vss_dat_wide['VSS Out'] = \
+			vss_dat_wide['Value']['Research AFMBR Effluent']['VSS'] +\
+			vss_dat_wide['Value']['Duty AFMBR Effluent']['VSS']
 		vss_dat_wide.reset_index(inplace = True)
 		vss_dat_cln = vss_dat_wide[['Date','VSS R','VSS Out']]
 		vss_dat_cln.columns = ['Date','VSS R','VSS Out']	

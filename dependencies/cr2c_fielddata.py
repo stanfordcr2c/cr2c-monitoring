@@ -20,7 +20,7 @@ import sys
 import re
 
 # CR2C
-import cr2c_utils as cut
+from dependencies import cr2c_utils as cut
 
 def clean_varname(varname):
 	for char in '-:?[]()<>.,':
