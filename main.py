@@ -8,7 +8,7 @@ import numpy as np
 import json
 import sys
 import warnings
-
+    
 # Suppress Warnings
 if not sys.warnoptions:
     warnings.simplefilter("ignore") 
@@ -38,15 +38,15 @@ app.scripts.config.serve_locally = True
 #================= Create datetimea layout map from existing data =================#
 
 lab_types = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
-op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI','LEVEL','COND'] 
+op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI','LEVEL','COND','POWER'] 
 val_types = ['cod_balance','vss_params','instr_validation']
 selection_vars = ['Stage','Type','Sensor ID']
 selectionID, selection, click, history = [None]*4
 cr2c_dtypes = {'Lab Data': {},'Operational Data': {},'Validation': {}}
 
 # Load data
-lab_data = lab.get_data(lab_types)
-val_data = val.get_data(val_types)
+lab_data = cut.get_data('labdata',lab_types)
+val_data = cut.get_data('valdata',val_types)
 op_tables = cut.get_table_names('opdata', local = False)
 
 # Load lab_type variables and their stages/types
@@ -577,22 +577,20 @@ def get_series(
             # Retrieve data
             try: # Try querying hourly data
                 
-                dfsub = op.get_data([dtype], [sid], [1], ['HOUR'])
+                table_name = '{}_{}_1_HOUR_AVERAGES'.format(dtype, sid)
+                dfsub = cut.get_data('opdata', [table_name])[table_name]
                 
             except: # Otherwise only available as minute data
                 
                 # Load minute data
-                dfsub = op.get_data([dtype], [sid], [1],['MINUTE'])
+                table_name = '{}_{}_1_MINUTE_AVERAGES'.format(dtype, sid)
+                dfsub = cut.get_data('opdata', [table_name])[table_name]
                 # Group to hourly data
                 dfsub.loc[:,'Time'] = op_data['Time'].values.astype('datetime64[h]')
                 dfsub = dfsub.groupby('Time').mean()
                 dfsub.reset_index(inplace = True)
 
-            if dtype in ['GAS','WATER']:
-                
-                dfsub.loc[:,sid] = dfsub[sid]*60
-
-            dfsub.loc[:,'yvar'] = dfsub[sid]
+            dfsub.loc[:,'yvar'] = dfsub['Value']
             seriesName = seriesNamePrefix + sid
 
             subSeries = {'seriesName': seriesName}
