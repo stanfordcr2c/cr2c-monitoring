@@ -1,6 +1,6 @@
 ## Synopsis
 
-The cr2c-monitoring project manages the data systems for the Bill & Cloy Codiga Resource Recovery Center (CR2C). CR2C produces three principal streams of data: laboratory data from water quality and other testing, operational data from the facility's automated sensors, and field data collected by the facility's operators in their daily checks of the plant's performance. The scripts in this repository process and output these data streams to a single data store, perform various analyses to monitor and validate the plant's performance on a day to day basis, and integrate important information from all data into a single, online visualization and data query platform. 
+The cr2c-monitoring project manages the data systems for the Bill & Cloy Codiga Resource Recovery Center (CR2C). CR2C produces three principal streams of data: laboratory data from water quality and other testing, operational data from the facility's automated sensors, and field data collected by the facility's operators in their daily checks of the plant's performance. The scripts in this repository process and output these data streams to a single data store, perform various analyses to monitor and validate the plant's performance on a daily basis, and integrate important information from all data into a single, online visualization and data querying platform. 
 
 ## contributors
 
@@ -8,8 +8,6 @@ The contributors to this project are managers and operators of the Codiga Center
 
 Sebastien Tilmans (Director of Operations)
 Jose Bolorinos (Operator)
-Yinuo Yao (Operator)
-Andrew Hyunwoo Kim (Operator)
 
 ## Table of Contents
 
@@ -21,8 +19,9 @@ Andrew Hyunwoo Kim (Operator)
 * [Documentation](#documentation)
   * [cr2c-utils](#cr2c-utils)
     * [get_gsheet_data](#get_gsheet_data)
-    * [get_dirs](#get_dirs)
     * [get_credentials](#get_credentials)
+    * [get_data](#cutget_data)
+    * [write_to_db](#write_to_db)
   * [cr2c-labdata](#cr2c-labdata)
     * [get_data](#labget_data)
     * [labrun](#labrun)
@@ -73,25 +72,9 @@ This project is based on Python 3 and makes use of Python's data management modu
 
 [Google Sheets API](https://developers.google.com/sheets/api/guides/concepts)
 
-All dependencies are listed in the "cr2c-dependencies.txt" document in the repository. 
+All dependencies are listed in the "requirements.txt" document in the repository. 
 
-We recommend that you download [Anaconda](https://www.anaconda.com/download/#macos) for easy managing and updating of virtual python environments. With Anaconda, a new virtual environment can easily be created from a dependencies file:
-
-`conda create --name cr2c-monitoring --file cr2c-dependencies.txt`
-
-or a list of dependencies can be installed into an existing environment: 
-
-`conda install --name myenv --file cr2c-dependencies.txt`
-
-See Anaconda's [documentation](https://conda.io/docs/user-guide/tasks/manage-environments.html) for more details on managing environments. 
-
-Alternatively, all dependencies can be installed with pip:
-
-`pip install -r cr2c-dependencies.txt`
-
-Virtual environments can also be managed with Python 3's [venv](https://docs.python.org/3/library/venv.html) module
-
-## Data Structures
+## Data data-structures
 
 ### Laboratory Data
 
@@ -128,7 +111,7 @@ Each table in the cr2c_opdata.db store contains four variables:
 * The year of the time period in question ("Year")
 * The month of the time period in question ("Month")
 * The value read by the sensor (Value). Note, when querying these data, the "Value" variable name can be changed to the corresponding sensor id to permit easy merging of multiple sensor readings into a single wide table (see [Operational Data: get_data](#opgetdata) documentation below for more details)
-
+ 
 __Operational Data Schematic:__
 
 ![](src/cr2c-opdata-schematic.png)
@@ -150,23 +133,50 @@ __Arguments:__
 __Output:__
 * _df_: Pandas dataframe with raw lab data from specified gsheet name
 
-<a name="get_dirs"></a>
-#### get_dirs()
-
-__Description:__ Gets directories necessary for reading and outputting data in the local Box Sync folder
-
-__Output:__
-* *data_dir*: Directory with all cr2c data stores
-* _pydir_: Directory with API key and client secret for google sheets API
 
 <a name="get_credentials"></a>
-#### get_credentials()
+#### get_credentials(*pydir*)
 
 __Description:__ Gets valid user credentials from storage. If nothing has been stored, or if the stored credentials are invalid, the OAuth2 flow is completed to obtain the new credentials.
+
+__Arguments:__ 
+* *pydir*: Directory with client secret file and google spreadsheet ids
 
 __Output:__
 * _credentials_: user credentials for accessing google spreadsheet file
 * _spreadsheetID_: id of the google spreedsheet file
+
+<a name="cutget_data"></a>
+#### get_data(*datasetid, table_names, varnames = None, local = False, local_dir = None, start_dt_str = None, end_dt_str = None, output_csv = False, outdir = None* )
+
+__Description:__ Retrieves data of specified tabs in a gsheets file
+
+__Arguments:__ 
+* *datasetid*: A string giving the id of the dataset from which data are being queried, can be "labdata","fielddata","opdata","validation"
+* *table_names*: List of table names within each dataset from which we want to query data
+* *varnames*: (Optional)List of variables within each table for which we want data. Default is None
+* *local*: (Optional) Boolean indicating whether or not a local database is being queried, or the google BigQuery database. Default is False
+* *local_dir*: (Optional, Required if local = True) String giving the director of the local database. Default is None
+* *start_dt_str*: (Optional) date string to filter the result by date, sets the minimum date of the resulting data. Format MUST BE 'mm-dd-yy' so 1-1-18 for January 1st, 2018
+* *end_dt_str*: (Optional) Same as *start_dt_str* but sets the maximum date of the resulting data
+* *output_csv*: (Optional) Logical, if True, will output a csv file for each of the *ltypes* specified above
+* *outdir*: (Optional, required if *output_csv* is True) String giving the directory to output the csv file(s) to
+__Output:__
+* _df_: A dictionary of Pandas dataframes. The entries are (key,value): (table_name,dataframe)
+
+<a name="write_to_db"></a>
+#### write_to_db(*df, projectid, dataset_id, table_name, create_mode = False, local = False, local_dir = None*)
+
+__Description:__ Writes a pandas dataframe to a database. Ensures that only new records are being added
+
+__Arguments:__ 
+* *df*: Pandas dataframe to be written to database
+* *projectid*: String, project id (for now only have "cr2c-monitoring")
+* *dataset_id*: String, dataset being written to
+* *table_name*: String, table being written to
+* *create_mode*: Boolean, indicating whether a new table being created. This is useful if it is necessary to modify a table schema and rewrite all table results with new schema
+* *local*: (Optional) Boolean indicating whether or not a local database is being queried, or the google BigQuery database. Default is False
+* *local_dir*: (Optional, Required if local = True) String giving the director of the local database. Default is None
 
 
 ### cr2c-labdata

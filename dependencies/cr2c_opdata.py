@@ -1,8 +1,7 @@
 '''
 	This script calculates totals and averages for any given op data point(s),
 	time period, and date range for which a raw eDNA query has been run (and a csv file
-	for that query obtained)
-	If desired, also outputs plots and summary tables
+	for that query obtained) 
 '''
 
 from __future__ import print_function
@@ -25,144 +24,6 @@ import warnings as wn
 
 # CR2C
 from dependencies import cr2c_utils as cut
-
-
-def get_data(
-	stypes,
-	sids, 
-	tperiods, 
-	ttypes,
-	combine_all = True,
-	year_sub = None, 
-	month_sub = None, 
-	start_dt_str = None, 
-	end_dt_str = None, 
-	output_csv = False, 
-	outdir = None
-):
-
-	# Convert date string inputs to dt variables
-	start_dt = dt.strptime('5-10-17','%m-%d-%y')
-	end_dt = dt.now()
-	if start_dt_str:
-		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
-	if end_dt_str:
-		end_dt = dt.strptime(end_dt_str, '%m-%d-%y')
-
-	# Manage data selection input 
-	nsids = len(sids)
-	if nsids != len(stypes) or nsids != len(tperiods) or nsids != len(ttypes):
-		print('Error in cr2c_opdata: get_data: The lengths of the sids, stypes, tperiods and ttypes arguments must be equal')
-		sys.exit()
-
-	# Manage month and year subset input (will be added to sqlite3 query string)
-	sub_ins = ''
-	if year_sub and month_sub:
-		sub_ins = 'WHERE YEAR == {} AND Month == {}'.format(year_sub, month_sub)
-	elif month_sub:
-		sub_ins = 'WHERE Month == {}'.format(month_sub)
-	elif year_sub:
-		sub_ins = 'WHERE Year == {}'.format(year_sub)
-
-	# Initialize output data variable
-	opdata_all = {}
-	for stype, sid, tperiod, ttype in zip(stypes, sids, tperiods, ttypes):
-
-		sql_str = """
-			SELECT distinct * FROM {}_{}_{}_{}_AVERAGES {}
-			order by Time 
-		""".format(stype, sid, tperiod, ttype, sub_ins)
-
-		# Load data from google BigQuery
-		projectid = 'cr2c-monitoring'
-		dataset_id = 'opdata'
-		opdata = pd.read_gbq(
-			'SELECT * FROM {}.{}_{}_{}_{}_AVERAGES'.format(dataset_id, stype, sid, tperiod, ttype), 
-			projectid
-		)
-
-		# Format the time variable
-		opdata['Time'] = pd.to_datetime(opdata['Time'])
-		# Set time variable
-		if ttype == 'HOUR':
-			opdata.loc[:,'Time'] = opdata['Time'].values.astype('datetime64[h]')
-		elif ttype == 'MINUTE':
-			opdata.loc[:,'Time'] = opdata['Time'].values.astype('datetime64[m]')
-
-		# Drop duplicates (happens with hourly aggregates sometimes...)
-		opdata.drop_duplicates(['Time'], inplace = True)
-		opdata.dropna(subset = ['Time'], inplace = True)
-
-		if start_dt_str:
-			opdata = opdata.loc[opdata['Time'] >= start_dt,]
-		if end_dt_str:
-			opdata = opdata.loc[opdata['Time'] < end_dt + timedelta(days = 1),]
-
-		# If returning all as a single dataframe, rename 'Value' to the Sensor ID
-		if combine_all:
-			# Rename Value variable to its corresponding Sensor ID
-			opdata.rename(columns = {'Value': sid}, inplace = True)
-			opdata.set_index(['Time','Year','Month'], inplace = True)
-		elif output_csv:
-			op_fname = 'cr2c_opdata_{}_{}_{}_{}.csv'.format(stype, sid, tperiod, ttype)
-			op_path = os.path.join(outdir, op_fname)
-			opdata.to_csv(op_path, index = False, encoding = 'utf-8')
-
-		opdata_all['{}_{}_{}_{}_AVERAGES'.format(stype, sid, tperiod, ttype)] = opdata
-
-	if combine_all:
-
-		opdata_all = pd.concat(
-			[df for df in list(opdata_all.values())], 
-			axis = 1, 
-			ignore_index = False,
-			sort = True
-		) 
-		opdata_all.reset_index(inplace = True)
-	
-		if output_csv:
-
-			os.chdir(outdir)
-			stypes = list(set(stypes))
-			op_fname = 'cr2c_opdata_' + '_'.join(stypes) + '.csv'
-			opdata_all.to_csv(op_fname, encoding = 'utf-8')
-
-	return opdata_all
-
-
-# Returns a list of the tables in the op SQL database
-def	get_table_names():
-
-	# Create connection to SQL database
-	data_dir = cut.get_dirs()[0]
-	os.chdir(data_dir)
-	conn = sqlite3.connect('cr2c_opdata.db')
-	cursor = conn.cursor()
-	# Execute
-	cursor.execute(""" SELECT name FROM sqlite_master WHERE type ='table'""")
-
-	return [names[0] for names in cursor.fetchall()]
-
-
-# Takes a list of file paths and concatenates all of the files
-def cat_dfs(ip_paths, idx_var = None, output_csv = False, outdir = None, output_dsn = None):
-	
-	concat_dlist = []
-	for ip_path in ip_paths:
-		concat_dlist.append(pd.read_csv(ip_path, low_memory = False))
-	concat_data = pd.concat([df for df in concat_dlist], ignore_index = True, sort = True)
-	# Remove duplicates (may be some overlap)
-	concat_data.drop_duplicates(keep = 'first', inplace = True)
-
-	if output:
-
-		concat_data.to_csv(
-			os.path.join(outdir, output_dsn), 
-			index = False, 
-			encoding = 'utf-8'
-		)
-	
-	return concat_data
 
 
 # Primary op data aggregation class
@@ -325,7 +186,7 @@ class opdata_agg:
 		return tots_res
 
 
-	def run_agg(self, stypes, sids, tperiods, ttypes, output_csv = False, output_sql = True, outdir = None):
+	def run_agg(self, stypes, sids, tperiods, ttypes, create_table = False, output_csv = False, outdir = None):
 
 		# Clean inputs
 		ttypes, stypes = [ttype.upper() for ttype in ttypes], [stype.upper() for stype in stypes]
@@ -344,34 +205,12 @@ class opdata_agg:
 			# Reorder columns
 			tots_res = tots_res[['Time','Year','Month','Value']].copy()
 
+			table_name = '{}_{}_{}_{}_AVERAGES'.format(stype, sid, tperiod, ttype)
 			if output_csv:
 				if not outdir:
 					outdir = askdirectory()
-				os.chdir(outdir)
-				tots_res.to_csv('{}_{}_{}_{}_AVERAGES.csv'.\
-					format(stype, sid, tperiod, ttype), index = False, encoding = 'utf-8')
+				out_dsn = table_name + '.csv'
+				tots_res.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
 
 			# Load data to Google BigQuery
-			projectid = 'cr2c-monitoring'
-			dataset_id = 'opdata'
-			# Make sure only new records are being appended to the dataset
-			tots_res_already = \
-				get_data(
-					[stype],
-					[sid],
-					[tperiod],
-					[ttype], 
-					combine_all = False
-				)['{}_{}_{}_{}_AVERAGES'.format(stype, sid, tperiod, ttype)]
-
-			tots_res_new = tots_res.loc[~tots_res['Time'].isin(tots_res_already['Time']),:]
-			# Remove duplicates and missing values
-			tots_res_new.dropna(inplace = True)
-			tots_res_new.drop_duplicates(inplace = True)
-			# Write to gbq table
-			if not tots_res_new.empty:
-				tots_res_new.to_gbq(
-					'{}.{}_{}_{}_{}_AVERAGES'.format(dataset_id, stype, sid, tperiod, ttype), 
-					projectid, 
-					if_exists = 'append'
-				)
+			cut.write_to_db(tots_res,'cr2c-monitoring','opdata', table_name, create_mode = create_table)

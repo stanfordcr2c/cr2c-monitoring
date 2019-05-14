@@ -2,29 +2,23 @@
 ## Utilities
 import os 
 from datetime import datetime as dt
+from datetime import timedelta
 import pandas as pd
 import numpy as np
 import json
 import sys
 import warnings
-
+    
 # Suppress Warnings
 if not sys.warnoptions:
-    warnings.simplefilter("ignore")
-
-# Google Cloud Debugger (need to activate if using Python3)
-try:
-    import googleclouddebugger
-    googleclouddebugger.enable()
-except ImportError:
-    pass
+    warnings.simplefilter("ignore") 
 
 ## CR2C
 from dependencies import cr2c_labdata as lab
 from dependencies import cr2c_opdata as op
 from dependencies import cr2c_fielddata as fld
 from dependencies import cr2c_validation as val
-from dependencies import cr2c_utils as cut
+from dependencies import cr2c_utils as cr2c_utils
 
 ## Dash/Plotly
 import dash
@@ -44,16 +38,16 @@ app.scripts.config.serve_locally = True
 #================= Create datetimea layout map from existing data =================#
 
 lab_types = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
-op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI','LEVEL','COND'] 
+op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI','LEVEL','COND','POWER'] 
 val_types = ['cod_balance','vss_params','instr_validation']
 selection_vars = ['Stage','Type','Sensor ID']
 selectionID, selection, click, history = [None]*4
 cr2c_dtypes = {'Lab Data': {},'Operational Data': {},'Validation': {}}
 
 # Load data
-lab_data = lab.get_data(lab_types)
-val_data = val.get_data(val_types)
-op_tables = op.get_table_names()
+lab_data = cut.get_data('labdata',lab_types)
+val_data = cut.get_data('valdata',val_types)
+op_tables = cut.get_table_names('opdata', local = False)
 
 # Load lab_type variables and their stages/types
 for lab_type in lab_types:
@@ -583,22 +577,20 @@ def get_series(
             # Retrieve data
             try: # Try querying hourly data
                 
-                dfsub = op.get_data([dtype], [sid], [1], ['HOUR'])
+                table_name = '{}_{}_1_HOUR_AVERAGES'.format(dtype, sid)
+                dfsub = cut.get_data('opdata', [table_name])[table_name]
                 
             except: # Otherwise only available as minute data
                 
                 # Load minute data
-                dfsub = op.get_data([dtype], [sid], [1],['MINUTE'])
+                table_name = '{}_{}_1_MINUTE_AVERAGES'.format(dtype, sid)
+                dfsub = cut.get_data('opdata', [table_name])[table_name]
                 # Group to hourly data
                 dfsub.loc[:,'Time'] = op_data['Time'].values.astype('datetime64[h]')
                 dfsub = dfsub.groupby('Time').mean()
                 dfsub.reset_index(inplace = True)
 
-            if dtype in ['GAS','WATER']:
-                
-                dfsub.loc[:,sid] = dfsub[sid]*60
-
-            dfsub.loc[:,'yvar'] = dfsub[sid]
+            dfsub.loc[:,'yvar'] = dfsub['Value']
             seriesName = seriesNamePrefix + sid
 
             subSeries = {'seriesName': seriesName}
@@ -687,6 +679,9 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
 
     # Initialize empty list of output dataframes
     dflist = []
+    # Add missing values to every day (if no observation)
+    dfsub = pad_na(dfsub, 'Time')
+
     # Filter data by dates
     if start_date:
 
@@ -927,5 +922,5 @@ def get_layout(dataRequested, axes_dict, time_resolution, time_order):
 
 if __name__ == '__main__':
 
-    app.run_server(debug = True)
+    app.run_server(debug = True, host = '0.0.0.0', port = 8080)
 
