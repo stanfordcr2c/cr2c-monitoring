@@ -1,6 +1,6 @@
 ## Synopsis
 
-The cr2c-monitoring project manages the data systems for the Bill & Cloy Codiga Resource Recovery Center (CR2C). CR2C produces three principal streams of data: laboratory data from water quality and other testing, operational data from the facility's automated sensors, and field data collected by the facility's operators in their daily checks of the plant's performance. The scripts in this repository process and output these data streams to a single data store, perform various analyses to monitor and validate the plant's performance on a day to day basis, and integrate important information from all data into a single, online visualization and data query platform. 
+The cr2c-monitoring project manages the data systems for the Bill & Cloy Codiga Resource Recovery Center (CR2C). CR2C produces three principal streams of data: laboratory data from water quality and other testing, operational data from the facility's automated sensors, and field data collected by the facility's operators in their daily checks of the plant's performance. The scripts in this repository process and output these data streams to a single data store, perform various analyses to monitor and validate the plant's performance on a daily basis, and integrate important information from all data into a single, online visualization and data querying platform. 
 
 ## contributors
 
@@ -74,23 +74,7 @@ This project is based on Python 3 and makes use of Python's data management modu
 
 All dependencies are listed in the "requirements.txt" document in the repository. 
 
-We recommend that you download [Anaconda](https://www.anaconda.com/download/#macos) for easy managing and updating of virtual python environments. With Anaconda, a new virtual environment can easily be created from a dependencies file:
-
-`conda create --name cr2c-monitoring --file requirements.txt`
-
-or a list of dependencies can be installed into an existing environment: 
-
-`conda install --name myenv --file requirements.txt`
-
-See Anaconda's [documentation](https://conda.io/docs/user-guide/tasks/manage-environments.html) for more details on managing environments. 
-
-Alternatively, all dependencies can be installed with pip:
-
-`pip install -r requirements.txt`
-
-Virtual environments can also be managed with Python 3's [venv](https://docs.python.org/3/library/venv.html) module
-
-## Data Structures
+## Data data-structures
 
 ### Laboratory Data
 
@@ -127,7 +111,7 @@ Each table in the cr2c_opdata.db store contains four variables:
 * The year of the time period in question ("Year")
 * The month of the time period in question ("Month")
 * The value read by the sensor (Value). Note, when querying these data, the "Value" variable name can be changed to the corresponding sensor id to permit easy merging of multiple sensor readings into a single wide table (see [Operational Data: get_data](#opgetdata) documentation below for more details)
-
+ 
 __Operational Data Schematic:__
 
 ![](src/cr2c-opdata-schematic.png)

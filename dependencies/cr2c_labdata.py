@@ -24,7 +24,6 @@ import sys
 # CR2C
 from dependencies import cr2c_utils as cut
 
-
 # Main lab data class (where all processing/plotting occurs)
 class labrun:
 	

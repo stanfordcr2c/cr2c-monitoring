@@ -18,7 +18,7 @@ from dependencies import cr2c_labdata as lab
 from dependencies import cr2c_opdata as op
 from dependencies import cr2c_fielddata as fld
 from dependencies import cr2c_validation as val
-from dependencies import cr2c_utils as cut
+from dependencies import cr2c_utils as cr2c_utils
 
 ## Dash/Plotly
 import dash

@@ -1,8 +1,7 @@
 '''
 	This script calculates totals and averages for any given op data point(s),
 	time period, and date range for which a raw eDNA query has been run (and a csv file
-	for that query obtained)
-	If desired, also outputs plots and summary tables
+	for that query obtained) 
 '''
 
 from __future__ import print_function
