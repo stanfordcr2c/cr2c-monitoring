@@ -163,7 +163,7 @@ def get_data(
 
 def write_to_db(
 	df, projectid, dataset_id, table_name, 
-	create_mode = False,
+	if_exists = 'append',
 	local = False, local_dir = None
 ):
 
@@ -177,7 +177,7 @@ def write_to_db(
 		key = 'Dkey'
 
 	# If creating table (eg if necessary to modify gbq table schema)
-	if create_mode:
+	if if_exists == 'replace':
 		df_new = df.copy()
 	else:
 		df_already = get_data(dataset_id, [table_name])[table_name]
@@ -190,7 +190,7 @@ def write_to_db(
 
 	# Write to gbq table
 	if not df_new.empty:
-		df_new.to_gbq('{}.{}'.format(dataset_id, table_name), projectid, if_exists = 'append')
+		df_new.to_gbq('{}.{}'.format(dataset_id, table_name), projectid, if_exists = if_exists)
 
 
 # Function for merging tables in a dictionary by a set of id variables

@@ -30,7 +30,7 @@ def clean_varname(varname):
 	return varname[:128]
 
 
-def process_data(pydir, table_name = 'DailyLogResponsesV2', create_table = False):
+def process_data(pydir, table_name = 'DailyLogResponsesV2', if_exists = 'append'):
 
 	# Get the log data from gsheets
 	fielddata = cut.get_gsheet_data(table_name, pydir)
@@ -41,6 +41,6 @@ def process_data(pydir, table_name = 'DailyLogResponsesV2', create_table = False
 	fielddata.columns = colnames_cln
 	fielddata.loc[:,'Dkey'] = fielddata['TIMESTAMP'].astype(str)
 	# Load data to Google BigQuery
-	cut.write_to_db(fielddata,'cr2c-monitoring','fielddata', table_name, create_mode = create_table)
+	cut.write_to_db(fielddata,'cr2c-monitoring','fielddata', table_name, if_exists = if_exists)
 
 
