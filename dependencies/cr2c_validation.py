@@ -419,7 +419,7 @@ class cr2c_validation:
 		start_dt_str = None, end_dt_str = None, 
 		fld_varnames = None, 
 		ltypes = None, lstages = None, 
-		create_table = None,
+		if_exists = 'append',
 		run_op_report = False, ip_path = None,
 		output_csv = False,
 		outdir = None
@@ -569,7 +569,7 @@ class cr2c_validation:
 			)
 
 		# Load COD Balance data to database(s)
-		cut.write_to_db(instr_val_long,'cr2c-monitoring','valdata','instr_validation', create_mode = create_table)
+		cut.write_to_db(instr_val_long,'cr2c-monitoring','valdata','instr_validation', if_exists = if_exists)
 
 		return instr_val_long
 
