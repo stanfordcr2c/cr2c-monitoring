@@ -73,7 +73,7 @@ class cr2c_validation:
 		return COD_diss_conc
 
 
-	def get_biotech_params(self, end_dt_str, nweeks, create_cod_balance_table = False, create_vss_params_table = False, output_csv = False, outdir = None):
+	def get_biotech_params(self, end_dt_str, nweeks, if_exists_cod_balance_table = 'append', if_exists_vss_params_table = 'append', output_csv = False, outdir = None):
 		
 		# Window for moving average calculation
 		ma_win = 1
@@ -403,8 +403,8 @@ class cr2c_validation:
 			)
 
 		#Load COD Balance data to database(s)
-		cut.write_to_db(vss_params_long,'cr2c-monitoring','valdata','vss_params', create_mode = create_vss_params_table)
-		cut.write_to_db(cod_bal_long,'cr2c-monitoring','valdata','cod_balance', create_mode = create_cod_balance_table)
+		cut.write_to_db(vss_params_long,'cr2c-monitoring','valdata','vss_params', if_exists = if_exists_vss_params_table)
+		cut.write_to_db(cod_bal_long,'cr2c-monitoring','valdata','cod_balance', if_exists = if_exists_cod_balance_table)
 
 		return cod_bal_long, vss_params_long
 

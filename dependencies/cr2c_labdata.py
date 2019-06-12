@@ -40,10 +40,11 @@ class labrun:
 	def get_stage_descs(self):
 
 		conditions = [
-			self.ldata['Stage'] == 'DAFMBREFF',
-			self.ldata['Stage'] == 'DAFMBRMLSS',
-			self.ldata['Stage'] == 'RAFMBREFF',
-			self.ldata['Stage'] == 'RAFMBRMLSS',
+			self.ldata['Stage'] == 'AF',
+			self.ldata['Stage'] == 'D-EFF',
+			self.ldata['Stage'] == 'DM',
+			self.ldata['Stage'] == 'R-EFF',
+			self.ldata['Stage'] == 'RM',
 			self.ldata['Stage'] == 'RAW',
 			self.ldata['Stage'] == 'GRIT',
 			self.ldata['Stage'] == 'MS',
@@ -53,7 +54,7 @@ class labrun:
 			self.ldata['Stage'] == 'STD',
 		]
 		choices = [
-			'Duty AFMBR Effluent','Duty AFMBR MLSS',
+			'AFBR','Duty AFMBR Effluent','Duty AFMBR MLSS',
 			'Research AFMBR Effluent','Research AFMBR MLSS',
 			'Raw Influent','Grit Tank','Microscreen','MESH','Lake Water','Blank','Standard'
 		]
@@ -163,7 +164,7 @@ class labrun:
 			CSNos = [str(el + 1) for el in list(range(24))]
 			# Correct stage abbreviations
 			correct_stages = \
-				['BLANK','STD','LW','RAW','GRIT','MS','AFBR','DAFMBRMLSS','DAFMBREFF','RAFMBRMLSS','RAFMBREFF','MESH'] 
+				['BLANK','STD','LW','RAW','GRIT','MS','AF','DM','D-EFF','RM','R-EFF','MESH'] 
 			# Add stages particular to a composite sampler
 			correct_stages_all = \
 				correct_stages +\
@@ -291,7 +292,7 @@ class labrun:
 
 	# The main caller that executes all methods to read data from Google Sheets, clean and reformat it. 
 	# Performs necessary computations on laboratory results, converts all data to a long format, and outputs the result to the cr2c_labdata.db data store.
-	def process_data(self, create_table = False, pydir = None):
+	def process_data(self, if_exists = 'append', pydir = None):
 		
 		# Start loop through the gsheets
 		for ltype in self.ltype_list:
@@ -529,7 +530,7 @@ class labrun:
 			ldata_long = ldata_long[colnames[-1:] + colnames[0:-1]]
 
 			# Load data to Google BigQuery
-			cut.write_to_db(ldata_long, 'cr2c-monitoring','labdata', ltype, create_mode = create_table)
+			cut.write_to_db(ldata_long, 'cr2c-monitoring','labdata', ltype, if_exists = if_exists)
 
 
 	# Performs a pandas melt procedure on the lab data with the right column ordering

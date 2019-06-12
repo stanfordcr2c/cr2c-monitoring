@@ -186,7 +186,7 @@ class opdata_agg:
 		return tots_res
 
 
-	def run_agg(self, stypes, sids, tperiods, ttypes, create_table = False, output_csv = False, outdir = None):
+	def run_agg(self, stypes, sids, tperiods, ttypes, if_exists = 'append', output_csv = False, outdir = None):
 
 		# Clean inputs
 		ttypes, stypes = [ttype.upper() for ttype in ttypes], [stype.upper() for stype in stypes]
@@ -213,4 +213,4 @@ class opdata_agg:
 				tots_res.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
 
 			# Load data to Google BigQuery
-			cut.write_to_db(tots_res,'cr2c-monitoring','opdata', table_name, create_mode = create_table)
+			cut.write_to_db(tots_res,'cr2c-monitoring','opdata', table_name, if_exists = if_exists)
