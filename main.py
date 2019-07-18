@@ -18,7 +18,7 @@ from dependencies import cr2c_labdata as lab
 from dependencies import cr2c_opdata as op
 from dependencies import cr2c_fielddata as fld
 from dependencies import cr2c_validation as val
-from dependencies import cr2c_utils as cr2c_utils
+from dependencies import cr2c_utils as cut
 
 ## Dash/Plotly
 import dash
@@ -32,8 +32,8 @@ from flask import Flask
 server = Flask(__name__)
 app = dash.Dash(__name__, server = server)
 app.config['suppress_callback_exceptions'] = True
-app.css.config.serve_locally = True
-app.scripts.config.serve_locally = True
+# app.css.config.serve_locally = True
+# app.scripts.config.serve_locally = True
 
 #================= Create datetimea layout map from existing data =================#
 
@@ -46,7 +46,7 @@ cr2c_dtypes = {'Lab Data': {},'Operational Data': {},'Validation': {}}
 
 # Load data
 lab_data = cut.get_data('labdata',lab_types)
-val_data = cut.get_data('valdata',val_types)
+val_data  = cut.get_data('valdata',val_types)
 op_tables = cut.get_table_names('opdata', local = False)
 
 # Load lab_type variables and their stages/types

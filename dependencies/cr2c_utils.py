@@ -141,7 +141,7 @@ def get_data(
 		df.drop_duplicates(inplace = True)
 		# Create datetime variable and remove missing timestamp values
 		df.loc[:,time_var] = pd.to_datetime(df[time_var])
-		df.dropna(subset = [time_var], inplace = True)
+		df = df.dropna(subset = [time_var], inplace = True)
 		# Sort by Dkey
 		df.sort_values([key], inplace = True)
 
