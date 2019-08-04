@@ -32,17 +32,17 @@ from flask import Flask
 server = Flask(__name__)
 app = dash.Dash(__name__, server = server)
 app.config['suppress_callback_exceptions'] = True
-# app.css.config.serve_locally = True
-# app.scripts.config.serve_locally = True
+app.css.config.serve_locally = True
+app.scripts.config.serve_locally = True
 
 #================= Create datetimea layout map from existing data =================#
 
-lab_types = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
-op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI','LEVEL','COND','POWER'] 
-val_types = ['cod_balance','vss_params','instr_validation']
+lab_types = [lab_type for lab_type in cut.get_table_names('labdata') if lab_type != 'WASTED_SOLIDS']
+op_types = [op_type.split('_')[0] for op_type in cut.get_table_names('opdata')]
+val_types = cut.get_table_names('valdata')
 selection_vars = ['Stage','Type','Sensor ID']
 selectionID, selection, click, history = [None]*4
-cr2c_dtypes = {'Lab Data': {},'Operational Data': {},'Validation': {}}
+cr2c_ddict = {'Lab Data': {},'Operational Data': {},'Validation': {}}
 
 # Load data
 lab_data = cut.get_data('labdata',lab_types)
@@ -54,42 +54,42 @@ for lab_type in lab_types:
 
     if lab_type in ['TSS_VSS','COD','VFA','BOD']:
 
-        cr2c_dtypes['Lab Data'][lab_type] = {
+        cr2c_ddict['Lab Data'][lab_type] = {
             'Stage': list(lab_data[lab_type]['Stage'].unique()),
             'Type': list(lab_data[lab_type]['Type'].unique())
         }
 
     elif lab_type == 'GASCOMP':
 
-        cr2c_dtypes['Lab Data'][lab_type] = {
+        cr2c_ddict['Lab Data'][lab_type] = {
             'Type': list(lab_data[lab_type]['Type'].unique())
         }   
 
     else:
 
-        cr2c_dtypes['Lab Data'][lab_type] = {
+        cr2c_ddict['Lab Data'][lab_type] = {
             'Stage': list(lab_data[lab_type]['Stage'].unique())
         }
 
 for op_type in op_types:
 
-    sids = [table_name.split('_')[1] for table_name in op_tables if table_name.split('_')[0] == op_type]
-    sids = list(set(sids))
-    ttypes = [table_name.split('_')[3] for table_name in op_tables if table_name.split('_')[0] == op_type]
-    cr2c_dtypes['Operational Data'][op_type] = {'Sensor ID': sids}
+    sids    = [table_name.split('_')[1] for table_name in op_tables if table_name.split('_')[0] == op_type]
+    sids    = list(set(sids))
+    ttypes  = [table_name.split('_')[3] for table_name in op_tables if table_name.split('_')[0] == op_type]
+    cr2c_ddict['Operational Data'][op_type] = {'Sensor ID': sids}
 
 
 val_type_descs = {'cod_balance': 'COD Balance','vss_params': 'Process Parameters','instr_validation': 'Instrument Validation'}
 for val_type in val_types:
 
     val_type_desc = val_type_descs[val_type]
-    cr2c_dtypes['Validation'][val_type_desc] = {
+    cr2c_ddict['Validation'][val_type_desc] = {
         'Type': list(val_data[val_type]['Type'].unique())
     }    
 
     if val_type == 'instr_validation':
 
-        cr2c_dtypes['Validation'][val_type_desc] = {
+        cr2c_ddict['Validation'][val_type_desc] = {
             'Sensor ID': list(val_data[val_type]['Sensor_ID'].unique())
         } 
 
@@ -106,15 +106,15 @@ tab_selected_style = {
     'padding': '6px','height':'32px'
 }
 
-for dclass in cr2c_dtypes:
+for dclass in cr2c_ddict:
 
     # Create nested Div to put in dtype-tab-container
     cr2c_objects[dclass]['tab'] = \
         html.Div([
             dcc.Tabs(
                 id = '{}-dtype-tab'.format(dclass),
-                children = [dcc.Tab(label = dtype, value = dtype, style = tab_style, selected_style = tab_selected_style) for dtype in cr2c_dtypes[dclass]],
-                value = list(cr2c_dtypes[dclass].keys())[0],style = {'verticalAlign':'middle'}
+                children = [dcc.Tab(label = dtype, value = dtype, style = tab_style, selected_style = tab_selected_style) for dtype in cr2c_ddict[dclass]],
+                value = list(cr2c_ddict[dclass].keys())[0],style = {'verticalAlign':'middle'}
             ),
             html.Div(
                 id = '{}-selection-container'.format(dclass),
@@ -122,24 +122,24 @@ for dclass in cr2c_dtypes:
             )
         ])
 
-    for dtype in cr2c_dtypes[dclass]:
+    for dtype in cr2c_ddict[dclass]:
 
         cr2c_objects[dclass][dtype] = {}
         cr2c_objects[dclass][dtype]['tab'] = html.Div([
             dcc.Tabs(
                 id = '{}-{}-vtype-tab'.format(dclass, dtype),
-                children = [dcc.Tab(label = vtype, value = vtype, style = tab_style, selected_style = tab_selected_style) for vtype in cr2c_dtypes[dclass][dtype]],
-                value = list(cr2c_dtypes[dclass][dtype].keys())[0]
+                children = [dcc.Tab(label = vtype, value = vtype, style = tab_style, selected_style = tab_selected_style) for vtype in cr2c_ddict[dclass][dtype]],
+                value = list(cr2c_ddict[dclass][dtype].keys())[0]
             ),
             html.Div(id = '{}-{}-selection-container'.format(dclass, dtype))
         ])
 
-        for vtype in cr2c_dtypes[dclass][dtype]:
+        for vtype in cr2c_ddict[dclass][dtype]:
 
             cr2c_objects[dclass][dtype][vtype] = html.Div([
                 dcc.Checklist(
                     id = '{}-{}-{}-selection'.format(dclass, dtype, vtype),
-                    options = [{'label': value, 'value': value} for value in cr2c_dtypes[dclass][dtype][vtype] if value],
+                    options = [{'label': value, 'value': value} for value in cr2c_ddict[dclass][dtype][vtype] if value],
                     values = [],labelStyle={'display': 'inline-block',"marginTop": "10"}
                 )
             ],
@@ -164,7 +164,7 @@ layoutChildren = [
             id = 'dclass-tab', 
             value = 'Lab Data',
             style = {'height':'55','color':'#d0d0e1','textAlign':'center','verticalAlign':'middle','font-size':'16px'},
-            children = [dcc.Tab(label = dclass, value = dclass, selected_style = {'backgroundColor':'#9fabbe','color':'#0f2540'}) for dclass in cr2c_dtypes],
+            children = [dcc.Tab(label = dclass, value = dclass, selected_style = {'backgroundColor':'#9fabbe','color':'#0f2540'}) for dclass in cr2c_ddict],
             colors = {"primary": "#2e3f5d"}
         ),
         style = {'backgroundColor':'#0f2540','color':'#d0d0e1'}
@@ -232,11 +232,11 @@ layoutChildren = [
     html.Div(id = 'output-container', children = '{}', style = {'display': 'none'})
 ]
 
-for dclass in cr2c_dtypes:
+for dclass in cr2c_ddict:
 
-    for dtype in cr2c_dtypes[dclass]:
+    for dtype in cr2c_ddict[dclass]:
 
-        for vtype in cr2c_dtypes[dclass][dtype]:
+        for vtype in cr2c_ddict[dclass][dtype]:
 
             layoutChildren.append(html.Div(id = '{}-{}-{}-history'.format(dclass, dtype, vtype), style = {'display': 'none'}))
             layoutChildren.append(html.Div(id = '{}-{}-{}-reset-selection'.format(dclass, dtype, vtype), style = {'display': 'none'}))
@@ -250,7 +250,7 @@ app.layout = html.Div(id = 'page-content', children = layoutChildren, style = {'
     Output('selection-container','children'),
     [Input('dclass-tab','value')]
 )
-def display_tab(dclass):
+def dclass_tab(dclass):
     return cr2c_objects[dclass]['tab']
 
 
@@ -270,15 +270,15 @@ def generate_dclass_dtype_tab(dclass, dtype):
     return dclass_dtype_tab
 
 
-def generate_dclass_dtype_vtype_tab(dclass, dtype, vtype):
+def generate_dclass_dtype_vtype_selection(dclass, dtype, vtype):
 
-    def dclass_dtype_vtype_tab(dclass, dtype, vtype):
+    def dclass_dtype_vtype_selection(dclass, dtype, vtype):
         try:
             return cr2c_objects[dclass][dtype][vtype]
         except:
             return 
 
-    return dclass_dtype_vtype_tab
+    return dclass_dtype_vtype_selection
 
 
 def generate_update_selection_history(selectionID, selection):
@@ -298,7 +298,7 @@ def generate_load_selection_value(selectionID, jhistory):
     return load_selection_value
 
 
-for dclass in cr2c_dtypes:
+for dclass in cr2c_ddict:
 
     # Create selection containers for each dclass and dtype
     app.callback(
@@ -306,7 +306,7 @@ for dclass in cr2c_dtypes:
         [Input('dclass-tab','value'), Input('{}-dtype-tab'.format(dclass),'value')]
     )(generate_dclass_dtype_tab(dclass, dtype))
 
-    for dtype in cr2c_dtypes[dclass]:
+    for dtype in cr2c_ddict[dclass]:
 
         # Create selection containers for each dclass and dtype
         app.callback(
@@ -315,9 +315,9 @@ for dclass in cr2c_dtypes:
             Input('dclass-tab','value'), Input('{}-dtype-tab'.format(dclass),'value'),
             Input('{}-{}-vtype-tab'.format(dclass, dtype),'value')
             ]
-        )(generate_dclass_dtype_vtype_tab(dclass, dtype, vtype))
+        )(generate_dclass_dtype_vtype_selection(dclass, dtype, vtype))
 
-        for vtype in cr2c_dtypes[dclass][dtype]:
+        for vtype in cr2c_ddict[dclass][dtype]:
 
             # Update selection history div with current selection
             app.callback(
@@ -376,25 +376,25 @@ def load_data_selection(
 ):
 
     selections = [json.loads(selection) for selection in locals().values() if selection]
-    dataRequested = {}
+    dataSelected = {}
 
     for selection in selections:
 
         dclass, dtype, vtype = list(selection.keys())[0].split('-')[0:3]
         selectionVals = list(selection.values())[0]
 
-        if dclass in dataRequested:
+        if dclass in dataSelected:
 
-            if dtype in dataRequested[dclass]:
-                dataRequested[dclass][dtype][vtype] = selectionVals
+            if dtype in dataSelected[dclass]:
+                dataSelected[dclass][dtype][vtype] = selectionVals
 
             else:
-                dataRequested[dclass][dtype] = {vtype: selectionVals}
+                dataSelected[dclass][dtype] = {vtype: selectionVals}
 
         else:
-            dataRequested[dclass] = {dtype: {vtype: selectionVals}}
+            dataSelected[dclass] = {dtype: {vtype: selectionVals}}
 
-    return json.dumps(dataRequested)
+    return json.dumps(dataSelected)
 
 
 @app.callback(
@@ -408,9 +408,9 @@ def load_data_selection(
     ]
 )
 
-def render_plot(dataRequested, time_resolution, time_order, start_date, end_date):
+def render_plot(dataSelected, time_resolution, time_order, start_date, end_date):
 
-    dataRequested = json.loads(dataRequested)
+    dataSelected = json.loads(dataSelected)
     df = pd.DataFrame([])
     seriesList = []
     plotFormat = {}
@@ -418,50 +418,49 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
     seriesNo = 1
     size = 6
     dashTypes = ("solid", "dot", "dash", "longdash", "dashdot", "longdashdot")
-    
-    # Number of data classes are being plotted
-    nclasses = len(list(dataRequested.keys()))
 
     # Number of distinct axis types being plotted     
-    req_dtypes = []
-    for dclass in dataRequested:
-        for dtype in dataRequested[dclass]:
-            req_dtypes.append(dtype)
+    sel_dtypes = []
+    for dclass in dataSelected:
+        for dtype in dataSelected[dclass]:
+            sel_dtypes.append(dtype)
+
     # Limit to unique data types 
-    req_dtypes = list(set(req_dtypes))
+    sel_dtypes = list(set(sel_dtypes))
     axes_dict = {}
-    for req_dtype_ind,req_dtype in enumerate(req_dtypes):
-        axes_dict[req_dtype] = str(req_dtype_ind + 1)
+    for req_dtype_ind,req_dtype in enumerate(sel_dtypes):
+        axes_dict[req_dtype] = str(req_dtype_ind + 1) 
 
-    for dclass in dataRequested:
+    for dclass in dataSelected:
 
-        for dtype in dataRequested[dclass]:
+        for dtype in dataSelected[dclass]:
 
-            nseries = get_nseries(dataRequested)
+            nseries = get_nseries(dataSelected)
             if nseries == 1:
                 seriesNamePrefix = ''
             else:
                 seriesNamePrefix = dtype + ': '
 
-            for vtype in dataRequested[dclass][dtype]:
+            for vtype in dataSelected[dclass][dtype]:
 
                 if dclass == 'Lab Data':
 
-                    stages = retrieve_value(dataRequested[dclass][dtype],'Stage')
-                    types = retrieve_value(dataRequested[dclass][dtype],'Type')
+                    stages = retrieve_value(dataSelected[dclass][dtype],'Stage')
+                    types = retrieve_value(dataSelected[dclass][dtype],'Type')
                     mode = 'lines+markers'
-                    if nclasses > 1:
+                    # Larger size if more than one dclass is being plotted
+                    if len(list(dataSelected.keys())) > 1:
                         size = 10
 
                 if dclass == 'Operational Data':
 
-                    sids = dataRequested[dclass][dtype]['Sensor ID']
+                    sids = dataSelected[dclass][dtype]['Sensor ID']
                     mode = 'lines'
 
                 if dclass == 'Validation':
 
-                    sids  = retrieve_value(dataRequested[dclass][dtype],'Sensor ID')
-                    types = retrieve_value(dataRequested[dclass][dtype],'Type')
+                    sids  = retrieve_value(dataSelected[dclass][dtype],'Sensor ID')
+                    types = retrieve_value(dataSelected[dclass][dtype],'Type')
                     mode = 'markers'
 
                 plotFormat['size'] = size
@@ -479,15 +478,15 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
             )
             seriesNo += 1
 
-    layout = get_layout(dataRequested, axes_dict, time_resolution, time_order)
+    layout = get_layout(dataSelected, axes_dict, time_resolution, time_order)
     return {'data': seriesList  , 'layout': layout}
 
 
-def get_nseries(dataRequested):
+def get_nseries(dataSelected):
 
     nseries = 0
-    for dclass in dataRequested:
-        for dtype in dataRequested[dclass]:
+    for dclass in dataSelected:
+        for dtype in dataSelected[dclass]:
             nseries += 1
     return nseries
 
@@ -684,14 +683,17 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
 
     # Filter data by dates
     if start_date:
-
         start_date = dt.strptime(start_date,'%Y-%m-%d')
-        dfsub = dfsub[dfsub['Time'] >= start_date]
+    else:
+        start_date = dt(2017, 5, 10)
 
     if end_date:
-
         end_date = dt.strptime(end_date,'%Y-%m-%d')
-        dfsub = dfsub[dfsub['Time'] <= end_date]
+    else:
+        end_date = dt.now()
+
+    dfsub = dfsub[dfsub['Time'] >= start_date]
+    dfsub = dfsub[dfsub['Time'] <= end_date]
 
     # Set time resolution of data
     if time_resolution == 'Minute':
@@ -783,6 +785,7 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
         dfsub.reset_index(inplace = True)
         return [{'data': dfsub,'timeSuffix': ''}]
 
+    # Otherwise output a list of series corresonding to each timebin
     else:  
 
         if time_order == 'By Month' and time_resolution == 'Weekly': 
@@ -802,7 +805,7 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
         return dflist
 
 
-def get_layout(dataRequested, axes_dict, time_resolution, time_order):
+def get_layout(dataSelected, axes_dict, time_resolution, time_order):
 
     layoutItems = {'height': 700}
     position = 0.5
@@ -874,12 +877,9 @@ def get_layout(dataRequested, axes_dict, time_resolution, time_order):
 
         layoutItems['xaxis']['type'] = 'linear'
 
-    axisSides = ['right','left']
-    axisSigns = [-1,1]
+    for dclass in dataSelected:
 
-    for dclass in dataRequested:
-
-        for dtype in dataRequested[dclass]:
+        for dtype in dataSelected[dclass]:
 
             if dtype == 'COD Balance':
                 layoutItems['barmode'] = 'stack'
@@ -895,9 +895,9 @@ def get_layout(dataRequested, axes_dict, time_resolution, time_order):
                 position = 0
             else:
                 anchor = 'free'
-                position = (axisNo + 1) % 2 + axisSigns[axisNo % 2]*np.floor((axisNo/2))*0.05
+                position = (axisNo + 1) % 2 + [-1,1][axisNo % 2]*np.floor((axisNo/2))*0.05
 
-            axisSide = axisSides[axisNo % 2]
+            axisSide = ['left','right'][axisNo % 2]
             layoutItems[yaxisKey] = {
                 'title': yaxisTitles[dtype],
                 'anchor': anchor,
