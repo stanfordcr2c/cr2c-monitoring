@@ -141,9 +141,11 @@ def get_data(
 		df.drop_duplicates(inplace = True)
 		# Create datetime variable and remove missing timestamp values
 		df.loc[:,time_var] = pd.to_datetime(df[time_var])
-		df = df.dropna(subset = [time_var], inplace = True)
-		# Sort by Dkey
-		df.sort_values([key], inplace = True)
+		df.dropna(subset = [time_var], inplace = True)
+
+		if not df.empty:
+			# Sort by Dkey
+			df.sort_values([key], inplace = True)
 
 		# Subset to dates of interest
 		if start_dt_str:
