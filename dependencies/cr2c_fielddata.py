@@ -25,10 +25,10 @@ from dependencies import cr2c_utils as cut
 def clean_varname(varname):
 
 	# Remove all special characters
-	varname = re.sub(r'\W+','',varname)
+	varname = re.sub(r'[^a-zA-Z\d\s]','',varname)
 	# Replace spaces with a '_'
 	varname = varname.replace(' ','_')
-	# Convert to upper case
+	# Convert to upper
 	varname = varname.upper()
 
 	# Pands gbq has 128 character limit for variable names
