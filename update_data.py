@@ -69,7 +69,7 @@ def update_data(
     # Update field data
     if fld_update:
         # Field Data
-        fld.process_data(pydir = pydir, table_name = 'DailyLogResponsesV3', if_exists = 'replace')
+        fld.process_data(pydir = pydir, table_name = 'DailyLogResponsesV3')
 
     # Update operational data
     if op_update:
@@ -132,10 +132,10 @@ def update_data(
 
 update_data(
     pydir = '/Volumes/GoogleDrive/Shared drives/CR2C.Box/Monitoring Data and Procedures/Python/GoogleProjectsAdmin',
-    lab_update = False,
-    fld_update = False,
-    op_update = False,
-        hmi_path = '/Users/josebolorinos/Google Drive/Codiga Center/lbre-cr2c-col.stanford.edu/cr2c_opdata_edna_template_20190811050838.csv',
+    lab_update = True,
+    fld_update = True,
+    op_update = True,
+        hmi_path = '/Volumes/GoogleDrive/My Drive/Old Google Drive/Codiga Center/lbre-cr2c-col.stanford.edu/cr2c_opdata_edna_template_20190902103920.csv',
         hour_sids = 
             ['AT201','AT303','AT306','AT309'] + 
             ['AT203','AT305','AT308','AT311'] + 
@@ -154,13 +154,12 @@ update_data(
             ['DPIT300','DPIT301'] +
             ['PIT700']
         ,
-        op_start_dt_str = '7-27-19',
-        op_end_dt_str = '8-9-19',
-    val_update = True,
+        op_start_dt_str = '8-22-19',
+        op_end_dt_str = '8-31-19',
+    val_update = False,
         biotech_params = False,
-        # val_sids = ['DPIT300','DPIT301','DPIT302','PIT700','PIT702','PIT704'],
         val_sids = ['AT203','AT305','AT308','AT311','DPIT300','DPIT301','DPIT302','PIT700','PIT702','PIT704'],
-        val_end_dt_str = '8-9-19',
-        nweeks_back = 8
+        val_end_dt_str = '8-31-19',
+        nweeks_back = 4 
 
 )
