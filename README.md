@@ -155,7 +155,40 @@ __Arguments:__
     * *val_end_dt_str*: String, format 'mm-dd-yy' giving last day to check operational data for sensor validation procedure
     * *nweeks_back*: Integer, number of weeks looking back when running validation processes (relative to "val_end_dt_str")
 
-__Output:__ None
+__Example Caller:__
+update_data(
+    pydir = 'path/to/GoogleProjectsAdmin',
+    lab_update = True,
+    fld_update = True,
+    op_update = True,
+        hmi_path = 'path/to/hmi_data/hmi_data.csv',
+        hour_sids = 
+            ['AT201','AT303','AT306','AT309'] + 
+            ['AT203','AT305','AT308','AT311'] + 
+            ['FT200','FT201','FT202','FT300','FT301','FT302','FT303','FT304','FT305','FIT600'] + 
+            ['FT700','FT702','FT704'] + 
+            ['AT202','AT304','AT310'] +
+            ['AIT302'] + 
+            ['DPIT300','DPIT301','DPIT302'] +
+            ['PIT205','PIT700','PIT702'] + 
+            ['LT100','LT200','LT201','LIT300','LIT301']
+        ,
+        minute_sids = 
+            ['AT203','AT305'] +
+            ['FT305'] +
+            ['AIT302'] + 
+            ['DPIT300','DPIT301'] +
+            ['PIT700']
+        ,
+        op_start_dt_str = '8-22-19',
+        op_end_dt_str = '8-31-19',
+    val_update = False,
+        biotech_params = False,
+        val_sids = ['AT203','AT305','AT308','AT311','DPIT300','DPIT301','DPIT302','PIT700','PIT702','PIT704'],
+        val_end_dt_str = '8-31-19',
+        nweeks_back = 4 
+
+)
 
 
 ### cr2c-utils
