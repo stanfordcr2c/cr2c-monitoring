@@ -17,6 +17,8 @@ Jose Bolorinos (Operator)
   * [Field Data](#field-data)
   * [Operational Data](#operational-data)
 * [Documentation](#documentation)
+  * [update_data](#update_data)
+    * [update_data](#update_data)
   * [cr2c-utils](#cr2c-utils)
     * [get_gsheet_data](#get_gsheet_data)
     * [get_credentials](#get_credentials)
@@ -54,7 +56,7 @@ Jose Bolorinos (Operator)
     * [cr2c_validation.get_cod_bal](#cr2c_validationget_cod_bal)
     * [cr2c_validation.get_biotech_params](#cr2c_validationget_biotech_params)
     * [cr2c_validation.instr_val](#cr2c_validationinstr_val)
-  * [main.py](#mainpy)
+  * [main](#main)
     * [dclass_tab](#dclass_tab)
     * [generate_dclass_dtype_tab](#generate_dclass_dtype_tab)
     * [generate_dclass_dtype_vtype_selection](#generate_dclass_dtype_vtype_selection)
@@ -132,6 +134,30 @@ __Operational Data Schematic:__
 
 ## Documentation
 
+### update_data
+<a name ="upate_data"></a>
+
+__Description__: Function to mannually all processes that update the cr2c-monitoring dashboard app
+
+__Arguments:__
+  * *pydir*: String, directory with client secret file and google spreadsheet ids
+  * *lab_update*: Logical, runs [labrun.process_data()](#labrunprocess_data) method to update with new lab data
+  * *fld_update*: Logical, runs [process_data()](#process_data) method to update with new field measurements data
+  * *op_update*: Logical, runs [opdata_agg.run_agg()](#opdata_aggrun_agg) method on desired sids to calculate hourly or minute averages for new sensor data
+    * *hmi_path*: String, path to the csv file with raw sensor data
+    * *hour_sids*: List of sensor ids whose hourly averages we want to update
+    * *minute_sids*: List of sensor ids whose minute averages we want to update
+    * *op_start_dt_str*: String, format 'mm-dd-yy' giving first day for which to calculate hourly/minute averages 
+    * *op_end_dt_str*: String, format 'mm-dd-yy' giving last day for which to calculate hourly/minute averages
+  * *val_update*: Logical, runs processes that update data validation parameters
+    * *biotech_params*: Logical, runs [cr2c_validation.get_biotech_params()](#cr2c_validationget_biotech_params) and [cr2c_validation.get_cod_bal()](#cr2c_validationget_cod_bal) to update biotech validation parameters
+    * *val_sids*: List of sensors for which to run validation process
+    * *val_end_dt_str*: String, format 'mm-dd-yy' giving last day to check operational data for sensor validation procedure
+    * *nweeks_back*: Integer, number of weeks looking back when running validation processes (relative to "val_end_dt_str")
+
+__Output:__ None
+
+
 ### cr2c-utils
 
 __Description__: For now just a set of general-purpose methods that are useful to any of the cr2c-monitoring scripts 
@@ -154,7 +180,7 @@ __Output:__
 __Description:__ Gets valid user credentials from storage. If nothing has been stored, or if the stored credentials are invalid, the OAuth2 flow is completed to obtain the new credentials.
 
 __Arguments:__ 
-* *pydir*: Directory with client secret file and google spreadsheet ids
+* *pydir*: String, directory with client secret file and google spreadsheet ids
 
 __Output:__
 * _credentials_: user credentials for accessing google spreadsheet file
@@ -170,7 +196,7 @@ __Arguments:__
 * *table_names*: List of table names within each dataset from which we want to query data
 * *varnames*: (Optional)List of variables within each table for which we want data. Default is None
 * *local*: (Optional) Boolean indicating whether or not a local database is being queried, or the google BigQuery database. Default is False
-* *local_dir*: (Optional, Required if local = True) String giving the director of the local database. Default is None
+* *local_dir*: (Optional, Required if local = True) String giving the directory of the local database. Default is None
 * *start_dt_str*: (Optional) date string to filter the result by date, sets the minimum date of the resulting data. Format MUST BE 'mm-dd-yy' so 1-1-18 for January 1st, 2018
 * *end_dt_str*: (Optional) Same as *start_dt_str* but sets the maximum date of the resulting data
 * *output_csv*: (Optional) Logical, if True, will output a csv file for each of the *ltypes* specified above
@@ -408,9 +434,9 @@ __Output:__
 
 __Description:__ A class for managing the cleaning and aggregation of operational (sensor) data
 __Inputs:__ 
-  * *start_dt_str*: A string of format 'mm-dd-yy' giving the first date for which aggregated data are desired
-  * *end_dt_str*: A string of format 'mm-dd-yy' giving the last date for which aggregated data are desired
-  * *ip_path*: A string giving the directory containing the csv file with raw sensor data
+  * *start_dt_str*: String, format 'mm-dd-yy', gives the first date for which aggregated data are desired
+  * *end_dt_str*: String, format 'mm-dd-yy', gives the last date for which aggregated data are desired
+  * *ip_path*: String, path to the csv file with raw sensor data
 
 <a name="opdata_aggprep_opdata"></a>
 #### opdata_agg.prep_opdata(stype, sid)
@@ -438,10 +464,10 @@ __Output:__
 
 __Description:__ Runs a report to obtain aggregated data for a series of stypes, sids, tperiods and ttypes in series. Outputs the result to the cr2c_opdata.db data store, and, if requested, to a series of csv files
 __Arguments:__
-  * *stypes*: A list of strings giving type of sensor whose operational data are being prepped (types can be one of stypes described in [get_data](#opget_data) above)
-  * *sids*: A list of sensor ids  of length equal to *stypes* whose aggregated data we want
-  * *tperiods*: A list of integers of length equal to *stypes* giving the lengths of the time periods for which we are obtaining aggregated data.
-  * *ttypes*: A list of time period type strings of length equal to *stypes* giving the time period "type" corresponding to the time period length
+  * *stypes*: List of strings giving type of sensor whose operational data are being prepped (types can be one of stypes described in [get_data](#opget_data) above)
+  * *sids*: List of sensor ids  of length equal to *stypes* whose aggregated data we want
+  * *tperiods*: List of integers of length equal to *stypes* giving the lengths of the time periods for which we are obtaining aggregated data.
+  * *ttypes*: List of time period type strings of length equal to *stypes* giving the time period "type" corresponding to the time period length
   * *output_csv*: (Optional) Logical, if true will output aggregated data to csv file(s) (depending on whether *combine_all* is True or False)
   * *output_sql*: (Optional) Logical, if true will output aggregated data to the cr2c_opdata.db data store
   * *outdir*: (Optional, required if *output_csv* is True) String giving the directory to output csv file(s) to
@@ -604,7 +630,7 @@ cr2c_val.instr_val(
   lstages = ['Microscreen','AFBR']
 )
 
-### main.py
+### main
 
 __Description__: This is the interactive data visualization and download app that queries operational data generated at the Bill and Cloy Codiga Resource Recovery Center (CR2C). Its dependencies are [cr2c-utils](#cr2c-utils), [cr2c-labdata](#cr2c-labdata), [cr2c-opdata](#cr2c-opdata),[cr2c-fielddata](#cr2c-fielddata), and [cr2c-validation](#cr2c-validation).The data visualized in the app include lab data, field data, sensor data and validation data.
 
