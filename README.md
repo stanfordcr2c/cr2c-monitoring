@@ -151,7 +151,7 @@ __Arguments:__
     * *op_end_dt_str*: String, format 'mm-dd-yy' giving last day for which to calculate hourly/minute averages
   * *val_update*: Logical, runs processes that update data validation parameters
     * *biotech_params*: Logical, runs [cr2c_validation.get_biotech_params()](#cr2c_validationget_biotech_params) and [cr2c_validation.get_cod_bal()](#cr2c_validationget_cod_bal) to update biotech validation parameters
-    * *val_sids*: List of sensors for which to run validation process
+    * *val_sids*: List of sensors for which to run validation process (as part of [cr2c_validation.instr_val()](#cr2c_validationinstr_val) function)
     * *val_end_dt_str*: String, format 'mm-dd-yy' giving last day to check operational data for sensor validation procedure
     * *nweeks_back*: Integer, number of weeks looking back when running validation processes (relative to "val_end_dt_str")
 
