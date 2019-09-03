@@ -223,7 +223,7 @@ layoutChildren = [
         [html.Button(
             'Clear Selection', 
             id = 'reset-selection-button', 
-            n_clicks = 0,className='button button-primary',
+            n_clicks = 0, 
             style = {'height': '45px', 'width': '220px','font-size': '15px'}
         )],
         style = {'padding': '1px','backgroundColor':'white','textAlign':'right'},
