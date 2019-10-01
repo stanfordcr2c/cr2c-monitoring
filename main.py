@@ -18,7 +18,7 @@ from dependencies import cr2c_labdata as lab
 from dependencies import cr2c_opdata as op
 from dependencies import cr2c_fielddata as fld
 from dependencies import cr2c_validation as val
-from dependencies import cr2c_utils as cr2c_utils
+from dependencies import cr2c_utils as cut
 
 ## Dash/Plotly
 import dash
@@ -26,7 +26,11 @@ import dash_html_components as html
 import dash_core_components as dcc
 import plotly.graph_objs as go
 from dash.dependencies import Input, Output, State, Event
-from flask import Flask
+import flask
+from flask import Flask, send_file, jsonify
+import urllib
+from zipfile import ZipFile
+import io
 
 # Initialize dash app
 server = Flask(__name__)
@@ -37,16 +41,16 @@ app.scripts.config.serve_locally = True
 
 #================= Create datetimea layout map from existing data =================#
 
-lab_types = ['PH','COD','TSS_VSS','ALKALINITY','VFA','GASCOMP','AMMONIA','SULFATE','TKN','BOD']
-op_types = ['WATER','GAS','TMP','PRESSURE','PH','TEMP','DPI','LEVEL','COND','POWER'] 
-val_types = ['cod_balance','vss_params','instr_validation']
+lab_types = [lab_type for lab_type in cut.get_table_names('labdata') if lab_type != 'WASTED_SOLIDS']
+op_types = [op_type.split('_')[0] for op_type in cut.get_table_names('opdata')]
+val_types = cut.get_table_names('valdata')
 selection_vars = ['Stage','Type','Sensor ID']
 selectionID, selection, click, history = [None]*4
-cr2c_dtypes = {'Lab Data': {},'Operational Data': {},'Validation': {}}
+cr2c_ddict = {'Lab Data': {},'Operational Data': {},'Validation': {}}
 
 # Load data
 lab_data = cut.get_data('labdata',lab_types)
-val_data = cut.get_data('valdata',val_types)
+val_data  = cut.get_data('valdata',val_types)
 op_tables = cut.get_table_names('opdata', local = False)
 
 # Load lab_type variables and their stages/types
@@ -54,42 +58,42 @@ for lab_type in lab_types:
 
     if lab_type in ['TSS_VSS','COD','VFA','BOD']:
 
-        cr2c_dtypes['Lab Data'][lab_type] = {
+        cr2c_ddict['Lab Data'][lab_type] = {
             'Stage': list(lab_data[lab_type]['Stage'].unique()),
             'Type': list(lab_data[lab_type]['Type'].unique())
         }
 
     elif lab_type == 'GASCOMP':
 
-        cr2c_dtypes['Lab Data'][lab_type] = {
+        cr2c_ddict['Lab Data'][lab_type] = {
             'Type': list(lab_data[lab_type]['Type'].unique())
         }   
 
     else:
 
-        cr2c_dtypes['Lab Data'][lab_type] = {
+        cr2c_ddict['Lab Data'][lab_type] = {
             'Stage': list(lab_data[lab_type]['Stage'].unique())
         }
 
 for op_type in op_types:
 
-    sids = [table_name.split('_')[1] for table_name in op_tables if table_name.split('_')[0] == op_type]
-    sids = list(set(sids))
-    ttypes = [table_name.split('_')[3] for table_name in op_tables if table_name.split('_')[0] == op_type]
-    cr2c_dtypes['Operational Data'][op_type] = {'Sensor ID': sids}
+    sids    = [table_name.split('_')[1] for table_name in op_tables if table_name.split('_')[0] == op_type]
+    sids    = list(set(sids))
+    ttypes  = [table_name.split('_')[3] for table_name in op_tables if table_name.split('_')[0] == op_type]
+    cr2c_ddict['Operational Data'][op_type] = {'Sensor ID': sids}
 
 
 val_type_descs = {'cod_balance': 'COD Balance','vss_params': 'Process Parameters','instr_validation': 'Instrument Validation'}
 for val_type in val_types:
 
     val_type_desc = val_type_descs[val_type]
-    cr2c_dtypes['Validation'][val_type_desc] = {
+    cr2c_ddict['Validation'][val_type_desc] = {
         'Type': list(val_data[val_type]['Type'].unique())
     }    
 
     if val_type == 'instr_validation':
 
-        cr2c_dtypes['Validation'][val_type_desc] = {
+        cr2c_ddict['Validation'][val_type_desc] = {
             'Sensor ID': list(val_data[val_type]['Sensor_ID'].unique())
         } 
 
@@ -106,15 +110,15 @@ tab_selected_style = {
     'padding': '6px','height':'32px'
 }
 
-for dclass in cr2c_dtypes:
+for dclass in cr2c_ddict:
 
     # Create nested Div to put in dtype-tab-container
     cr2c_objects[dclass]['tab'] = \
         html.Div([
             dcc.Tabs(
                 id = '{}-dtype-tab'.format(dclass),
-                children = [dcc.Tab(label = dtype, value = dtype, style = tab_style, selected_style = tab_selected_style) for dtype in cr2c_dtypes[dclass]],
-                value = list(cr2c_dtypes[dclass].keys())[0],style = {'verticalAlign':'middle'}
+                children = [dcc.Tab(label = dtype, value = dtype, style = tab_style, selected_style = tab_selected_style) for dtype in cr2c_ddict[dclass]],
+                value = list(cr2c_ddict[dclass].keys())[0],style = {'verticalAlign':'middle'}
             ),
             html.Div(
                 id = '{}-selection-container'.format(dclass),
@@ -122,24 +126,24 @@ for dclass in cr2c_dtypes:
             )
         ])
 
-    for dtype in cr2c_dtypes[dclass]:
+    for dtype in cr2c_ddict[dclass]:
 
         cr2c_objects[dclass][dtype] = {}
         cr2c_objects[dclass][dtype]['tab'] = html.Div([
             dcc.Tabs(
                 id = '{}-{}-vtype-tab'.format(dclass, dtype),
-                children = [dcc.Tab(label = vtype, value = vtype, style = tab_style, selected_style = tab_selected_style) for vtype in cr2c_dtypes[dclass][dtype]],
-                value = list(cr2c_dtypes[dclass][dtype].keys())[0]
+                children = [dcc.Tab(label = vtype, value = vtype, style = tab_style, selected_style = tab_selected_style) for vtype in cr2c_ddict[dclass][dtype]],
+                value = list(cr2c_ddict[dclass][dtype].keys())[0]
             ),
             html.Div(id = '{}-{}-selection-container'.format(dclass, dtype))
         ])
 
-        for vtype in cr2c_dtypes[dclass][dtype]:
+        for vtype in cr2c_ddict[dclass][dtype]:
 
             cr2c_objects[dclass][dtype][vtype] = html.Div([
                 dcc.Checklist(
                     id = '{}-{}-{}-selection'.format(dclass, dtype, vtype),
-                    options = [{'label': value, 'value': value} for value in cr2c_dtypes[dclass][dtype][vtype] if value],
+                    options = [{'label': value, 'value': value} for value in cr2c_ddict[dclass][dtype][vtype] if value],
                     values = [],labelStyle={'display': 'inline-block',"marginTop": "10"}
                 )
             ],
@@ -164,7 +168,7 @@ layoutChildren = [
             id = 'dclass-tab', 
             value = 'Lab Data',
             style = {'height':'55','color':'#d0d0e1','textAlign':'center','verticalAlign':'middle','font-size':'16px'},
-            children = [dcc.Tab(label = dclass, value = dclass, selected_style = {'backgroundColor':'#9fabbe','color':'#0f2540'}) for dclass in cr2c_dtypes],
+            children = [dcc.Tab(label = dclass, value = dclass, selected_style = {'backgroundColor':'#9fabbe','color':'#0f2540'}) for dclass in cr2c_ddict],
             colors = {"primary": "#2e3f5d"}
         ),
         style = {'backgroundColor':'#0f2540','color':'#d0d0e1'}
@@ -223,7 +227,19 @@ layoutChildren = [
         [html.Button(
             'Clear Selection', 
             id = 'reset-selection-button', 
-            n_clicks = 0,className='button button-primary',
+            n_clicks = 0, className='button button-primary',
+            style = {'height': '45px', 'width': '220px','font-size': '15px'}
+        )],
+        style = {'padding': '1px','backgroundColor':'white','textAlign':'right'},
+    ),
+    html.Div(
+        [html.A(
+            'Download',
+            id='download-zip',
+            download = 'data.zip',
+            href="/download_csv/",
+            target="_blank",
+            n_clicks = 0, className='button button-primary',
             style = {'height': '45px', 'width': '220px','font-size': '15px'}
         )],
         style = {'padding': '1px','backgroundColor':'white','textAlign':'right'},
@@ -232,11 +248,11 @@ layoutChildren = [
     html.Div(id = 'output-container', children = '{}', style = {'display': 'none'})
 ]
 
-for dclass in cr2c_dtypes:
+for dclass in cr2c_ddict:
 
-    for dtype in cr2c_dtypes[dclass]:
+    for dtype in cr2c_ddict[dclass]:
 
-        for vtype in cr2c_dtypes[dclass][dtype]:
+        for vtype in cr2c_ddict[dclass][dtype]:
 
             layoutChildren.append(html.Div(id = '{}-{}-{}-history'.format(dclass, dtype, vtype), style = {'display': 'none'}))
             layoutChildren.append(html.Div(id = '{}-{}-{}-reset-selection'.format(dclass, dtype, vtype), style = {'display': 'none'}))
@@ -250,7 +266,7 @@ app.layout = html.Div(id = 'page-content', children = layoutChildren, style = {'
     Output('selection-container','children'),
     [Input('dclass-tab','value')]
 )
-def display_tab(dclass):
+def dclass_tab(dclass):
     return cr2c_objects[dclass]['tab']
 
 
@@ -265,20 +281,23 @@ def reset_selection():
 def generate_dclass_dtype_tab(dclass, dtype):
 
     def dclass_dtype_tab(dclass, dtype):
-        return cr2c_objects[dclass][dtype]['tab']
+        try:
+            return cr2c_objects[dclass][dtype]['tab']
+        except:
+            return
 
     return dclass_dtype_tab
 
 
-def generate_dclass_dtype_vtype_tab(dclass, dtype, vtype):
+def generate_dclass_dtype_vtype_selection(dclass, dtype, vtype):
 
-    def dclass_dtype_vtype_tab(dclass, dtype, vtype):
+    def dclass_dtype_vtype_selection(dclass, dtype, vtype):
         try:
             return cr2c_objects[dclass][dtype][vtype]
         except:
             return 
 
-    return dclass_dtype_vtype_tab
+    return dclass_dtype_vtype_selection
 
 
 def generate_update_selection_history(selectionID, selection):
@@ -298,7 +317,7 @@ def generate_load_selection_value(selectionID, jhistory):
     return load_selection_value
 
 
-for dclass in cr2c_dtypes:
+for dclass in cr2c_ddict:
 
     # Create selection containers for each dclass and dtype
     app.callback(
@@ -306,7 +325,7 @@ for dclass in cr2c_dtypes:
         [Input('dclass-tab','value'), Input('{}-dtype-tab'.format(dclass),'value')]
     )(generate_dclass_dtype_tab(dclass, dtype))
 
-    for dtype in cr2c_dtypes[dclass]:
+    for dtype in cr2c_ddict[dclass]:
 
         # Create selection containers for each dclass and dtype
         app.callback(
@@ -315,9 +334,9 @@ for dclass in cr2c_dtypes:
             Input('dclass-tab','value'), Input('{}-dtype-tab'.format(dclass),'value'),
             Input('{}-{}-vtype-tab'.format(dclass, dtype),'value')
             ]
-        )(generate_dclass_dtype_vtype_tab(dclass, dtype, vtype))
+        )(generate_dclass_dtype_vtype_selection(dclass, dtype, vtype))
 
-        for vtype in cr2c_dtypes[dclass][dtype]:
+        for vtype in cr2c_ddict[dclass][dtype]:
 
             # Update selection history div with current selection
             app.callback(
@@ -335,66 +354,39 @@ for dclass in cr2c_dtypes:
                 [State('{}-{}-{}-history'.format(dclass, dtype, vtype),'children')],
             )(generate_load_selection_value(selectionID, history))
 
+# Get a list of all hidden div inputs sending output to the output container
+op_cont_inputs = [
+    Input('{}-{}-{}-history'.format(dclass, dtype, vtype), 'children')
+        for dclass in cr2c_ddict
+            for dtype in cr2c_ddict[dclass] 
+                for vtype in cr2c_ddict[dclass][dtype] 
+]
 
-@app.callback(
-    Output('output-container','children'),
-    [
-        Input('Lab Data-PH-Stage-history','children'),
-        Input('Lab Data-COD-Stage-history','children'),
-        Input('Lab Data-COD-Type-history','children'),
-        Input('Lab Data-TSS_VSS-Stage-history','children'),
-        Input('Lab Data-TSS_VSS-Type-history','children'),
-        Input('Lab Data-ALKALINITY-Stage-history','children'),
-        Input('Lab Data-VFA-Stage-history','children'),
-        Input('Lab Data-VFA-Type-history','children'),
-        Input('Lab Data-GASCOMP-Type-history','children'),
-        Input('Lab Data-AMMONIA-Stage-history','children'),
-        Input('Lab Data-SULFATE-Stage-history','children'),
-        Input('Lab Data-TKN-Stage-history','children'),
-        Input('Lab Data-BOD-Stage-history','children'),
-        Input('Operational Data-WATER-Sensor ID-history','children'),
-        Input('Operational Data-GAS-Sensor ID-history','children'),
-        Input('Operational Data-TMP-Sensor ID-history','children'),  
-        Input('Operational Data-PRESSURE-Sensor ID-history','children'),
-        Input('Operational Data-PH-Sensor ID-history','children'),
-        Input('Operational Data-TEMP-Sensor ID-history','children'),
-        Input('Operational Data-DPI-Sensor ID-history','children'),
-        Input('Operational Data-COND-Sensor ID-history','children'),
-        Input('Operational Data-LEVEL-Sensor ID-history','children'),
-        Input('Validation-COD Balance-Type-history','children'),
-        Input('Validation-Process Parameters-Type-history','children'),
-        Input('Validation-Instrument Validation-Sensor ID-history','children')
-    ]
-)
+@app.callback(Output('output-container','children'), op_cont_inputs)
 
-def load_data_selection(
-    sel1, sel2, sel3, sel4, sel5, 
-    sel6, sel7, sel8, sel9, sel10, 
-    sel11, sel12, sel13, sel14, sel15, 
-    sel16, sel17, sel18, sel19, sel20,
-    sel21, sel22, sel23, sel24, sel25
-):
 
-    selections = [json.loads(selection) for selection in locals().values() if selection]
-    dataRequested = {}
+def load_data_selection(*args):
+
+    selections = [json.loads(selection) for selection in args if selection]
+    dataSelected = {}
 
     for selection in selections:
 
         dclass, dtype, vtype = list(selection.keys())[0].split('-')[0:3]
         selectionVals = list(selection.values())[0]
 
-        if dclass in dataRequested:
+        if dclass in dataSelected:
 
-            if dtype in dataRequested[dclass]:
-                dataRequested[dclass][dtype][vtype] = selectionVals
+            if dtype in dataSelected[dclass]:
+                dataSelected[dclass][dtype][vtype] = selectionVals
 
             else:
-                dataRequested[dclass][dtype] = {vtype: selectionVals}
+                dataSelected[dclass][dtype] = {vtype: selectionVals}
 
         else:
-            dataRequested[dclass] = {dtype: {vtype: selectionVals}}
+            dataSelected[dclass] = {dtype: {vtype: selectionVals}}
 
-    return json.dumps(dataRequested)
+    return json.dumps(dataSelected)
 
 
 @app.callback(
@@ -408,9 +400,9 @@ def load_data_selection(
     ]
 )
 
-def render_plot(dataRequested, time_resolution, time_order, start_date, end_date):
+def render_plot(dataSelected, time_resolution, time_order, start_date, end_date):
 
-    dataRequested = json.loads(dataRequested)
+    dataSelected = json.loads(dataSelected)
     df = pd.DataFrame([])
     seriesList = []
     plotFormat = {}
@@ -418,50 +410,45 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
     seriesNo = 1
     size = 6
     dashTypes = ("solid", "dot", "dash", "longdash", "dashdot", "longdashdot")
-    
-    # Number of data classes are being plotted
-    nclasses = len(list(dataRequested.keys()))
 
     # Number of distinct axis types being plotted     
-    req_dtypes = []
-    for dclass in dataRequested:
-        for dtype in dataRequested[dclass]:
-            req_dtypes.append(dtype)
+    sel_dtypes = []
+    for dclass in dataSelected:
+        for dtype in dataSelected[dclass]:
+            sel_dtypes.append(dtype)
+
     # Limit to unique data types 
-    req_dtypes = list(set(req_dtypes))
+    sel_dtypes = list(set(sel_dtypes))
     axes_dict = {}
-    for req_dtype_ind,req_dtype in enumerate(req_dtypes):
-        axes_dict[req_dtype] = str(req_dtype_ind + 1)
+    for req_dtype_ind,req_dtype in enumerate(sel_dtypes):
+        axes_dict[req_dtype] = str(req_dtype_ind + 1) 
 
-    for dclass in dataRequested:
+    for dclass in dataSelected:
 
-        for dtype in dataRequested[dclass]:
+        for dtype in dataSelected[dclass]:
 
-            nseries = get_nseries(dataRequested)
+            nseries = get_nseries(dataSelected)
             if nseries == 1:
                 seriesNamePrefix = ''
             else:
                 seriesNamePrefix = dtype + ': '
 
-            for vtype in dataRequested[dclass][dtype]:
+            for vtype in dataSelected[dclass][dtype]:
+
+                stages = retrieve_value(dataSelected[dclass][dtype],'Stage')
+                types = retrieve_value(dataSelected[dclass][dtype],'Type')
+                sids = retrieve_value(dataSelected[dclass][dtype],'Sensor ID')
 
                 if dclass == 'Lab Data':
-
-                    stages = retrieve_value(dataRequested[dclass][dtype],'Stage')
-                    types = retrieve_value(dataRequested[dclass][dtype],'Type')
                     mode = 'lines+markers'
-                    if nclasses > 1:
+                    # Larger size if more than one dclass is being plotted
+                    if len(list(dataSelected.keys())) > 1:
                         size = 10
 
                 if dclass == 'Operational Data':
-
-                    sids = dataRequested[dclass][dtype]['Sensor ID']
                     mode = 'lines'
 
                 if dclass == 'Validation':
-
-                    sids  = retrieve_value(dataRequested[dclass][dtype],'Sensor ID')
-                    types = retrieve_value(dataRequested[dclass][dtype],'Type')
                     mode = 'markers'
 
                 plotFormat['size'] = size
@@ -471,23 +458,24 @@ def render_plot(dataRequested, time_resolution, time_order, start_date, end_date
                 plotFormat['symbol'] = seriesNo
                 plotFormat['dash'] = dashTypes[(seriesNo - 1) % len(dashTypes)]
 
-            seriesList += get_series(
+            seriesList += get_data_objs(
                 dclass, dtype, 
                 time_resolution, time_order, start_date, end_date, 
                 stages, types, sids, 
-                plotFormat
+                plot = True,
+                plotFormat = plotFormat
             )
             seriesNo += 1
 
-    layout = get_layout(dataRequested, axes_dict, time_resolution, time_order)
+    layout = get_layout(dataSelected, axes_dict, time_resolution, time_order)
     return {'data': seriesList  , 'layout': layout}
 
 
-def get_nseries(dataRequested):
+def get_nseries(dataSelected):
 
     nseries = 0
-    for dclass in dataRequested:
-        for dtype in dataRequested[dclass]:
+    for dclass in dataSelected:
+        for dtype in dataSelected[dclass]:
             nseries += 1
     return nseries
 
@@ -517,85 +505,121 @@ def pad_na(df, time_var):
 
     return padded_df
 
+# Queries operational data (according to availability of hourly vs minute data)
+def query_opdata(dtype, sids):
 
-def get_series(
+    try: # Try querying hourly data
+        
+        table_names = ['{}_{}_1_HOUR_AVERAGES'.format(dtype.upper(), sid) for sid in sids]
+        if len(sids) == 1:
+            out = cut.get_data('opdata', table_names)[table_names[0]]
+        else:
+            out = cut.get_data('opdata', table_names)
+        
+    except: # Otherwise only available as minute data, needs to be aggregated to hourly
+        
+        for sid in sids:
+            # Load minute data
+            table_name = '{}_{}_1_MINUTE_AVERAGES'.format(dtype.upper(), sid)
+            df = cut.get_data('opdata', [table_name])[table_name]
+            # Group to hourly data
+            df.loc[:,'Time'] = op_data['Time'].values.astype('datetime64[h]')
+            df = df.groupby('Time').mean()
+            df.reset_index(inplace = True)
+            # If just one sid, output it directly, else output will be a dictionary of dfs
+            if len(sids) > 1:
+                out = df.copy()
+            else:
+                out[sid] = df
+
+    return out
+
+
+# Gets data either for plotting or for download to a csv
+def get_data_objs(
     dclass, dtype, 
     time_resolution, time_order, start_date, end_date, 
     stages, types, sids,
-    plotFormat
+    plot = True,
+    plotFormat = None
 ):
     
-    groupVars = ['Time']
-    series = []
+    groupvars = ['Time']
     dflist = []
-    seriesNamePrefix = plotFormat['seriesNamePrefix']
+
+    if plotFormat:
+        seriesNamePrefix = plotFormat['seriesNamePrefix']
+    else:
+        seriesNamePrefix = ''
 
     if dclass == 'Lab Data':
 
         df = lab_data[dtype]
         df.loc[:,'Time'] = df['Date_Time']
         df.loc[:,'yvar'] = df['Value']
-
+        
         if stages:
-            groupVars.append('Stage')
+            df = df.loc[df['Stage'].isin(stages),:]
+            groupvars.append('Stage')
         else:
             stages = [None]
 
         if types:
-            groupVars.append('Type') 
+            df = df.loc[df['Type'].isin(types),:]
+            groupvars.append('Type') 
         else:
             types = [None]
 
         # Average all measurements taken for a given sample
-        df = df.groupby(groupVars).mean()
+        df = df.groupby(groupvars).mean()
         df.reset_index(inplace = True) 
 
-        for stage in stages:
+        if plot:
 
-            for type_ in types:
+            for stage in stages:
 
-                if stage and type_:                
-                    dfsub = df[(df['Type'] == type_) & (df['Stage'] == stage)]
-                    seriesName = seriesNamePrefix + type_ + '-' + stage
-                elif stage:
-                    dfsub = df[df['Stage'] == stage]
-                    seriesName = seriesNamePrefix + stage
-                elif type_:
-                    dfsub = df[df['Type'] == type_]
-                    seriesName = seriesNamePrefix + type_
-                else:  
-                    continue
+                for type_ in types:
 
-                subSeries = {'seriesName': seriesName}
-                subSeries['data'] = filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, end_date)
-                dflist += [subSeries]
+                    if stage and type_:                
+                        dfsub = df[(df['Type'] == type_) & (df['Stage'] == stage)]
+                        seriesName = seriesNamePrefix + type_ + '-' + stage
+                    elif stage:
+                        dfsub = df[df['Stage'] == stage]
+                        seriesName = seriesNamePrefix + stage
+                    elif type_:
+                        dfsub = df[df['Type'] == type_]
+                        seriesName = seriesNamePrefix + type_
+                    else:  
+                        continue
+
+                    subSeries = {'seriesName': seriesName}
+                    subSeries['data'] = filter_resolve_time(dfsub, groupvars, dtype, time_resolution, time_order, start_date, end_date)
+                    dflist += [subSeries]
+
+        else:
+
+            df = filter_resolve_time(df, groupvars, dtype, time_resolution, time_order, start_date, end_date, plot = False)
 
     if dclass == 'Operational Data':
         
-        for sind, sid in enumerate(sids):
+        # Loop through sids if trying to get series for plot
+        if plot:
 
-            # Retrieve data
-            try: # Try querying hourly data
-                
-                table_name = '{}_{}_1_HOUR_AVERAGES'.format(dtype, sid)
-                dfsub = cut.get_data('opdata', [table_name])[table_name]
-                
-            except: # Otherwise only available as minute data
-                
-                # Load minute data
-                table_name = '{}_{}_1_MINUTE_AVERAGES'.format(dtype, sid)
-                dfsub = cut.get_data('opdata', [table_name])[table_name]
-                # Group to hourly data
-                dfsub.loc[:,'Time'] = op_data['Time'].values.astype('datetime64[h]')
-                dfsub = dfsub.groupby('Time').mean()
-                dfsub.reset_index(inplace = True)
+            for sid in sids:
 
-            dfsub.loc[:,'yvar'] = dfsub['Value']
-            seriesName = seriesNamePrefix + sid
+                dfsub = query_opdata(dtype, [sid])
+                dfsub.loc[:,'yvar'] = dfsub['Value']
+                seriesName = seriesNamePrefix + sid
+                subSeries = {'seriesName': seriesName}
+                subSeries['data'] = filter_resolve_time(dfsub, groupvars, dtype, time_resolution, time_order, start_date, end_date)
+                dflist += [subSeries]
 
-            subSeries = {'seriesName': seriesName}
-            subSeries['data'] = filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, end_date)
-            dflist += [subSeries]
+        # Otherwise, just query all sids at once, which returns a dictionary of pandas dataframes
+        else:
+
+            df_dict = query_opdata(dtype, sids)
+            df = cut.merge_tables(df_dict, ['Time'], measure_varnames = ['Value']*len(sids), merged_varnames = sids)
+            df = filter_resolve_time(df, groupvars, dtype, time_resolution, time_order, start_date, end_date, plot = False)
 
     if dclass == 'Validation':
 
@@ -606,76 +630,116 @@ def get_series(
 
         if dtype == 'Instrument Validation' and sids:
             types = ['Sensor Value','Validated Measurement','Error']
+            df = df.loc[df['Sensor_ID'].isin(sids),:]
+            groupvars.append('Sensor_ID')
 
-        if not types:
-            types = [None]
-        if not sids:
+        else:
             sids = [None]
 
-        for type_ in types:
+        if types:
+            df = df.loc[df['Type'].isin(types),:]
+            groupvars.append('Type')
+        else:
+            types = [None]
 
-            for sid in sids:
+        if plot:
 
-                if type_ and sid:
-                    dfsub = df[(df['Type'] == type_) & (df['Sensor_ID'] == sid)]
-                    seriesName = seriesNamePrefix + type_ + '-' + sid
-                elif type_:
-                    dfsub = df[df['Type'] == type_]
-                    seriesName = seriesNamePrefix + type_
-                elif sid:
-                    dfsub = df[df['Sensor_ID'] == sid]
-                    seriesName = seriesNamePrefix + sid
+            for type_ in types:
+
+                for sid in sids:
+
+                    if type_ and sid:
+                        dfsub = df[(df['Type'] == type_) & (df['Sensor_ID'] == sid)]
+                        seriesName = seriesNamePrefix + type_ + '-' + sid
+                    elif type_:
+                        dfsub = df[df['Type'] == type_]
+                        seriesName = seriesNamePrefix + type_
+                    elif sid:
+                        dfsub = df[df['Sensor_ID'] == sid]
+                        seriesName = seriesNamePrefix + sid
+                    else:
+                        continue
+
+                    subSeries = {'seriesName': seriesName}
+                    subSeries['data'] = filter_resolve_time(df, groupvars, dtype, time_resolution, time_order, start_date, end_date, plot = plot)
+                    dflist += [subSeries] 
+
+        else:
+
+            df = filter_resolve_time(df, groupvars, dtype, time_resolution, time_order, start_date, end_date, plot = False)
+
+    if plot:
+
+        out_obj = []
+
+        for df in dflist:
+
+            for dfsub in df['data']:
+
+                if dtype == 'COD Balance' and df['seriesName'] not in ['COD In','COD Balance: COD In']:
+
+                        out_obj.append(
+                            go.Bar(
+                                x = dfsub['data']['Time'],
+                                y = dfsub['data']['yvar'],
+                                opacity = 0.8,  
+                                name = df['seriesName'] + dfsub['timeSuffix'],
+                                xaxis = 'x1',   
+                                yaxis = plotFormat['yaxis']
+                            )
+                        )                    
+
                 else:
-                    continue
 
-                subSeries = {'seriesName': seriesName}
-                subSeries['data'] = filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, end_date)
-                dflist += [subSeries]         
+                    if dtype == 'Process Parameters':
+                        plotFormat['mode'] = 'lines+markers'
 
-    for df in dflist:
-
-        for dfsub in df['data']:
-
-            if dtype == 'COD Balance' and df['seriesName'] not in ['COD In','COD Balance: COD In']:
-
-                    series.append(
-                        go.Bar(
+                    out_obj.append(
+                        go.Scatter(
                             x = dfsub['data']['Time'],
                             y = dfsub['data']['yvar'],
+                            mode = plotFormat['mode'],
                             opacity = 0.8,  
+                            marker = {
+                                'size': plotFormat['size'], 
+                                'line': {'width': 0.5, 'color': 'white'},
+                                'symbol': plotFormat['symbol'],
+                            },
+                            line = {'dash': plotFormat['dash']},
                             name = df['seriesName'] + dfsub['timeSuffix'],
                             xaxis = 'x1',   
                             yaxis = plotFormat['yaxis']
                         )
-                    )                    
+                    )  
 
-            else:
+    # If not plotting (i.e. if downloading data) convert to a long dataframe
+    else:
 
-                if dtype == 'Process Parameters':
-                    plotFormat['mode'] = 'lines+markers'
+        if dclass == 'Lab Data':
 
-                series.append(
-                    go.Scatter(
-                        x = dfsub['data']['Time'],
-                        y = dfsub['data']['yvar'],
-                        mode = plotFormat['mode'],
-                        opacity = 0.8,  
-                        marker = {
-                            'size': plotFormat['size'], 
-                            'line': {'width': 0.5, 'color': 'white'},
-                            'symbol': plotFormat['symbol'],
-                        },
-                        line = {'dash': plotFormat['dash']},
-                        name = df['seriesName'] + dfsub['timeSuffix'],
-                        xaxis = 'x1',   
-                        yaxis = plotFormat['yaxis']
-                    )
-                )  
+            out_obj = df.loc[:, groupvars + ['Value']]
 
-    return series
+        elif dclass == 'Operational Data':
+
+            out_obj = df.loc[:, groupvars + sids]
+
+        elif dclass == 'Validation':
+
+            out_obj = df.loc[:, groupvars + ['Value']]
 
 
-def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, end_date):
+        else:
+
+            return
+
+        out_obj.to_csv('/Volumes/GoogleDrive/My Drive/Old Google Drive/Codiga Center/out_obj.csv')
+
+
+    return out_obj
+
+
+# Takes a data frame and filters, orders and groups into a desired time, splits into a list of time bins if plotting
+def filter_resolve_time(dfsub, groupvars, dtype, time_resolution, time_order, start_date, end_date, plot = True):
 
     # Initialize empty list of output dataframes
     dflist = []
@@ -684,14 +748,17 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
 
     # Filter data by dates
     if start_date:
-
         start_date = dt.strptime(start_date,'%Y-%m-%d')
-        dfsub = dfsub[dfsub['Time'] >= start_date]
+    else:
+        start_date = dt(2017, 5, 10)
 
     if end_date:
-
         end_date = dt.strptime(end_date,'%Y-%m-%d')
-        dfsub = dfsub[dfsub['Time'] <= end_date]
+    else:
+        end_date = dt.now()
+
+    dfsub = dfsub[dfsub['Time'] >= start_date]
+    dfsub = dfsub[dfsub['Time'] <= end_date]
 
     # Set time resolution of data
     if time_resolution == 'Minute':
@@ -713,7 +780,7 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
 
         dfsub.loc[:,'week'] = dfsub['Time'].dt.week
         dfsub.loc[:,'year'] = dfsub['Time'].dt.year
-        dfsub = dfsub.groupby(['year','week']).mean()
+        dfsub = dfsub.groupby(groupvars + ['year','week']).mean()
         dfsub.reset_index(inplace = True)
         dfsub.loc[:,'month'] = 1
         dfsub.loc[:,'day'] = 1
@@ -726,7 +793,7 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
 
         dfsub.loc[:,'month'] = dfsub['Time'].dt.month
         dfsub.loc[:,'year'] = dfsub['Time'].dt.year 
-        dfsub = dfsub.groupby(['year','month']).mean()
+        dfsub = dfsub.groupby(groupvars + ['year','month']).mean()
         dfsub.reset_index(inplace = True)    
         dfsub.loc[:,'day'] = 1
         dfsub.loc[:,'Time'] = pd.to_datetime(pd.DataFrame(dfsub[['year','month','day']]))
@@ -777,12 +844,21 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
         time_order == 'Chronological' or
         time_resolution == 'Hourly' and time_order == 'By Hour' or 
         time_resolution == 'Daily' and time_order == 'By Weekday' or
-        time_resolution == 'Monthly' and time_order == 'By Month' 
+        time_resolution == 'Monthly' and time_order == 'By Month' or
+        plot == False
     ):
-        dfsub = dfsub.groupby('Time').mean()
+        dfsub = dfsub.groupby(groupvars).mean()
         dfsub.reset_index(inplace = True)
-        return [{'data': dfsub,'timeSuffix': ''}]
 
+        if plot:
+
+            return [{'data': dfsub,'timeSuffix': ''}]
+
+        else:
+
+            return dfsub
+
+    # Otherwise output a list of series corresonding to each timebin
     else:  
 
         if time_order == 'By Month' and time_resolution == 'Weekly': 
@@ -802,7 +878,8 @@ def filter_resolve_time(dfsub, dtype, time_resolution, time_order, start_date, e
         return dflist
 
 
-def get_layout(dataRequested, axes_dict, time_resolution, time_order):
+# Gets plotly plot layout according to data selection and time ordering/resolution 
+def get_layout(dataSelected, axes_dict, time_resolution, time_order):
 
     layoutItems = {'height': 700}
     position = 0.5
@@ -874,12 +951,9 @@ def get_layout(dataRequested, axes_dict, time_resolution, time_order):
 
         layoutItems['xaxis']['type'] = 'linear'
 
-    axisSides = ['right','left']
-    axisSigns = [-1,1]
+    for dclass in dataSelected:
 
-    for dclass in dataRequested:
-
-        for dtype in dataRequested[dclass]:
+        for dtype in dataSelected[dclass]:
 
             if dtype == 'COD Balance':
                 layoutItems['barmode'] = 'stack'
@@ -895,9 +969,9 @@ def get_layout(dataRequested, axes_dict, time_resolution, time_order):
                 position = 0
             else:
                 anchor = 'free'
-                position = (axisNo + 1) % 2 + axisSigns[axisNo % 2]*np.floor((axisNo/2))*0.05
+                position = (axisNo + 1) % 2 + [-1,1][axisNo % 2]*np.floor((axisNo/2))*0.05
 
-            axisSide = axisSides[axisNo % 2]
+            axisSide = ['left','right'][axisNo % 2]
             layoutItems[yaxisKey] = {
                 'title': yaxisTitles[dtype],
                 'anchor': anchor,
@@ -920,7 +994,75 @@ def get_layout(dataRequested, axes_dict, time_resolution, time_order):
     return go.Layout(layoutItems)
 
 
+@app.callback(
+    Output('download-zip', 'href'),
+    [Input('output-container','children'),
+    Input('time-resolution-radio-item','value'),
+    Input('time-order-radio-item','value'),
+    Input('date-picker-range','start_date'),
+    Input('date-picker-range','end_date')]
+)
+def undate_link(dataSelected, time_resolution, time_order, start_date, end_date):
+    return '/download_csv?value={}${}${}${}${}'.format(dataSelected, time_resolution, time_order, start_date, end_date)
+
+
+@app.server.route('/download_csv')
+def download_csv():
+
+    input = flask.request.args.get('value')
+    input = input.split("$")
+    dataSelected, time_resolution, time_order, start_date, end_date = input[0], input[1], input[2], input[3], input[4]
+
+    if start_date == 'None':
+        start_date = False
+    if end_date == 'None':
+        end_date = False
+
+    dataSelected = json.loads(dataSelected)
+    df_all = {}
+
+    for dclass in dataSelected:
+        for dtype in dataSelected[dclass]:
+
+            stages = retrieve_value(dataSelected[dclass][dtype],'Stage')
+            types = retrieve_value(dataSelected[dclass][dtype],'Type')
+            sids = retrieve_value(dataSelected[dclass][dtype],'Sensor ID')
+
+            df_all[dclass + '-' + dtype] = get_data_objs(
+                dclass, dtype, 
+                time_resolution, time_order, start_date, end_date, 
+                stages, types, sids, 
+                plot = False
+            )
+
+    create_zipfile(df_all)
+
+    return send_file('data.zip',
+                     attachment_filename='data.zip',
+                     as_attachment=True)
+
+
+def create_zipfile(df_selected):
+
+    # Create a zipfile object
+    zip_object = ZipFile('data.zip', 'w')
+
+    for fileName in df_selected:
+
+        data_sub = df_selected[fileName]
+        file_name = fileName
+        data_sub.to_csv('{}.csv'.format(file_name))
+        zip_object.write('{}.csv'.format(file_name))
+
+    zip_object.close()
+
+    return zip_object
+
+
+
 if __name__ == '__main__':
 
     app.run_server(debug = True, host = '0.0.0.0', port = 8080)
+
+
 

@@ -23,14 +23,19 @@ import re
 from dependencies import cr2c_utils as cut
 
 def clean_varname(varname):
-	for char in '-:?[]()<>.,':
-		varname = varname.replace(char,'')
-		varname = varname.replace(' ','_')
-		varname = varname.upper()
+
+	# Remove all special characters
+	varname = re.sub(r'[^a-zA-Z\d\s]','',varname)
+	# Replace spaces with a '_'
+	varname = varname.replace(' ','_')
+	# Convert to upper
+	varname = varname.upper()
+
+	# Pands gbq has 128 character limit for variable names
 	return varname[:128]
 
 
-def process_data(pydir, table_name = 'DailyLogResponsesV2', if_exists = 'append'):
+def process_data(pydir, table_name = 'DailyLogResponsesV3', if_exists = 'append'):
 
 	# Get the log data from gsheets
 	fielddata = cut.get_gsheet_data(table_name, pydir)

@@ -413,31 +413,31 @@ class cr2c_validation:
 	Verify pressure and ph sensor readings from op data and manometer readings from Google sheets.
 	Calculate water head from pressure sensor readings, and compare it with the manometer readings
 	'''
-	def instr_val(
+	def get_sval(
 		self, 
-		valtypes, op_sids, 
+		val_method,
+		stypes,
+		sids, 
+		val_tags,
 		start_dt_str = None, end_dt_str = None, 
-		fld_varnames = None, 
-		ltypes = None, lstages = None, 
 		if_exists = 'append',
 		run_op_report = False, ip_path = None,
 		output_csv = False,
 		outdir = None
 	):
 
-
 		# Validation data are from field measurements (daily log sheet)
-		if fld_varnames:
+		if val_method == 'fld':
 
 			query_varnames = ['Barometer Pressure (mmHg)']
-			for varname in fld_varnames:
+			for val_tag in val_tags:
 				# Sometimes the user needs to specify a PAIR of variables (eg pressure upstream AND downstream of pump)
-				if type(varname) == tuple:
-					query_varnames.append(varname[0])
-					query_varnames.append(varname[1])
+				if type(val_tag) == tuple:
+					query_varnames.append(val_tag[0])
+					query_varnames.append(val_tag[1])
 				# Otherwise just single variable name
 				else:
-					query_varnames.append(varname)
+					query_varnames.append(val_tag)
 
 			# Clean the query variables
 			query_varnames = [fld.clean_varname(varname) for varname in query_varnames]
@@ -454,25 +454,25 @@ class cr2c_validation:
 			valdat.loc[np.isnan(valdat['BAROMETER_PRESSURE_MMHG']),'BAROMETER_PRESSURE_MMHG'] = 760
 			
 			# Loop through field variables to convert to numeric and calculate differences (if necessary)
-			for varInd,varname in enumerate(fld_varnames):
+			for varInd,varname in enumerate(val_tags):
 				if type(varname) == tuple:
-					valdat.loc[:,op_sids[varInd] + 'VAL'] = \
+					valdat.loc[:,sids[varInd] + 'VAL'] = \
 						pd.to_numeric(valdat[fld.clean_varname(varname[1])], errors = 'coerce') - \
 						pd.to_numeric(valdat[fld.clean_varname(varname[0])], errors = 'coerce')
 				else:
-					valdat[op_sids[varInd] + 'VAL'] = pd.to_numeric(valdat[fld.clean_varname(varname)], errors = 'coerce')
+					valdat[sids[varInd] + 'VAL'] = pd.to_numeric(valdat[fld.clean_varname(varname)], errors = 'coerce')
 
-			valdat = valdat[['Time','BAROMETER_PRESSURE_MMHG'] + [sid + 'VAL' for sid in op_sids]]
+			valdat = valdat[['Time','BAROMETER_PRESSURE_MMHG'] + [sid + 'VAL' for sid in sids]]
 		
 		# Validation data are from lab measurements
-		elif ltypes or lstages:
+		if val_method == 'lab':
 
 			# Get data for unique set of ltypes requested
-			valdat = cut.get_data('labdata', list(set(ltypes)))
+			valdat = cut.get_data('labdata', list(set(stypes)))
 			# Stack lab data
 			valdat_long = cut.stack_tables(valdat)
 			# valdat_long = pd.concat([cut.get_data('labdata',[ltype])[ltype] for ltype in ltypes], axis = 0, sort = True)
-			valdat_long = valdat_long.loc[valdat_long['Stage'].isin(lstages),:]
+			valdat_long = valdat_long.loc[valdat_long['Stage'].isin(val_tags),:]
 			# Convert to wide format
 			# Calculate mean by obsid to account for possibility of multiple PH measurements taken for single sample
 			valdat_long = valdat_long.groupby(['Date_Time','Stage','Type','obs_id']).mean()
@@ -480,13 +480,14 @@ class cr2c_validation:
 			valdat_wide.reset_index(inplace = True)
 			# valdat = valdatWide['Date_Time']
 			valdat = pd.DataFrame(valdat_wide['Date_Time'].values, columns = ['Time'])
-			valdat_colnames = [op_sids[lind] + 'VAL' for lind,ltype in enumerate(ltypes)]
-			for lind,ltype in enumerate(ltypes):
-				valdat[valdat_colnames[lind]] = valdat_wide['Value'][ltype][lstages[lind]]
+			valdat_colnames = [sids[sind] + 'VAL' for sind,stype in enumerate(stypes)]
+
+			for sind,stype in enumerate(stypes):
+				valdat[valdat_colnames[sind]] = valdat_wide['Value'][stype][val_tags[sind]]
 			valdat = valdat[['Time'] + valdat_colnames]
 
 
-		# Expand valdat to get copies of each logged value for each of:
+		# Expand valdat to get copies of each field measurement for each of:
 		# 10 minutes before and 10 minutes after it was entered into the google form
 		valdatList = []
 		for minDiff in range(-10,11):
@@ -496,23 +497,23 @@ class cr2c_validation:
 		valdatAll = pd.concat(valdatList, axis = 0, sort = True)
 
 		# Get op data for the element ids whose measurements are being validated
-		nsids = len(op_sids)
+		nsids = len(sids)
 		# Run op report if requested (minute level)
 		if run_op_report:
 
 			op_run = op.op_data_agg(start_dt_str, end_dt_str, ip_path = ip_path)
 			op_run.run_agg(
-				valtypes, # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
-				op_sids, # Sensor ids that you want summary data for (have to be in op data file obviously)
+				stypes, # Type of sensor (case insensitive, can be water, gas, pH, conductivity, temp, or tmp
+				sids, # Sensor ids that you want summary data for (have to be in op data file obviously)
 				[1]*nsids, # Number of minutes you want to average over
 				['MINUTE']*nsids, # Type of time period (can be "hour" or "minute")
 			)
 
 		# Retrieve data from SQL file
-		table_names = ['{}_{}_1_MINUTE_AVERAGES'.format(stype, sid) for stype, sid in zip(valtypes, op_sids)]
+		table_names = ['{}_{}_1_MINUTE_AVERAGES'.format(stype, sid) for stype, sid in zip(stypes, sids)]
 		opdat = cut.get_data('opdata', table_names, start_dt_str = start_dt_str, end_dt_str = end_dt_str)
 		# Merge tables
-		opdat = cut.merge_tables(opdat, ['Time'], ['Value']*len(op_sids), merged_varnames = op_sids)
+		opdat = cut.merge_tables(opdat, ['Time'], ['Value']*len(sids), merged_varnames = sids)
 
 		# Merge the op data with the validation data
 		valdatMerged = opdat.merge(valdatAll, on = 'Time', how = 'inner')
@@ -525,9 +526,9 @@ class cr2c_validation:
 
 		valdatStack = []
 		# Loop through each instrument to compute error
-		for sind, sid in enumerate(op_sids):
+		for sind, sid in enumerate(sids):
 
-			if valtypes[sind] == 'PRESSURE':
+			if stypes[sind] == 'PRESSURE':
 				# Convert barometric pressure readings to psi
 				valdatMerged.loc[:,'BAROMETER_PRESSURE_MMHG'] = valdatMerged['BAROMETER_PRESSURE_MMHG']*0.0193368
 				# Convert pressure to inches of head
@@ -551,25 +552,25 @@ class cr2c_validation:
 				valdatStack.append(valdatSub)
 		
 		valdatStack = pd.concat(valdatStack, sort = True)
-		instr_val_long = pd.melt(valdatStack, id_vars = ['Date_Time','Sensor ID'], value_vars = ['Sensor Value','Validated Measurement','Error'])
+		sval_long = pd.melt(valdatStack, id_vars = ['Date_Time','Sensor ID'], value_vars = ['Sensor Value','Validated Measurement','Error'])
 
-		instr_val_long.columns = ['Date_Time','Sensor_ID','Type','Value']
+		sval_long.columns = ['Date_Time','Sensor_ID','Type','Value']
 
 		# Create key unique by Date_Time, Stage, Type, and obs_id
-		instr_val_long.loc[:,'Dkey'] = instr_val_long['Date_Time'].astype(str) + instr_val_long['Sensor_ID'] + instr_val_long['Type']
+		sval_long.loc[:,'Dkey'] = sval_long['Date_Time'].astype(str) + sval_long['Sensor_ID'] + sval_long['Type']
 		# Reorder columns to put DKey as first column
-		colnames = list(instr_val_long.columns.values)
-		instr_val_long = instr_val_long[colnames[-1:] + colnames[0:-1]]
+		colnames = list(sval_long.columns.values)
+		sval_long = sval_long[colnames[-1:] + colnames[0:-1]]
 
 		if output_csv:
-			instr_val_long.to_csv(
+			sval_long.to_csv(
 				os.path.join(outdir, 'Instrument Validation.csv'),
 				index = False,
 				encoding = 'utf-8'				
 			)
 
 		# Load COD Balance data to database(s)
-		cut.write_to_db(instr_val_long,'cr2c-monitoring','valdata','instr_validation', if_exists = if_exists)
+		cut.write_to_db(sval_long,'cr2c-monitoring','valdata','instr_validation', if_exists = if_exists)
 
-		return instr_val_long
+		return sval_long
 

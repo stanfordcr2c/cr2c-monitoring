@@ -17,6 +17,8 @@ Jose Bolorinos (Operator)
   * [Field Data](#field-data)
   * [Operational Data](#operational-data)
 * [Documentation](#documentation)
+  * [update_data](#update_data)
+    * [update_data](#update_data)
   * [cr2c-utils](#cr2c-utils)
     * [get_gsheet_data](#get_gsheet_data)
     * [get_credentials](#get_credentials)
@@ -54,6 +56,20 @@ Jose Bolorinos (Operator)
     * [cr2c_validation.get_cod_bal](#cr2c_validationget_cod_bal)
     * [cr2c_validation.get_biotech_params](#cr2c_validationget_biotech_params)
     * [cr2c_validation.instr_val](#cr2c_validationinstr_val)
+  * [main](#main)
+    * [dclass_tab](#dclass_tab)
+    * [generate_dclass_dtype_tab](#generate_dclass_dtype_tab)
+    * [generate_dclass_dtype_vtype_selection](#generate_dclass_dtype_vtype_selection)
+    * [generate_update_selection_history](#generate_update_selection_history)
+    * [generate_load_selection_value](#generate_load_selection_value)
+    * [load_data_selection](#load_data_selection)
+    * [render_plot](#render_plot)
+    * [get_nseries](#get_nseries)
+    * [retrieve_value](#retrieve_value)
+    * [pad_na](#pad_na)
+    * [get_series](#get_series)
+    * [filter_resolve_time](#filter_resolve_time)
+    * [get_layout](#get_layout)
 
 ## Prerequisites
 
@@ -118,6 +134,63 @@ __Operational Data Schematic:__
 
 ## Documentation
 
+### update_data
+<a name ="upate_data"></a>
+
+__Description__: Function to mannually all processes that update the cr2c-monitoring dashboard app
+
+__Arguments:__
+  * *pydir*: String, directory with client secret file and google spreadsheet ids
+  * *lab_update*: Logical, runs [labrun.process_data()](#labrunprocess_data) method to update with new lab data
+  * *fld_update*: Logical, runs [process_data()](#process_data) method to update with new field measurements data
+  * *op_update*: Logical, runs [opdata_agg.run_agg()](#opdata_aggrun_agg) method on desired sids to calculate hourly or minute averages for new sensor data
+    * *hmi_path*: String, path to the csv file with raw sensor data
+    * *hour_sids*: List of sensor ids whose hourly averages we want to update
+    * *minute_sids*: List of sensor ids whose minute averages we want to update
+    * *op_start_dt_str*: String, format 'mm-dd-yy' giving first day for which to calculate hourly/minute averages 
+    * *op_end_dt_str*: String, format 'mm-dd-yy' giving last day for which to calculate hourly/minute averages
+  * *val_update*: Logical, runs processes that update data validation parameters
+    * *biotech_params*: Logical, runs [cr2c_validation.get_biotech_params()](#cr2c_validationget_biotech_params) and [cr2c_validation.get_cod_bal()](#cr2c_validationget_cod_bal) to update biotech validation parameters
+    * *val_sids*: List of sensors for which to run validation process (as part of [cr2c_validation.instr_val()](#cr2c_validationinstr_val) function)
+    * *val_end_dt_str*: String, format 'mm-dd-yy' giving last day to check operational data for sensor validation procedure
+    * *nweeks_back*: Integer, number of weeks looking back when running validation processes (relative to "val_end_dt_str")
+
+__Example Caller:__
+update_data(
+    pydir = 'path/to/GoogleProjectsAdmin',
+    lab_update = True,
+    fld_update = True,
+    op_update = True,
+        hmi_path = 'path/to/hmi_data/hmi_data.csv',
+        hour_sids = 
+            ['AT201','AT303','AT306','AT309'] + 
+            ['AT203','AT305','AT308','AT311'] + 
+            ['FT200','FT201','FT202','FT300','FT301','FT302','FT303','FT304','FT305','FIT600'] + 
+            ['FT700','FT702','FT704'] + 
+            ['AT202','AT304','AT310'] +
+            ['AIT302'] + 
+            ['DPIT300','DPIT301','DPIT302'] +
+            ['PIT205','PIT700','PIT702'] + 
+            ['LT100','LT200','LT201','LIT300','LIT301']
+        ,
+        minute_sids = 
+            ['AT203','AT305'] +
+            ['FT305'] +
+            ['AIT302'] + 
+            ['DPIT300','DPIT301'] +
+            ['PIT700']
+        ,
+        op_start_dt_str = '8-22-19',
+        op_end_dt_str = '8-31-19',
+    val_update = False,
+        biotech_params = False,
+        val_sids = ['AT203','AT305','AT308','AT311','DPIT300','DPIT301','DPIT302','PIT700','PIT702','PIT704'],
+        val_end_dt_str = '8-31-19',
+        nweeks_back = 4 
+
+)
+
+
 ### cr2c-utils
 
 __Description__: For now just a set of general-purpose methods that are useful to any of the cr2c-monitoring scripts 
@@ -140,7 +213,7 @@ __Output:__
 __Description:__ Gets valid user credentials from storage. If nothing has been stored, or if the stored credentials are invalid, the OAuth2 flow is completed to obtain the new credentials.
 
 __Arguments:__ 
-* *pydir*: Directory with client secret file and google spreadsheet ids
+* *pydir*: String, directory with client secret file and google spreadsheet ids
 
 __Output:__
 * _credentials_: user credentials for accessing google spreadsheet file
@@ -156,7 +229,7 @@ __Arguments:__
 * *table_names*: List of table names within each dataset from which we want to query data
 * *varnames*: (Optional)List of variables within each table for which we want data. Default is None
 * *local*: (Optional) Boolean indicating whether or not a local database is being queried, or the google BigQuery database. Default is False
-* *local_dir*: (Optional, Required if local = True) String giving the director of the local database. Default is None
+* *local_dir*: (Optional, Required if local = True) String giving the directory of the local database. Default is None
 * *start_dt_str*: (Optional) date string to filter the result by date, sets the minimum date of the resulting data. Format MUST BE 'mm-dd-yy' so 1-1-18 for January 1st, 2018
 * *end_dt_str*: (Optional) Same as *start_dt_str* but sets the maximum date of the resulting data
 * *output_csv*: (Optional) Logical, if True, will output a csv file for each of the *ltypes* specified above
@@ -394,9 +467,9 @@ __Output:__
 
 __Description:__ A class for managing the cleaning and aggregation of operational (sensor) data
 __Inputs:__ 
-  * *start_dt_str*: A string of format 'mm-dd-yy' giving the first date for which aggregated data are desired
-  * *end_dt_str*: A string of format 'mm-dd-yy' giving the last date for which aggregated data are desired
-  * *ip_path*: A string giving the directory containing the csv file with raw sensor data
+  * *start_dt_str*: String, format 'mm-dd-yy', gives the first date for which aggregated data are desired
+  * *end_dt_str*: String, format 'mm-dd-yy', gives the last date for which aggregated data are desired
+  * *ip_path*: String, path to the csv file with raw sensor data
 
 <a name="opdata_aggprep_opdata"></a>
 #### opdata_agg.prep_opdata(stype, sid)
@@ -424,10 +497,10 @@ __Output:__
 
 __Description:__ Runs a report to obtain aggregated data for a series of stypes, sids, tperiods and ttypes in series. Outputs the result to the cr2c_opdata.db data store, and, if requested, to a series of csv files
 __Arguments:__
-  * *stypes*: A list of strings giving type of sensor whose operational data are being prepped (types can be one of stypes described in [get_data](#opget_data) above)
-  * *sids*: A list of sensor ids  of length equal to *stypes* whose aggregated data we want
-  * *tperiods*: A list of integers of length equal to *stypes* giving the lengths of the time periods for which we are obtaining aggregated data.
-  * *ttypes*: A list of time period type strings of length equal to *stypes* giving the time period "type" corresponding to the time period length
+  * *stypes*: List of strings giving type of sensor whose operational data are being prepped (types can be one of stypes described in [get_data](#opget_data) above)
+  * *sids*: List of sensor ids  of length equal to *stypes* whose aggregated data we want
+  * *tperiods*: List of integers of length equal to *stypes* giving the lengths of the time periods for which we are obtaining aggregated data.
+  * *ttypes*: List of time period type strings of length equal to *stypes* giving the time period "type" corresponding to the time period length
   * *output_csv*: (Optional) Logical, if true will output aggregated data to csv file(s) (depending on whether *combine_all* is True or False)
   * *output_sql*: (Optional) Logical, if true will output aggregated data to the cr2c_opdata.db data store
   * *outdir*: (Optional, required if *output_csv* is True) String giving the directory to output csv file(s) to
@@ -589,4 +662,185 @@ cr2c_val.instr_val(
   ltypes = ['PH','PH'], 
   lstages = ['Microscreen','AFBR']
 )
+
+### main
+
+__Description__: This is the interactive data visualization and download app that queries operational data generated at the Bill and Cloy Codiga Resource Recovery Center (CR2C). Its dependencies are [cr2c-utils](#cr2c-utils), [cr2c-labdata](#cr2c-labdata), [cr2c-opdata](#cr2c-opdata),[cr2c-fielddata](#cr2c-fielddata), and [cr2c-validation](#cr2c-validation).The data visualized in the app include lab data, field data, sensor data and validation data.
+
+<a name="dclass_tab"></a>
+#### dclass_tab(*dclass*)
+
+__Description:__ Callback function that displays dtype sub-tab when dclass tab is selected
+
+__Arguments:__
+* *dclass*: A string, first layer of the data layout, including Lab Data, Operation Data, ...
+
+__Output:__
+* *cr2c_objects[dclass]['tab']*: Dash Core Components Tabs object with values equal to the dtypes in the given dclass
+
+ 
+<a name="generate_dclass_dtype_tab"></a>
+#### generate_dclass_dtype_tab(*dclass, dtype*)
+
+__Description:__ Generats a callback function that displays vtype sub-tab when dtype tab is selected
+
+__Arguments:__
+* *dclass*: A string, first layer of the data layout, including Lab Data, Operation Data, ...
+* *dtype*: A string, second layer of the data layout, including COD, pH, WATER, GAS, ...
+
+__Output:__
+* *dclass_dtype_tab*: Dash Core Components Tabs object with values equal to the vtypes in the given dclass-dtype
+
+
+
+<a name="generate_dclass_dtype_vtype_selection"></a>
+#### generate_dclass_dtype_vtype_selection(*dclass, dtype, vtype*)
+
+__Description:__ Generates a callback function that displays vtype selection object when dclass-dtype-vtype tab is selected
+
+__Arguments:__
+* *dclass*: A string, first layer of the data layout, including Lab Data, Operation Data, ...
+* *dtype*: A string, second layer of the data layout, including COD, pH, WATER, GAS, ...
+* *vtype*: A string, third layer of the data layout, including "Stage" or/and "Type", Value, ...
+
+__Output:__
+* *dclass_dtype_vtype_selection*:  Dash Core Components Checklist object with options equal to the possible values of the given vtype of the given dclass-dtype
+
+
+<a name="generate_update_selection_history"></a>
+#### generate_update_selection_history(*selectionID, selection*)
+
+__Description:__ Generates a callback function that prints selectionID and selection as a key-value pair stored as a string
+
+__Arguments:__
+* *selectionID*: The ID of the selection history of the user (corresponds to the given dclass-dtype-vtype combination)
+* *selection*: A python list with the unique vtype values in the given dclass-dtype
+
+__Output:__
+* *update_selection_history*: A string representation of the selectionID, selection key-value pair
+
+<a name="generate_load_selection_value"></a>
+#### generate_load_selection_value(*selectionID, jhistory*)
+
+__Description:__ Generates a callback function that loads a string representation of a key-value pair to a dictionary
+
+__Arguments:__
+* *selectionID*: The ID of the selection history of the user (corresponds to the given dclass-dtype-vtype combination)
+* *jhistory*: A string representation of a python list with the unique vtype values selected from the given dclass-dtype
+
+__Output:__
+* *load_selection_value*: A dictionary entry of the selectionID, jhistory key-value pair
+
+<a name="load_data_selection"></a>
+#### load_data_selection(*sel1, sel2, sel3,...*)
+
+__Description:__ Returns a string representation of a nested dictionary with the data requested by the user.
+
+__Arguments:__
+* *sel1*, *sel2*, *sel3*, ...: 25 possible selections of data generated by Codiga Center
+
+__Output:__
+* *json.dumps(dataSelected)*: A string representation of the nested dictionary corresponding to the data requested by the user.
+
+<a name="render_plot"></a>
+#### render_plot(*dataSelected, time_resolution, time_order, start_date, end_date*)
+
+__Description:__ Callback function that generates a plotly plot with the data point selected by the user/
+
+__Arguments:__
+* *dataSelected*: A nested dictionary of selected data from the user
+* *time_resolution*: A string for the desired temporal resolution of the desired data from the user, including "Hourly", "Daily", "Weekly", and "Monthly"
+* *time_order*: A string for the desired temporal order of the desired data from the user, including "Chronological", "By Hour", "By Weekday", and "By Month"
+* *start_date*: String of format 'mm-dd-yy' representing the first date for which data are desired, or empty string if not-applicable (no first date)
+* *end_date*: String of format 'mm-dd-yy' representing the last date for which data are desired, or empty string if not-applicable (no last date)
+
+__Output:__ A dictionary with 'data' and 'layout' entries for the 'figure' attribute of a Dash Core Components Graph Object
+
+<a name="get_nseries"></a>
+#### get_nseries(*dataSelected*)
+
+__Description:__ Count the number of dtype variables in the selected data from the user
+
+__Arguments:__
+* *dataSelected*: A nested dictionary of selected data from the user
+
+__Output:__
+* *nseries*: The number of dtype variables in the selected data from the user
+
+<a name="retrieve_value"></a>
+#### retrieve_value(*dictionary, key*)
+
+__Description:__ Given a key, retrieve the value if the entry is in the dictionary (avoids error if the entry is not in the dictionary).
+
+__Arguments:__
+* *dictionary*: A dictionary including different keys
+* *key*: A string object of a targeted key
+
+__Output:__
+* *dictionary[key]*: The value of the targeted key in the dictionary
+
+<a name="pad_na"></a>
+#### pad_na(*df, time_var*)
+
+__Description:__ Given a Pandas dataframe generated from the raw data, add missing values to every day without no observations. The purpose of this function is to ensure that plotly displays days without data as "gaps" between the lines in a series (otherwise a straight line will connect two non-adjacent points)
+
+__Arguments:__
+* *df*: Pandas dataframe to be padded
+* *time_var*: A string, the name of time variables of the selected data from the user
+
+__Output:__
+* *padded_df*: Pandas dataframe updated with empty entries for all days without data between the first and last days with non-missing data.
+
+<a name="get_series"></a>
+#### get_series(*dclass, dtype, time_resolution, time_order, start_date, end_date, stages, types, sids,plotFormat*)
+
+__Description:__ Given the input of dclass, dtype, desired time resolution, desired time order, start and end dates of desired time period, stages, types, sensor ids and the plot format, return a list of corresponding plotly go.Scatter objects.
+
+__Arguments:__
+* *dclass*: A string, first layer of the data layout, including Lab Data, Operation Data, ...
+* *dtype*: A string, second layer of the data layout, including COD, pH, WATER, GAS, ...
+* *time_resolution*: A string for the desired temporal resolution of the desired data from the user, including "Hourly", "Daily", "Weekly", and "Monthly"
+* *time_order*: A string for the desired temporal order of the desired data from the user, including "Chronological", "By Hour", "By Weekday", and "By Month"
+* *start_date*: String of format 'mm-dd-yy' representing the first date for which data are desired, or empty string if not-applicable (no first date)
+* *end_date*: String of format 'mm-dd-yy' representing the last date for which data are desired, or empty string if not-applicable (no last date)
+* *stages*: A string of stages for variables
+* *types*: A string of types for variables
+* *sids*: A list of sensor ids  of length equal to *stypes* whose aggregated data we want
+* *plotFormat*: A dictionary of plot formats
+
+__Output:__
+* *series*: Return a list of plot formats
+
+<a name="filter_resolve_time"></a>
+#### filter_resolve_time(*dfsub, dtype, time_resolution, time_order, start_date, end_date*)
+
+__Description:__ Given a Pandas dataframe, dtype variables, time resolution, time order, and the start and end dates of desired time period, return a list of data dictionaries which are added with missing data and resolved by the desired time resolutuon and time order
+
+__Arguments:__
+* *dfsub*: Pandas dataframe of user's desired data
+* *dtype*: A string, second layer of the data layout, including COD, pH, ...
+* *time_resolution*: A string for the desired temporal resolution of the desired data from the user, including "Hourly", "Daily", "Weekly", and "Monthly"
+* *time_order*: A string for the desired temporal order of the desired data from the user, including "Chronological", "By Hour", "By Weekday", and "By Month"
+* *start_date*: String of format 'mm-dd-yy' representing the first date for which data are desired, or empty string if not-applicable (no first date)
+* *end_date*: String of format 'mm-dd-yy' representing the last date for which data are desired, or empty string if not-applicable (no last date)
+
+__Output:__
+* *dflist*: a list of dictionaries with entries of 'data' as pandas data frames and 'timeSuffix' as strings representing the time period to be displayed in the plot legend
+
+<a name="get_layout"></a>
+#### get_layout(*dataSelected, axes_dict, time_resolution, time_order*)
+
+__Description:__ Given the nested dictionary of desired data, dictionary of axes, desired time resolution and time order, return a graph layout object
+
+__Arguments:__
+* *dataSelected*: A nested dictionary of selected data from the user
+* *axes_dict*: A dictionary of dtype keys and values corresponding to the order of the vertical axis being plotted 
+* *time_resolution*: A string for the desired temporal resolution of the desired data from the user, including "Hourly", "Daily", "Weekly", and "Monthly"
+* *time_order*: A string for the desired temporal order of the desired data from the user, including "Chronological", "By Hour", "By Weekday", and "By Month"
+
+__Output:__
+* *go.Layout(layoutItems)*: A graph objects layout object
+
+
+
 
