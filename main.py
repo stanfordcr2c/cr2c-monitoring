@@ -41,8 +41,8 @@ app.scripts.config.serve_locally = True
 
 #================= Create datetimea layout map from existing data =================#
 
-lab_types = [lab_type for lab_type in cut.get_table_names('labdata') if lab_type != 'WASTED_SOLIDS']
-op_types = [op_type.split('_')[0] for op_type in cut.get_table_names('opdata')]
+lab_types = [dtype for dtype in cut.get_table_names('labdata') if dtype != 'WASTED_SOLIDS']
+op_types = [dtype.split('_')[0] for dtype in cut.get_table_names('opdata')]
 val_types = cut.get_table_names('valdata')
 selection_vars = ['Stage','Type','Sensor ID']
 selectionID, selection, click, history = [None]*4
@@ -245,7 +245,8 @@ layoutChildren = [
         style = {'padding': '1px','backgroundColor':'white','textAlign':'right'},
     ),
     html.Div([dcc.Graph(id = 'graph-object')],style={'backgroundColor':'white'}),
-    html.Div(id = 'output-container', children = '{}', style = {'display': 'none'})
+    html.Div(id = 'output-container', children = '{}', style = {'display': 'none'}),
+    html.Div(id = 'data-container', children = '{}')#, style = {'display': 'none'})
 ]
 
 for dclass in cr2c_ddict:
@@ -261,6 +262,20 @@ for dclass in cr2c_ddict:
 app.layout = html.Div(id = 'page-content', children = layoutChildren, style = {'fontFamily':'sans-serif','backgroundColor':'white'})
 
 #================= Callback functions defining interactions =================#
+
+# Loads lightweight lab and validation data to a hidden div (avoids latency issues and keeps data updated)
+@app.callback(
+    Output('data-container','children'),
+    [Input('url','pathname')]
+)
+def preload_lightweightData(pathname):
+
+    outdict = {}
+
+    outdict['labdata'] = {dtype: cut.get_data('labdata', lab_types)[dtype].to_json() for dtype in lab_types}
+    outdict['valdata'] = {dtype: cut.get_data('valdata', val_types)[dtype].to_json() for dtype in val_types}
+
+    return json.dumps(outdict)
 
 @app.callback(
     Output('selection-container','children'),
@@ -393,6 +408,7 @@ def load_data_selection(*args):
     Output('graph-object','figure'),
     [
     Input('output-container','children'),
+    Input('data-container','children'),
     Input('time-resolution-radio-item','value'),
     Input('time-order-radio-item','value'),
     Input('date-picker-range','start_date'),
@@ -400,9 +416,10 @@ def load_data_selection(*args):
     ]
 )
 
-def render_plot(dataSelected, time_resolution, time_order, start_date, end_date):
+def render_plot(dataSelected, lightweightData, time_resolution, time_order, start_date, end_date):
 
     dataSelected = json.loads(dataSelected)
+    lightweightData = json.loads(lightweightData)
     df = pd.DataFrame([])
     seriesList = []
     plotFormat = {}
@@ -459,6 +476,7 @@ def render_plot(dataSelected, time_resolution, time_order, start_date, end_date)
                 plotFormat['dash'] = dashTypes[(seriesNo - 1) % len(dashTypes)]
 
             seriesList += get_data_objs(
+                lightweightData,
                 dclass, dtype, 
                 time_resolution, time_order, start_date, end_date, 
                 stages, types, sids, 
@@ -535,8 +553,13 @@ def query_opdata(dtype, sids):
     return out
 
 
+def unjson_dfs(dict_):
+    return {key: pd.read_json(value) for key,value in dict_.items()}
+
+
 # Gets data either for plotting or for download to a csv
 def get_data_objs(
+    lightweightData,
     dclass, dtype, 
     time_resolution, time_order, start_date, end_date, 
     stages, types, sids,
@@ -544,6 +567,8 @@ def get_data_objs(
     plotFormat = None
 ):
     
+    # Un-json data 
+    lightweightData = {key:unjson_dfs(value) for key,value in lightweightData}
     groupvars = ['Time']
     dflist = []
 
@@ -554,7 +579,7 @@ def get_data_objs(
 
     if dclass == 'Lab Data':
 
-        df = lab_data[dtype]
+        df = lightweightData['labdata'][dtype]
         df.loc[:,'Time'] = df['Date_Time']
         df.loc[:,'yvar'] = df['Value']
         
@@ -624,7 +649,7 @@ def get_data_objs(
     if dclass == 'Validation':
 
         val_type_abbrevs = {'COD Balance':'cod_balance','Process Parameters':'vss_params','Instrument Validation':'instr_validation'}
-        df = val_data[val_type_abbrevs[dtype]]  
+        df = lightweightData['valdata'][val_type_abbrevs[dtype]]
         df.loc[:,'Time'] = df['Date_Time']
         df.loc[:,'yvar'] = df['Value']
 
@@ -716,15 +741,12 @@ def get_data_objs(
     else:
 
         if dclass == 'Lab Data':
-
             out_obj = df.loc[:, groupvars + ['Value']]
 
         elif dclass == 'Operational Data':
-
             out_obj = df.loc[:, groupvars + sids]
 
         elif dclass == 'Validation':
-
             out_obj = df.loc[:, groupvars + ['Value']]
 
 
@@ -897,11 +919,11 @@ def get_layout(dataSelected, axes_dict, time_resolution, time_order):
         'OD' : 'OD (mg/L)',
         'TSS_VSS' : 'Suspended Solids (mg/L)',
         'PH' : 'pH',
-        'ALKALINITY' : r'$\\text{Alkalinity (mg/L as } CaCO_3 \\text{)}$',
+        'ALKALINITY' : 'Alkalinity mg/L as CaCO3',
         'VFA' : 'VFAs as mgCOD/L',
-        'AMMONIA' : r'$NH_3\\text{ (mg/L as N)}$',
+        'AMMONIA' : 'NH3 (mg/L as N)',
         'TKN' : 'mgTKN/L',
-        'SULFATE' : r'$\\text{mg/L }SO_4$',
+        'SULFATE' : 'mg/L SO4',
         'GASCOMP' : 'Biogas %',
         'WATER' : 'Flow (Gal)',
         'GAS': 'Biogas Production (liters)',
