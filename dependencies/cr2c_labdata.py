@@ -4,7 +4,7 @@
 	and loads the data to an SQL database (no inputs required)
 '''
 
-# Data Prep
+# Data Pre
 import numpy as np
 import pandas as pd
 import sqlite3
@@ -16,7 +16,7 @@ from google.cloud import bigquery
 
 # Utilities
 import functools
-import warnings
+import warnings 
 import os
 from os.path import expanduser
 import sys
@@ -34,7 +34,6 @@ class labrun:
 		self.file_dt = dt.now()
 		self.file_dt_str = dt.strftime(self.file_dt,'%m-%d-%y')
 		self.verbose = verbose
-
 
 	# Gets a more descriptive value for each of the treatment stages entered by operators into the lab data gsheet (as the variable "Stage").
 	def get_stage_descs(self):
@@ -342,8 +341,20 @@ class labrun:
 				value_vars = ['Soluble','Total','Particulate']
 				self.ldata = ldata_wide[value_vars].copy()
 				self.ldata.reset_index(inplace = True)
-				self.ldata.loc[:,'units'] = 'mg/L'	
+				self.ldata.loc[:,'units'] = 'mg/L'
 				self.ldata = self.ldata[['Date','Stage','obs_id'] + value_vars + ['units']].copy()
+				# Locate rows where TCOD < SCOD and show error
+				ldata_inter = ldata_wide.reset_index(inplace = False).copy()
+				problem_rows = ldata_inter.loc[ldata_inter['Particulate'] < 0,:]
+				problem_row_number = problem_rows.shape[0]
+				problem_rows_warn = \
+					'Error with total and soluble COD data: Check input on {0}.\n' +\
+					'One or more entries are incorrect, total COD should be larger than soluble COD'
+				if problem_row_number > 0:
+					error_dates = \
+						[dt.strftime(error_date,'%m-%d-%y') for error_date in problem_rows.Date]
+					print(problem_rows_warn.format(error_dates))
+					sys.exit()
 				# Rename columns
 				self.ldata.columns = ['Date','Stage','obs_id'] + value_vars + ['units']
 
@@ -439,6 +450,18 @@ class labrun:
 					(self.ldata['Temp550 (g)'] - self.ldata['Original (g)'])/\
 					self.ldata['Volume (ml)']*1E6
 				self.ldata.loc[:,'units'] = 'mg/L'
+				# Locate rows where TSS < VSS and show error
+				ldata_inter = self.ldata.reset_index(inplace = False).copy()
+				ldata_inter.loc[:,'TSS - VSS'] = ldata_inter['TSS'] - ldata_inter['VSS']
+				problem_rows = ldata_inter.loc[ldata_inter['TSS - VSS'] < 0,:]
+				problem_row_number = problem_rows.shape[0]
+				problem_rows_warn = \
+					'Error with TSS and VSS data: Check input on {0}. \nOne or more entries are incorrect, TSS should be larger than VSS'
+				if problem_row_number > 0:
+					error_dates = \
+						[dt.strftime(error_date,'%m-%d-%y') for error_date in problem_rows.Date]
+					print(problem_rows_warn.format(error_dates))
+					sys.exit()
 				# Set id and value vars for melting
 				value_vars = ['TSS','VSS']
 
