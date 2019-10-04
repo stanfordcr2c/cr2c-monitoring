@@ -228,7 +228,6 @@ def stack_tables(df_dict, keep_vars = None):
 		sort = True
 	) 
 	df_stacked.reset_index(inplace = True)
-	df_stacked.to_csv(os.path.join('/Users/josebolorinos/Google Drive/Codiga Center/debugging','df_stacked.csv'))
 	if keep_vars:
 		df_stacked = df_stacked.loc[:,keep_vars]
 
