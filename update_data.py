@@ -132,10 +132,10 @@ def update_data(
 
 update_data(
     pydir = '/Volumes/GoogleDrive/Shared drives/CR2C.Box/Monitoring Data and Procedures/Python/GoogleProjectsAdmin',
-    lab_update = True,
-    fld_update = True,
+    lab_update = False,
+    fld_update = False,
     op_update = True,
-        hmi_path = '/Volumes/GoogleDrive/My Drive/Old Google Drive/Codiga Center/lbre-cr2c-col.stanford.edu/cr2c_opdata_edna_template_20190902103920.csv',
+        hmi_path = '',
         hour_sids = 
             ['AT201','AT303','AT306','AT309'] + 
             ['AT203','AT305','AT308','AT311'] + 
@@ -149,17 +149,17 @@ update_data(
         ,
         minute_sids = 
             ['AT203','AT305'] +
-            ['FT305'] +
-            ['AIT302'] + 
+            ['FT200','FT201','FT202','FT304','FT305'] +
+            ['AIT302','AIT306','AIT307'] + 
             ['DPIT300','DPIT301'] +
             ['PIT700']
         ,
-        op_start_dt_str = '8-22-19',
-        op_end_dt_str = '8-31-19',
+        op_start_dt_str = '',
+        op_end_dt_str = '',
     val_update = False,
         biotech_params = False,
         val_sids = ['AT203','AT305','AT308','AT311','DPIT300','DPIT301','DPIT302','PIT700','PIT702','PIT704'],
-        val_end_dt_str = '8-31-19',
+        val_end_dt_str = '',
         nweeks_back = 4 
 
 )
