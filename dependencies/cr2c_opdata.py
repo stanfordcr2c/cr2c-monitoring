@@ -38,9 +38,6 @@ class opdata_agg:
 
 	def prep_opdata(self, stype, sid):
 
-		# This is the type of query (unlikely to change)
-		qtype = 'RAW'
-
 		# Read in raw op data
 		try:
 			opdata = pd.read_csv(self.ip_path, low_memory = False)
@@ -78,12 +75,28 @@ class opdata_agg:
 		elif stype == 'COND':
 			hi_limit = 5000
 			lo_limit = 0
+		elif stype == 'POWER':
+			hi_limit = 500
+			lo_limit = 0
 			
 		# Load variables and set output variable names
-		varname = 'CR2C.CODIGA.{}.SCALEDVALUE {} [{}]'
-		# Rename value variable
-		opdata.loc[:,'Value'] = \
-			opdata[varname.format(sid,'Value', qtype)]
+		varname_1 = 'CR2C.CODIGA.{}.SCALEDVALUE {} [RAW]'
+		varname_2 = 'CR2C.CODIGA.{} {} [RAW]'
+
+		try:
+			# Rename value variable
+			opdata.loc[:,'Value'] = \
+				opdata[varname_1.format(sid,'Value')]
+							# Rename and format corresponding timestamp variable
+			opdata.loc[:,'Time' ] = \
+				opdata[varname_1.format(sid, 'Time')]
+		except KeyError:
+			# Rename value variable
+			opdata.loc[:,'Value'] = \
+				opdata[varname_2.format(sid,'Value')]			
+							# Rename value variable
+			opdata.loc[:,'Time'] = \
+				opdata[varname_2.format(sid,'Time')]	
 
 		# Set low/negative values to 0 (if a flow, otherwise remove) and remove unreasonably high values
 		if stype in ['GAS','WATER','LEVEL']:
@@ -93,9 +106,6 @@ class opdata_agg:
 
 		opdata.loc[opdata['Value'] > hi_limit, 'Value'] = np.NaN
 
-		# Rename and format corresponding timestamp variable
-		opdata.loc[:,'Time' ] = \
-			opdata[varname.format(sid, 'Time', qtype)]
 		# Subset to "Time" and "Value" variables
 		opdata = opdata.loc[:,['Time','Value']]
 		# Eliminate missing values and reset index
@@ -156,6 +166,7 @@ class opdata_agg:
 		opdata_all.loc[:,'Time'] = opdata_all.index.values
 		# Get the time elapsed between adjacent Values (in minutes, dividing by np.timedelta64 converts to floating number)
 		opdata_all['TimeEl'] = (opdata_all['Time'].shift(-1) - opdata_all['Time'])/np.timedelta64(1,'m')
+
 		# Subset to the time period desired (AFTER interpolating and computing the TimeEl variable)
 		opdata_all = opdata_all.loc[self.start_dt:self.end_dt]
 

@@ -156,7 +156,7 @@ def get_data(
 		# Output csv if desired 
 		if output_csv:
 			op_dsn = 'cr2c_{}_{}.csv'.format(dataset_id, table_name)
-			df.to_csv(os.path.join(outdir, out_dsn), index = False, encoding = 'utf-8')
+			df.to_csv(os.path.join(outdir, op_dsn), index = False, encoding = 'utf-8')
 
 		all_data[table_name] = df			
 
