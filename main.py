@@ -1,5 +1,5 @@
 
-## Utilities
+# Utilities
 import os 
 from datetime import datetime as dt
 from datetime import timedelta
@@ -77,9 +77,12 @@ for lab_type in lab_types:
 
 for op_type in op_types:
 
-    sids    = [table_name.split('_')[1] for table_name in op_tables if table_name.split('_')[0] == op_type]
+    # Get sids encoded in table names
+    sids = []
+    # Adjusting by length of table list because some sids (POWER meters) have '_' in their name so splitting by '_' will give incorrect result
+    sids    = ['_'.join(table_name.split('_')[1:(len(table_name.split('_')) - 3)]) for table_name in op_tables if table_name.split('_')[0] == op_type]
     sids    = list(set(sids))
-    ttypes  = [table_name.split('_')[3] for table_name in op_tables if table_name.split('_')[0] == op_type]
+
     cr2c_ddict['Operational Data'][op_type] = {'Sensor ID': sids}
 
 
@@ -246,7 +249,7 @@ layoutChildren = [
     ),
     html.Div([dcc.Graph(id = 'graph-object')],style={'backgroundColor':'white'}),
     html.Div(id = 'output-container', children = '{}', style = {'display': 'none'}),
-    html.Div(id = 'data-container', children = '{}')#, style = {'display': 'none'})
+    html.Div(id = 'data-container', children = '{}', style = {'display': 'none'})
 ]
 
 for dclass in cr2c_ddict:
@@ -420,6 +423,7 @@ def render_plot(dataSelected, lightweightData, time_resolution, time_order, star
 
     dataSelected = json.loads(dataSelected)
     lightweightData = json.loads(lightweightData)
+    lightweightData = {key:unjson_dfs(value) for key,value in lightweightData.items()}
     df = pd.DataFrame([])
     seriesList = []
     plotFormat = {}
@@ -524,11 +528,11 @@ def pad_na(df, time_var):
     return padded_df
 
 # Queries operational data (according to availability of hourly vs minute data)
-def query_opdata(dtype, sids):
+def query_opdata(dtype, sids, time_resolution):
 
     try: # Try querying hourly data
         
-        table_names = ['{}_{}_1_HOUR_AVERAGES'.format(dtype.upper(), sid) for sid in sids]
+        table_names = ['{}_{}_1_{}_AVERAGES'.format(dtype.upper(), sid, time_resolution) for sid in sids]
         if len(sids) == 1:
             out = cut.get_data('opdata', table_names)[table_names[0]]
         else:
@@ -536,16 +540,17 @@ def query_opdata(dtype, sids):
         
     except: # Otherwise only available as minute data, needs to be aggregated to hourly
         
+        out = {}
         for sid in sids:
             # Load minute data
             table_name = '{}_{}_1_MINUTE_AVERAGES'.format(dtype.upper(), sid)
             df = cut.get_data('opdata', [table_name])[table_name]
             # Group to hourly data
-            df.loc[:,'Time'] = op_data['Time'].values.astype('datetime64[h]')
+            df.loc[:,'Time'] = df['Time'].values.astype('datetime64[h]')
             df = df.groupby('Time').mean()
             df.reset_index(inplace = True)
             # If just one sid, output it directly, else output will be a dictionary of dfs
-            if len(sids) > 1:
+            if len(sids) == 1:
                 out = df.copy()
             else:
                 out[sid] = df
@@ -567,8 +572,7 @@ def get_data_objs(
     plotFormat = None
 ):
     
-    # Un-json data 
-    lightweightData = {key:unjson_dfs(value) for key,value in lightweightData}
+    # Un-json data     
     groupvars = ['Time']
     dflist = []
 
@@ -580,7 +584,7 @@ def get_data_objs(
     if dclass == 'Lab Data':
 
         df = lightweightData['labdata'][dtype]
-        df.loc[:,'Time'] = df['Date_Time']
+        df.loc[:,'Time'] = pd.to_datetime(df['Date_Time'])
         df.loc[:,'yvar'] = df['Value']
         
         if stages:
@@ -632,7 +636,7 @@ def get_data_objs(
 
             for sid in sids:
 
-                dfsub = query_opdata(dtype, [sid])
+                dfsub = query_opdata(dtype, [sid], time_resolution)
                 dfsub.loc[:,'yvar'] = dfsub['Value']
                 seriesName = seriesNamePrefix + sid
                 subSeries = {'seriesName': seriesName}
@@ -642,13 +646,14 @@ def get_data_objs(
         # Otherwise, just query all sids at once, which returns a dictionary of pandas dataframes
         else:
 
-            df_dict = query_opdata(dtype, sids)
+            df_dict = query_opdata(dtype, sids, time_resolution)
             df = cut.merge_tables(df_dict, ['Time'], measure_varnames = ['Value']*len(sids), merged_varnames = sids)
             df = filter_resolve_time(df, groupvars, dtype, time_resolution, time_order, start_date, end_date, plot = False)
 
     if dclass == 'Validation':
 
         val_type_abbrevs = {'COD Balance':'cod_balance','Process Parameters':'vss_params','Instrument Validation':'instr_validation'}
+        # df = cut.get_data('valdata',[val_type_abbrevs[dtype]])[val_type_abbrevs[dtype]]
         df = lightweightData['valdata'][val_type_abbrevs[dtype]]
         df.loc[:,'Time'] = df['Date_Time']
         df.loc[:,'yvar'] = df['Value']
@@ -754,8 +759,6 @@ def get_data_objs(
 
             return
 
-        out_obj.to_csv('/Volumes/GoogleDrive/My Drive/Old Google Drive/Codiga Center/out_obj.csv')
-
 
     return out_obj
 
@@ -821,11 +824,6 @@ def filter_resolve_time(dfsub, groupvars, dtype, time_resolution, time_order, st
         dfsub.loc[:,'Time'] = pd.to_datetime(pd.DataFrame(dfsub[['year','month','day']]))
         dfsub.loc[:,'Days in Month'] = dfsub['Time'].dt.daysinmonth
         dfsub['secondsMult'] = dfsub['Days in Month']*3600*24
-
-        # If a flow, get the total (otherwise stay with average)
-        if dtype in ['GAS','WATER']:
-            
-            dfsub.loc[:,'yvar'] = dfsub['yvar']*dfsub['Days in Month']*24
 
     # Group data by time ordering
     if time_order == 'By Hour':
@@ -925,7 +923,7 @@ def get_layout(dataSelected, axes_dict, time_resolution, time_order):
         'TKN' : 'mgTKN/L',
         'SULFATE' : 'mg/L SO4',
         'GASCOMP' : 'Biogas %',
-        'WATER' : 'Flow (Gal)',
+        'WATER' : 'Flow (Gal/min)',
         'GAS': 'Biogas Production (liters)',
         'TMP': 'Trans-Membrane Pressure (psia)',
         'PRESSURE': 'Pressure (psig)',
@@ -935,7 +933,8 @@ def get_layout(dataSelected, axes_dict, time_resolution, time_order):
         'LEVEL': 'Water Level (in.)',
         'COD Balance': 'COD (kg)',
         'Instrument Validation': '',
-        'Process Parameters': ''
+        'Process Parameters': '',
+        'POWER': 'kW'
     }   
 
     layoutItems['xaxis'] = {
