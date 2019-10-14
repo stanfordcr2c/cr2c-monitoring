@@ -266,20 +266,6 @@ app.layout = html.Div(id = 'page-content', children = layoutChildren, style = {'
 
 #================= Callback functions defining interactions =================#
 
-# Loads lightweight lab and validation data to a hidden div (avoids latency issues and keeps data updated)
-@app.callback(
-    Output('data-container','children'),
-    [Input('url','pathname')]
-)
-def preload_lightweightData(pathname):
-
-    outdict = {}
-
-    outdict['labdata'] = {dtype: cut.get_data('labdata', lab_types)[dtype].to_json() for dtype in lab_types}
-    outdict['valdata'] = {dtype: cut.get_data('valdata', val_types)[dtype].to_json() for dtype in val_types}
-
-    return json.dumps(outdict)
-
 @app.callback(
     Output('selection-container','children'),
     [Input('dclass-tab','value')]
@@ -411,7 +397,6 @@ def load_data_selection(*args):
     Output('graph-object','figure'),
     [
     Input('output-container','children'),
-    Input('data-container','children'),
     Input('time-resolution-radio-item','value'),
     Input('time-order-radio-item','value'),
     Input('date-picker-range','start_date'),
@@ -419,11 +404,9 @@ def load_data_selection(*args):
     ]
 )
 
-def render_plot(dataSelected, lightweightData, time_resolution, time_order, start_date, end_date):
+def render_plot(dataSelected, time_resolution, time_order, start_date, end_date):
 
     dataSelected = json.loads(dataSelected)
-    lightweightData = json.loads(lightweightData)
-    lightweightData = {key:unjson_dfs(value) for key,value in lightweightData.items()}
     df = pd.DataFrame([])
     seriesList = []
     plotFormat = {}
@@ -480,7 +463,6 @@ def render_plot(dataSelected, lightweightData, time_resolution, time_order, star
                 plotFormat['dash'] = dashTypes[(seriesNo - 1) % len(dashTypes)]
 
             seriesList += get_data_objs(
-                lightweightData,
                 dclass, dtype, 
                 time_resolution, time_order, start_date, end_date, 
                 stages, types, sids, 
@@ -527,16 +509,14 @@ def pad_na(df, time_var):
 
     return padded_df
 
+
 # Queries operational data (according to availability of hourly vs minute data)
-def query_opdata(dtype, sids, time_resolution):
+def query_opdata(dtype, sids):
 
     try: # Try querying hourly data
         
-        table_names = ['{}_{}_1_{}_AVERAGES'.format(dtype.upper(), sid, time_resolution) for sid in sids]
-        if len(sids) == 1:
-            out = cut.get_data('opdata', table_names)[table_names[0]]
-        else:
-            out = cut.get_data('opdata', table_names)
+        table_names = ['{}_{}_1_HOUR_AVERAGES'.format(dtype.upper(), sid) for sid in sids]
+        out = cut.get_data('opdata', table_names)
         
     except: # Otherwise only available as minute data, needs to be aggregated to hourly
         
@@ -549,22 +529,14 @@ def query_opdata(dtype, sids, time_resolution):
             df.loc[:,'Time'] = df['Time'].values.astype('datetime64[h]')
             df = df.groupby('Time').mean()
             df.reset_index(inplace = True)
-            # If just one sid, output it directly, else output will be a dictionary of dfs
-            if len(sids) == 1:
-                out = df.copy()
-            else:
-                out[sid] = df
+            table_name_out = '{}_{}_1_HOUR_AVERAGES'.format(dtype.upper(), sid)
+            out[table_name_out] = df
 
     return out
 
 
-def unjson_dfs(dict_):
-    return {key: pd.read_json(value) for key,value in dict_.items()}
-
-
 # Gets data either for plotting or for download to a csv
 def get_data_objs(
-    lightweightData,
     dclass, dtype, 
     time_resolution, time_order, start_date, end_date, 
     stages, types, sids,
@@ -583,7 +555,7 @@ def get_data_objs(
 
     if dclass == 'Lab Data':
 
-        df = lightweightData['labdata'][dtype]
+        df = cut.get_data('labdata', [dtype])[dtype]
         df.loc[:,'Time'] = pd.to_datetime(df['Date_Time'])
         df.loc[:,'yvar'] = df['Value']
         
@@ -636,7 +608,8 @@ def get_data_objs(
 
             for sid in sids:
 
-                dfsub = query_opdata(dtype, [sid], time_resolution)
+                table_name = '{}_{}_1_HOUR_AVERAGES'.format(dtype, sid)
+                dfsub = query_opdata(dtype, [sid])[table_name]
                 dfsub.loc[:,'yvar'] = dfsub['Value']
                 seriesName = seriesNamePrefix + sid
                 subSeries = {'seriesName': seriesName}
@@ -646,15 +619,14 @@ def get_data_objs(
         # Otherwise, just query all sids at once, which returns a dictionary of pandas dataframes
         else:
 
-            df_dict = query_opdata(dtype, sids, time_resolution)
+            df_dict = query_opdata(dtype, sids)
             df = cut.merge_tables(df_dict, ['Time'], measure_varnames = ['Value']*len(sids), merged_varnames = sids)
             df = filter_resolve_time(df, groupvars, dtype, time_resolution, time_order, start_date, end_date, plot = False)
 
     if dclass == 'Validation':
 
         val_type_abbrevs = {'COD Balance':'cod_balance','Process Parameters':'vss_params','Instrument Validation':'instr_validation'}
-        # df = cut.get_data('valdata',[val_type_abbrevs[dtype]])[val_type_abbrevs[dtype]]
-        df = lightweightData['valdata'][val_type_abbrevs[dtype]]
+        df = cut.get_data('valdata',[val_type_abbrevs[dtype]])[val_type_abbrevs[dtype]]
         df.loc[:,'Time'] = df['Date_Time']
         df.loc[:,'yvar'] = df['Value']
 
