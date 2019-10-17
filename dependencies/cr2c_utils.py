@@ -23,7 +23,7 @@ from google.cloud import bigquery
 # Gets valid user credentials from storage.
 # If nothing has been stored, or if the stored credentials are invalid,
 # the OAuth2 flow is completed to obtain the new credentials.
-def get_credentials(pydir):
+def get_credentials():
 
 	SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 	CLIENT_SECRET_FILE = 'client_secret.json'
@@ -40,9 +40,6 @@ def get_credentials(pydir):
 	)
 	store = Storage(credential_path)
 	credentials = store.get()
-
-	spreadsheetId_path = os.path.join(pydir,'spreadsheetId.txt')
-	spreadsheetId = open(spreadsheetId_path).read()
 		
 	if not credentials or credentials.invalid:	
 		flags = 'An unknown error occurred'
@@ -50,14 +47,15 @@ def get_credentials(pydir):
 		flow.user_agent = projectid
 		credentials = tools.run_flow(flow, store, flags)
 
-	return credentials, spreadsheetId
+	return credentials
 
 
 # Retrieves data of specified tabs in a gsheets file
-def get_gsheet_data(sheet_name, pydir):
+def get_gsheet_data(spreadsheet_id, sheet_name):
 
-	credentials, spreadsheetId = get_credentials(pydir)
+	credentials = get_credentials()
 	http = credentials.authorize(httplib2.Http())
+
 	discoveryUrl = (
 		'https://sheets.googleapis.com/$discovery/rest?'
 		'version=v4'
@@ -70,7 +68,7 @@ def get_gsheet_data(sheet_name, pydir):
 	)
 	range_name = [sheet_name + '!A:ZZ']
 	gsheet_result = service.spreadsheets().values().batchGet(
-		spreadsheetId = spreadsheetId, 
+		spreadsheetId = spreadsheet_id, 
 		ranges = range_name
 	).execute()	
 

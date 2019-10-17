@@ -35,10 +35,14 @@ def clean_varname(varname):
 	return varname[:128]
 
 
-def process_data(pydir, table_name = 'DailyLogResponsesV3', if_exists = 'append'):
+def process_data(
+	spreadsheet_id = '1SMNnLxyT2mTap0ufMzL2y1KQHSYMmC0u0h2-P4I3JiA', 
+	table_name = 'DailyLogResponsesV3', 
+	if_exists = 'append'
+):
 
 	# Get the log data from gsheets
-	fielddata = cut.get_gsheet_data(table_name, pydir)
+	fielddata = cut.get_gsheet_data(spreadsheet_id, table_name)
 	# Eliminate special characters (':-?[]()') and replace spaces with '_'	
 	colnames_raw = fielddata.columns.values
 	colnames_cln = [clean_varname(colname) for colname in colnames_raw]

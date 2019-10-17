@@ -64,12 +64,12 @@ def update_data(
     if lab_update:
         # Initialize lab data class
         cr2c_lr = pld.labrun() 
-        cr2c_lr.process_data(pydir = pydir)
+        cr2c_lr.process_data()
 
     # Update field data
     if fld_update:
         # Field Data
-        fld.process_data(pydir = pydir, table_name = 'DailyLogResponsesV3')
+        fld.process_data(table_name = 'DailyLogResponsesV3')
 
     # Update operational data
     if op_update:
@@ -130,36 +130,38 @@ def update_data(
                     )
 
 
-update_data(
-    pydir = '/Volumes/GoogleDrive/Shared drives/CR2C.Box/Monitoring Data and Procedures/Python/GoogleProjectsAdmin',
-    lab_update = False,
-    fld_update = False,
-    op_update = True,
-        hmi_path = '',
-        hour_sids = 
-            ['AT201','AT303','AT306','AT309'] + 
-            ['AT203','AT305','AT308','AT311'] + 
-            ['FT200','FT201','FT202','FT300','FT301','FT302','FT303','FT304','FT305','FIT600'] + 
-            ['FT700','FT702','FT704'] + 
-            ['AT202','AT304','AT310'] +
-            ['AIT302'] + 
-            ['DPIT300','DPIT301','DPIT302'] +
-            ['PIT205','PIT700','PIT702'] + 
-            ['LT100','LT200','LT201','LIT300','LIT301']
-        ,
-        minute_sids = 
-            ['AT203','AT305'] +
-            ['FT200','FT201','FT202','FT304','FT305'] +
-            ['AIT302','AIT306','AIT307'] + 
-            ['DPIT300','DPIT301'] +
-            ['PIT700']
-        ,
-        op_start_dt_str = '',
-        op_end_dt_str = '',
-    val_update = False,
-        biotech_params = False,
-        val_sids = ['AT203','AT305','AT308','AT311','DPIT300','DPIT301','DPIT302','PIT700','PIT702','PIT704'],
-        val_end_dt_str = '',
-        nweeks_back = 4 
+# update_data(
+#     pydir = '/Volumes/GoogleDrive/Shared drives/CR2C.Box/Monitoring Data and Procedures/Python/GoogleProjectsAdmin',
+#     lab_update = False,
+#     fld_update = False,
+#     op_update = True,
+#         hmi_path = '',
+#         hour_sids = 
+#             ['AT201','AT303','AT306','AT309'] + 
+#             ['AT203','AT305','AT308','AT311'] + 
+#             ['FT200','FT201','FT202','FT300','FT301','FT302','FT303','FT304','FT305','FIT600'] + 
+#             ['FT700','FT702','FT704'] + 
+#             ['AT202','AT304','AT310'] +
+#             ['AIT302','AIT306','AIT307'] + 
+#             ['DPIT300','DPIT301','DPIT302'] +
+#             ['PIT205','PIT700','PIT702'] + 
+#             ['LT100','LT200','LT201','LIT300','LIT301']
+#         ,
+#         minute_sids = 
+#             ['AT203','AT305'] +
+#             ['FT200','FT201','FT202','FT304','FT305'] +
+#             ['AIT302','AIT306','AIT307'] + 
+#             ['DPIT300','DPIT301'] +
+#             ['PIT700']
+#         ,
+#         op_start_dt_str = '',
+#         op_end_dt_str = '',
+#     val_update = False,
+#         biotech_params = False,
+#         val_sids = ['AT203','AT305','AT308','AT311','DPIT300','DPIT301','DPIT302','PIT700','PIT702','PIT704'],
+#         val_end_dt_str = '',
+#         nweeks_back = 4 
 
-)
+# )
+
+cut.get_data('labdata', ['BOD','COD','PH','VFA','SULFATE','AMMONIA','TKN','ALKALINITY'], output_csv = True, outdir = '/Volumes/GoogleDrive/My Drive/Codiga Center/Data/data_for_andrew')
