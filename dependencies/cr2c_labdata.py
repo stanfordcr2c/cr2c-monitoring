@@ -291,12 +291,16 @@ class labrun:
 
 	# The main caller that executes all methods to read data from Google Sheets, clean and reformat it. 
 	# Performs necessary computations on laboratory results, converts all data to a long format, and outputs the result to the cr2c_labdata.db data store.
-	def process_data(self, if_exists = 'append'):
+	def process_data(
+		self, 
+		spreadsheet_id = '1SMNnLxyT2mTap0ufMzL2y1KQHSYMmC0u0h2-P4I3JiA', 
+		if_exists = 'append'
+	):
 		
 		# Start loop through the gsheets
 		for ltype in self.ltype_list:
-
-			self.ldata = cut.get_gsheet_data(ltype)
+			
+			self.ldata = cut.get_gsheet_data(spreadsheet_id, ltype)
 
 			if ltype == 'COD':
 				self.clean_dataset(ltype,['Date','Stage','Type'])

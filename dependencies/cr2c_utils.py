@@ -16,9 +16,14 @@ from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
-from google.auth import compute_engine
+# from google.auth import compute_engine
 from google.cloud import bigquery
+import google.auth
 
+home_dir = os.path.expanduser('~')
+credential_dir = os.path.join(home_dir, '.credentials','gbq-key.json')
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credential_dir
+credentials, project = google.auth.default()
 
 # Gets valid user credentials from storage.
 # If nothing has been stored, or if the stored credentials are invalid,
@@ -31,9 +36,6 @@ def get_credentials():
 
 	home_dir = os.path.expanduser('~')
 	credential_dir = os.path.join(home_dir, '.credentials')
-
-	if not os.path.exists(credential_dir):
-		os.makedirs(credential_dir)
 	credential_path = os.path.join(
 		credential_dir,
 		'sheets.googleapis.com-cr2c-monitoring.json'
@@ -109,6 +111,20 @@ def get_data(
 	output_csv = False, outdir = None
 ):
 	
+	# # Set credentials
+	# SCOPES = [
+ #    'https://www.googleapis.com/auth/cloud-platform',
+ #    'https://www.googleapis.com/auth/drive',
+	# ]
+
+	# credentials = pydata_google_auth.get_user_credentials(
+	#     SCOPES,
+	#     # Set auth_local_webserver to True to have a slightly more convienient
+	#     # authorization flow. Note, this doesn't work if you're running from a
+	#     # notebook on a remote sever, such as over SSH or with Google Colab.
+	#     auth_local_webserver=True,
+	# )
+
 	# Convert date string inputs to dt variables
 	if start_dt_str:
 		start_dt = dt.strptime(start_dt_str, '%m-%d-%y')
